@@ -27,7 +27,7 @@
 //  Visserie : 1 vis M5 (tête bombée ou fraisée) + 1 écrou M5,
 //    longueur de vis conseillée >= hauteur_socle + 2*epaisseur_bras + 8mm
 //    (avec les valeurs par défaut : 6 + 2*4 + 8 = 22 -> prendre du M5x25).
-//    Glisser une rondelle large (diamètre >= 15mm, cf. diam_rondelle)
+//    Glisser une rondelle large (diamètre >= 23mm, cf. diam_rondelle)
 //    sous la tête de vis pour qu'elle plaque bien sur toute la longueur
 //    du trou oblong, quelle que soit la position choisie.
 //
@@ -41,7 +41,7 @@ position_apercu = "ouvert"; // ["ouvert","ferme"] (utilisé seulement si piece =
 
 /* [Ecartement exterieur des pattes (mm)] */
 ecart_max = 180; // position ouverte
-ecart_min = 165; // position resserree (vers le centre)
+ecart_min = 150; // position resserree (vers le centre)
 
 /* [Bras coulissant] */
 epaisseur_bras = 4;
@@ -63,7 +63,9 @@ rayon_arrondi_socle  = 3;
 diam_vis          = 5.4;  // passage de la tige (M5 + jeu)
 entredeplats_ecrou = 8.3; // ecrou M5 (8mm) + jeu
 haut_ecrou        = 4.5;  // hauteur de l'empreinte hexagonale
-diam_rondelle     = 15;   // diametre mini de rondelle conseille (info)
+diam_rondelle     = 23;   // diametre mini de rondelle conseille (info),
+                           // doit rester > travel + diam_vis pour toujours
+                           // recouvrir le trou oblong, quelle que soit la position
 jeu               = 0.3;
 
 $fn = 48;
