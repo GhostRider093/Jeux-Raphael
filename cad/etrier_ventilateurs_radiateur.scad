@@ -48,10 +48,10 @@ epaisseur_bras = 4;
 largeur_bras   = 16;
 
 /* [Patte de fixation (semelle collee au scotch double-face)] */
-largeur_patte   = 26;
+largeur_patte   = 34;
 longueur_patte  = 22;
 epaisseur_patte = 4;
-hauteur_rebord  = 9;   // rebord en L, prend appui sur le bord du radiateur/ventilo
+hauteur_rebord  = 16;  // rebord en L, prend appui sur le bord du radiateur/ventilo
 rayon_arrondi   = 2;
 
 /* [Socle central] */
