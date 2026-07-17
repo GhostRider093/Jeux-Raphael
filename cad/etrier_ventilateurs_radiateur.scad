@@ -38,6 +38,9 @@
 /* [Rendu] */
 piece = "assemblage"; // ["assemblage","socle","bras"]
 position_apercu = "ouvert"; // ["ouvert","ferme"] (utilisé seulement si piece = "assemblage")
+explosion = 10; // ecart (mm) entre socle/bras en vue eclatee, pour que le CAO
+                // les reconnaisse comme 3 corps separes et non une piece collee.
+                // Mettre 0 pour voir l'assemblage reellement au contact.
 
 /* [Ecartement exterieur des pattes (mm)] */
 ecart_max = 180; // position ouverte
@@ -147,21 +150,29 @@ module bras_perce() {
 }
 
 // =====================================================================
-//  Assemblage (apercu du montage, ne pas exporter tel quel en STL)
+//  Assemblage (vue eclatee : socle / bras gauche / bras droit sont
+//  ecartes de "explosion" mm entre eux pour rester 3 corps distincts
+//  a l'export/dans le CAO, au lieu d'une seule piece collee. Mettre
+//  explosion = 0 pour verifier l'assemblage reellement au contact.
+//  Ne pas imprimer tel quel : exporter separement piece="socle" et
+//  piece="bras" (x2).
 // =====================================================================
 module assemblage(position) {
     dx = (position == "ouvert") ? 0 : -travel;
 
+    z_gauche = hauteur_socle + explosion;
+    z_droit  = z_gauche + epaisseur_bras + explosion;
+
     socle();
 
-    // bras droit (au-dessus)
-    translate([dx, 0, hauteur_socle + epaisseur_bras])
-        bras_perce();
-
-    // bras gauche (en dessous, symetrique)
+    // bras gauche (symetrique)
     mirror([1, 0, 0])
-        translate([dx, 0, hauteur_socle])
+        translate([dx, 0, z_gauche])
             bras_perce();
+
+    // bras droit (au-dessus)
+    translate([dx, 0, z_droit])
+        bras_perce();
 }
 
 // =====================================================================
