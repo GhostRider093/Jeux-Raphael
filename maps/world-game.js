@@ -319,11 +319,22 @@ const WORLD_GAMEPAD_DEFAULTS = {
   exit: { type: 'button', index: 9, scale: 1 }
 };
 let worldGamepadProfile = {};
-try {
-  worldGamepadProfile = JSON.parse(localStorage.getItem(WORLD_GAMEPAD_PROFILE_KEY) || '{}') || {};
-} catch (error) {
-  worldGamepadProfile = {};
+function reloadWorldGamepadProfile() {
+  try {
+    worldGamepadProfile = JSON.parse(localStorage.getItem(WORLD_GAMEPAD_PROFILE_KEY) || '{}') || {};
+  } catch (error) {
+    worldGamepadProfile = {};
+  }
+  return worldGamepadProfile;
 }
+reloadWorldGamepadProfile();
+window.addEventListener('storage', event => {
+  if (event.key === WORLD_GAMEPAD_PROFILE_KEY) reloadWorldGamepadProfile();
+});
+window.addEventListener('focus', reloadWorldGamepadProfile);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) reloadWorldGamepadProfile();
+});
 
 function readConfiguredControl(pad, action, zone = .13) {
   const binding = worldGamepadProfile[action] || WORLD_GAMEPAD_DEFAULTS[action];
@@ -335,7 +346,9 @@ function readConfiguredControl(pad, action, zone = .13) {
 
 function readGamepad() {
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
-  const pad = pads.find(item => !/audio|headset|speaker|microphone/i.test(item.id)) || null;
+  const usablePads = pads.filter(item => !/audio|headset|speaker|microphone/i.test(item.id));
+  const configuredId = String(worldGamepadProfile.gamepadId || '');
+  const pad = usablePads.find(item => configuredId && item.id === configuredId) || usablePads[0] || null;
   if (!pad) return { x: 0, y: 0, throttle: 0, brake: 0, climb: 0, boost: false, acro: false, jump: false, view: false, portal: false, fire: false, missile: false, name: 'Aucune manette' };
   const yaw = readConfiguredControl(pad, 'yaw');
   const pitch = readConfiguredControl(pad, 'pitch');
