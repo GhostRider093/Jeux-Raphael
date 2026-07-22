@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
-import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=kenney-road-axis-20260718';
+import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=chasseur-default-20260719';
 import { buildWorld, animateWorld } from './world-builder.js?v=ethereal-archway-20260719';
 import { createWorldCombat } from './world-combat.js?v=quiet-lock-tone-20260719';
 

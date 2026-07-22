@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Configuration et comportement du chasseur</title>
+<style>
+  :root{color-scheme:dark;--bg:#07111b;--panel:#101e2a;--line:#29465d;--blue:#55c8ff;--green:#83ef74;--orange:#ffc15a}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at top,#16354d 0,var(--bg) 58%);color:#e8f2fa;font-family:Arial,sans-serif;padding:18px}
+  main{max-width:1180px;margin:auto} h1{font-size:26px;margin:0 0 7px} p{color:#adc2cf;line-height:1.45;margin:6px 0}
+  .status,.panel{border:1px solid var(--line);background:rgba(16,30,42,.95);border-radius:13px;padding:15px;margin:13px 0}
+  .status{color:var(--orange);font-weight:700}.status.connected{color:var(--green)}
+  .workspace{display:grid;grid-template-columns:minmax(420px,1.35fr) minmax(330px,.85fr);gap:14px;align-items:start}
+  .visual-panel{padding:0;overflow:hidden}.visual-head{padding:14px 16px 10px}.visual-head h2{margin-bottom:5px}
+  #visualizer{height:480px;position:relative;background:linear-gradient(#153d5d 0 50%,#273221 50%);overflow:hidden}
+  #visualizer canvas{display:block;width:100%;height:100%}.reticle{position:absolute;inset:50% auto auto 50%;width:28px;height:28px;transform:translate(-50%,-50%);border:1px solid #77dbff55;border-radius:50%;pointer-events:none}
+  .reticle:before,.reticle:after{content:"";position:absolute;background:#77dbff66}.reticle:before{width:48px;height:1px;left:-10px;top:13px}.reticle:after{width:1px;height:48px;left:13px;top:-10px}
+  .attitude{position:absolute;left:12px;right:12px;bottom:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:7px;pointer-events:none}
+  .attitude div{background:#06111bcc;border:1px solid #47718a;border-radius:7px;padding:6px;text-align:center;font:12px Consolas,monospace}.attitude strong{display:block;color:#7fe3ff;font-size:15px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(280px,1fr));gap:14px} h2{font-size:16px;color:var(--blue);margin:0 0 11px}
+  .row{display:grid;grid-template-columns:1fr 145px auto;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+  .row:last-child{border:0}.row label{font-weight:700;font-size:13px}.row small{display:block;color:#879daa;font-weight:400;margin-top:3px}
+  select,button{min-height:40px;border:1px solid var(--line);border-radius:8px;background:#0b1721;color:white;padding:8px 10px} select{width:100%}
+  .invert{display:flex;align-items:center;gap:5px;font-size:12px;color:#c4d6df;white-space:nowrap}
+  .live{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:7px;margin-top:8px}.cell{padding:7px;border:1px solid var(--line);border-radius:7px;background:#09141e;font:12px Consolas,monospace;text-align:center}.cell.on{background:#267a42;border-color:var(--green)}.cell strong{display:block;font-size:14px;margin-top:3px}
+  .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}button{cursor:pointer;font-weight:800}.primary{background:#286b35;border-color:#69d779}.danger{background:#5c2929;border-color:#bd6868}.back{background:#174c67;border-color:#55c8ff}#saved{min-height:22px;color:var(--green);font-weight:700;margin-top:9px}
+  @media(max-width:900px){.workspace{grid-template-columns:1fr}.grid{grid-template-columns:1fr}#visualizer{height:400px}}
+  @media(max-width:600px){body{padding:10px}.row{grid-template-columns:1fr 125px}.invert{grid-column:2}#visualizer{height:330px}.attitude{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Comportement du chasseur</h1>
+  <p>Le chasseur reste fixe : sa rotation montre directement le comportement de la manette. Incline à gauche ou à droite pour vérifier le roulis, puis tire ou pousse pour vérifier le nez.</p>
+  <div id="status" class="status">Manette en attente : bouge un axe ou appuie sur un bouton.</div>
+
+  <div class="workspace">
+    <section class="panel visual-panel">
+      <div class="visual-head"><h2>Attitude réelle du chasseur</h2><p>La ligne d’horizon reste fixe ; seul l’avion tourne sur lui-même.</p></div>
+      <div id="visualizer">
+        <div class="reticle"></div>
+        <div class="attitude"><div>ROULIS<strong id="roll-value">0°</strong></div><div>TANGAGE<strong id="pitch-value">0°</strong></div><div>LACET<strong id="yaw-value">0°</strong></div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Axes de pilotage</h2>
+      <div class="row"><label>Tourner gauche / droite<small>Roulis et lacet du chasseur</small></label><select data-axis="yaw"></select><label class="invert"><input type="checkbox" data-invert="yaw"> Inverser</label></div>
+      <div class="row"><label>Monter / descendre<small>Inclinaison du nez</small></label><select data-axis="pitch"></select><label class="invert"><input type="checkbox" data-invert="pitch"> Inverser</label></div>
+      <div class="row"><label>Accélérateur<small>Manette des gaz</small></label><select data-axis="throttle"></select><label class="invert"><input type="checkbox" data-invert="throttle"> Inverser</label></div>
+      <p>Les changements d’axe et les cases « Inverser » agissent immédiatement sur l’avion, même avant l’enregistrement.</p>
+    </section>
+  </div>
+
+  <div class="grid">
+    <section class="panel"><h2>Boutons d’action</h2>
+      <div class="row"><label>Canon</label><select data-button="fire"></select></div><div class="row"><label>Missile</label><select data-button="missile"></select></div><div class="row"><label>Changer de vue</label><select data-button="view"></select></div><div class="row"><label>Boost</label><select data-button="boost"></select></div><div class="row"><label>Looping</label><select data-button="loop"></select></div><div class="row"><label>Frein</label><select data-button="brake"></select></div><div class="row"><label>Quitter / menu</label><select data-button="exit"></select></div>
+    </section>
+    <section class="panel"><h2>Valeurs en direct</h2><div id="live" class="live">Aucune donnée pour le moment.</div></section>
+  </div>
+
+  <div class="actions"><button id="save" class="primary">Enregistrer les commandes</button><button id="play" class="back">Enregistrer et ouvrir la Vallée</button><button id="reset" class="danger">Effacer le profil</button></div><div id="saved"></div>
+</main>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.158.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.158.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+
+const STORAGE_KEY = 'raphael.chasseur.gamepad.v1';
+const defaults={axes:{yaw:{index:0,invert:true},pitch:{index:1,invert:false},throttle:{index:3,invert:true}},buttons:{fire:0,missile:1,view:2,boost:3,loop:4,brake:6,exit:9}};
+let activePad=null, optionSignature='', fighter=null;
+let shownRoll=0,shownPitch=0,shownYaw=0,targetRoll=0,targetPitch=0,targetYaw=0;
+const visualizer=document.getElementById('visualizer');
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(42,1,.01,100);
+camera.position.set(0,2.3,9); camera.lookAt(0,.15,0);
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true}); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.outputColorSpace=THREE.SRGBColorSpace; visualizer.prepend(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xd8efff,0x314025,2.1)); const sun=new THREE.DirectionalLight(0xffffff,2.3); sun.position.set(4,7,6); scene.add(sun);
+const grid=new THREE.GridHelper(26,26,0x4c7654,0x30483a); grid.position.y=-2.2; scene.add(grid);
+const horizon=new THREE.GridHelper(22,22,0x376681,0x24465c); horizon.rotation.x=Math.PI/2; horizon.position.set(0,0,-5); scene.add(horizon);
+
+function makeFallback(){const g=new THREE.Group();const body=new THREE.Mesh(new THREE.ConeGeometry(.45,4,10),new THREE.MeshStandardMaterial({color:0xaebbc6,metalness:.5,roughness:.4}));body.rotation.x=-Math.PI/2;g.add(body);const wing=new THREE.Mesh(new THREE.BoxGeometry(5,.12,1.3),new THREE.MeshStandardMaterial({color:0x718697,metalness:.45,roughness:.45}));wing.position.z=.35;g.add(wing);const tail=new THREE.Mesh(new THREE.BoxGeometry(2,.1,.7),wing.material);tail.position.z=1.65;g.add(tail);return g}
+function installFighter(obj){obj.traverse(n=>{if(n.isMesh)n.material=new THREE.MeshStandardMaterial({color:0xa6b2bc,metalness:.55,roughness:.38,side:THREE.DoubleSide})});obj.rotation.set(0,-Math.PI/2,0);obj.updateMatrixWorld(true);let box=new THREE.Box3().setFromObject(obj);obj.position.sub(box.getCenter(new THREE.Vector3()));const wrap=new THREE.Group();wrap.add(obj);wrap.updateMatrixWorld(true);box=new THREE.Box3().setFromObject(wrap);const size=box.getSize(new THREE.Vector3());wrap.scale.setScalar(5.4/Math.max(size.x,size.y,size.z));if(fighter)scene.remove(fighter);fighter=wrap;scene.add(fighter);window.__fighterLoaded=true}
+fighter=makeFallback(); scene.add(fighter); window.__fighterLoaded=false;
+new OBJLoader().load('./perso/chasseur.obj?v=controller-attitude-20260719',installFighter,undefined,()=>{window.__fighterLoaded='fallback'});
+
+function resize(){const w=visualizer.clientWidth,h=visualizer.clientHeight;if(renderer.domElement.width!==Math.round(w*Math.min(devicePixelRatio,2))||renderer.domElement.height!==Math.round(h*Math.min(devicePixelRatio,2))){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}}
+function loadProfile(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||defaults}catch{return defaults}}
+function fillOptions(pad){const sig=`${pad.axes.length}/${pad.buttons.length}`;if(sig===optionSignature)return;optionSignature=sig;const profile=loadProfile();document.querySelectorAll('[data-axis]').forEach(s=>{const n=s.dataset.axis;s.innerHTML=Array.from({length:pad.axes.length},(_,i)=>`<option value="${i}">Axe ${i}</option>`).join('');s.value=Math.min(profile.axes?.[n]?.index??defaults.axes[n].index,pad.axes.length-1);document.querySelector(`[data-invert="${n}"]`).checked=profile.axes?.[n]?.invert??defaults.axes[n].invert});document.querySelectorAll('[data-button]').forEach(s=>{const n=s.dataset.button;s.innerHTML=Array.from({length:pad.buttons.length},(_,i)=>`<option value="${i}">Bouton ${i}</option>`).join('');s.value=Math.min(profile.buttons?.[n]??defaults.buttons[n],pad.buttons.length-1)})}
+function currentProfile(){const axes={};document.querySelectorAll('[data-axis]').forEach(s=>{const n=s.dataset.axis;axes[n]={index:Number(s.value),invert:document.querySelector(`[data-invert="${n}"]`).checked}});const buttons={};document.querySelectorAll('[data-button]').forEach(s=>buttons[s.dataset.button]=Number(s.value));return{version:1,gamepadId:activePad?.id||'',savedAt:new Date().toISOString(),axes,buttons}}
+function axisValue(name){if(!activePad)return 0;const select=document.querySelector(`[data-axis="${name}"]`);const idx=Number(select?.value??defaults.axes[name].index);const invert=document.querySelector(`[data-invert="${name}"]`)?.checked??defaults.axes[name].invert;let value=activePad.axes[idx]||0;if(Math.abs(value)<.06)value=0;return THREE.MathUtils.clamp(value*(invert?-1:1),-1,1)}
+function save(openGame=false){if(!activePad){document.getElementById('saved').textContent='Branche et active d’abord une manette.';return}localStorage.setItem(STORAGE_KEY,JSON.stringify(currentProfile()));document.getElementById('saved').textContent='Commandes enregistrées. La Vallée utilisera ce profil.';if(openGame)location.href='vallee.html'}
+function render(){const pads=navigator.getGamepads?Array.from(navigator.getGamepads()).filter(Boolean):[];activePad=pads[0]||null;const status=document.getElementById('status'),live=document.getElementById('live');if(!activePad){status.className='status';status.textContent='Manette en attente : bouge un axe ou appuie sur un bouton.';live.textContent='Aucune donnée pour le moment.';targetRoll=targetPitch=targetYaw=0}else{status.className='status connected';status.textContent=`Manette détectée : ${activePad.id}`;fillOptions(activePad);const yaw=axisValue('yaw'),pitch=axisValue('pitch');targetRoll=-yaw*THREE.MathUtils.degToRad(55);targetYaw=-yaw*THREE.MathUtils.degToRad(16);targetPitch=pitch*THREE.MathUtils.degToRad(34);live.innerHTML=activePad.axes.map((v,i)=>`<div class="cell ${Math.abs(v)>.25?'on':''}">Axe ${i}<strong>${v.toFixed(2)}</strong></div>`).concat(activePad.buttons.map((b,i)=>`<div class="cell ${b.pressed?'on':''}">Bouton ${i}<strong>${b.value.toFixed(2)}</strong></div>`)).join('')}
+shownRoll=THREE.MathUtils.lerp(shownRoll,targetRoll,.14);shownPitch=THREE.MathUtils.lerp(shownPitch,targetPitch,.14);shownYaw=THREE.MathUtils.lerp(shownYaw,targetYaw,.14);if(fighter)fighter.rotation.set(shownPitch,shownYaw,shownRoll,'YXZ');document.getElementById('roll-value').textContent=`${Math.round(THREE.MathUtils.radToDeg(shownRoll))}°`;document.getElementById('pitch-value').textContent=`${Math.round(THREE.MathUtils.radToDeg(shownPitch))}°`;document.getElementById('yaw-value').textContent=`${Math.round(THREE.MathUtils.radToDeg(shownYaw))}°`;window.__controllerVisualizer={connected:!!activePad,roll:THREE.MathUtils.radToDeg(shownRoll),pitch:THREE.MathUtils.radToDeg(shownPitch),yaw:THREE.MathUtils.radToDeg(shownYaw),fighterLoaded:window.__fighterLoaded};resize();renderer.render(scene,camera);requestAnimationFrame(render)}
+document.getElementById('save').onclick=()=>save(false);document.getElementById('play').onclick=()=>save(true);document.getElementById('reset').onclick=()=>{localStorage.removeItem(STORAGE_KEY);optionSignature='';document.getElementById('saved').textContent='Profil effacé. Les commandes par défaut seront utilisées.'};render();
+</script>
+</body>
+</html>

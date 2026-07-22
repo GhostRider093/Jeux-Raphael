@@ -2,8 +2,7 @@ import { KENNEY_ROAD_LIBRARY, KENNEY_ROAD_PLACEMENTS } from './kenney-road-asset
 
 export const PLAYER_MODES = [
   { id: 'chasseur', name: 'Chasseur', icon: '✈', type: 'flight', description: 'Vol rapide, exploration aérienne et rase-mottes.' },
-  { id: 'robot', name: 'Robot Titan', icon: '◆', type: 'ground', description: 'Exploration terrestre lourde et franchissement.' },
-  { id: 'personnage', name: 'Personnage', icon: '●', type: 'ground', description: 'Exploration à pied, ruelles, sentiers et bâtiments.' }
+  { id: 'robot', name: 'Robot Titan', icon: '◆', type: 'ground', description: 'Exploration terrestre lourde et franchissement.' }
 ];
 
 export const ASSET_LIBRARY = {
@@ -28,7 +27,7 @@ export const ASSET_LIBRARY = {
 
 Object.assign(ASSET_LIBRARY, KENNEY_ROAD_LIBRARY);
 
-const allModes = ['chasseur', 'robot', 'personnage'];
+const allModes = ['chasseur', 'robot'];
 
 export const WORLD_MAPS = [
   {
@@ -46,7 +45,7 @@ export const WORLD_MAPS = [
   {
     id: 'emerald-forest', name: 'Forêt Émeraude', icon: '♣', category: 'Forêt profonde', seed: 2403, size: 1500,
     tagline: 'Une forêt immense, des clairières secrètes et une route oubliée.',
-    description: 'La canopée dense cache un ancien observatoire, un lac central et des ruines. Les sentiers étroits favorisent le personnage tandis que les trouées permettent le passage du robot et du chasseur.',
+    description: 'La canopée dense cache un ancien observatoire, un lac central et des ruines. Les sentiers étroits favorisent le robot tandis que les trouées permettent le passage du chasseur.',
     sky: 0x6f9d92, fog: 0x8eaa83, fogDensity: 0.00125, waterLevel: -4,
     terrain: { kind: 'forest', base: 8, amplitude: 48, scale: 0.006, low: 0x193d25, mid: 0x2f6b37, high: 0x71844c },
     layout: 'trail', population: { trees: 620, rocks: 115, buildings: 4, towers: 2, crystals: 12 },
@@ -178,7 +177,7 @@ export const WORLD_MAPS = [
   {
     id: 'sunken-coast', name: 'Côte Engloutie', icon: '≈', category: 'Littoral submergé', seed: 13805, size: 1600,
     tagline: 'Une ancienne ville dont seules les hauteurs émergent encore.',
-    description: 'Routes noyées, toits transformés en îlots et ponts brisés créent une navigation hybride. Le chasseur suit la côte, le robot emprunte les digues et le personnage explore les ruines.',
+    description: 'Routes noyées, toits transformés en îlots et ponts brisés créent une navigation hybride. Le chasseur suit la côte tandis que le robot emprunte les digues et explore les ruines.',
     sky: 0x6b9eae, fog: 0x86b3ba, fogDensity: 0.001, waterLevel: 22,
     terrain: { kind: 'coast', base: -14, amplitude: 68, scale: 0.006, low: 0xbcae79, mid: 0x55734a, high: 0x77796b },
     layout: 'flooded', population: { trees: 85, rocks: 100, buildings: 55, towers: 10, crystals: 6 },
@@ -202,7 +201,7 @@ export const WORLD_MAPS = [
   {
     id: 'sky-islands', name: 'Îles du Ciel', icon: '☁', category: 'Archipel aérien', seed: 15027, size: 1500,
     tagline: 'Des plateaux suspendus au-dessus d’une mer de nuages.',
-    description: 'Des îles rocheuses semblent flotter autour d’une tour centrale. Les ponts énergétiques permettent aux personnages de circuler pendant que le chasseur slalome entre les masses.',
+    description: 'Des îles rocheuses semblent flotter autour d’une tour centrale. Les ponts énergétiques permettent au robot de circuler pendant que le chasseur slalome entre les masses.',
     sky: 0x6ca7d9, fog: 0xd4e8f4, fogDensity: 0.00055, waterLevel: -70,
     terrain: { kind: 'sky', base: 60, amplitude: 120, scale: 0.008, low: 0x546759, mid: 0x738b62, high: 0xd1d5bd },
     layout: 'sky', population: { trees: 110, rocks: 180, buildings: 16, towers: 12, crystals: 90 },
@@ -226,7 +225,7 @@ export const WORLD_MAPS = [
   {
     id: 'lunar-outpost', name: 'Avant-poste Lunaire', icon: '☾', category: 'Lune', seed: 17239, size: 1600,
     tagline: 'Faible gravité, grands cratères et station isolée.',
-    description: 'Une surface minérale très lisible, ponctuée de dômes, antennes et champs de cristaux. Les longues bosses permettent au robot et au personnage de grands sauts.',
+    description: 'Une surface minérale très lisible, ponctuée de dômes, antennes et champs de cristaux. Les longues bosses permettent au robot d’effectuer de grands sauts.',
     sky: 0x050713, fog: 0x313442, fogDensity: 0.00038, waterLevel: -120,
     terrain: { kind: 'moon', base: 2, amplitude: 72, scale: 0.008, low: 0x30313a, mid: 0x5d5f69, high: 0x9a9ba2 },
     layout: 'outpost', population: { trees: 0, rocks: 300, buildings: 28, towers: 18, crystals: 95 },
