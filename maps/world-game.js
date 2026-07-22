@@ -695,6 +695,7 @@ async function startWorld() {
   const knob = document.getElementById('world-knob');
   const touchLayer = document.getElementById('world-touch');
   const stickToggle = document.getElementById('stick-toggle');
+  const invertControlsToggle = document.getElementById('invert-controls-toggle');
   const motionToggle = document.getElementById('motion-toggle');
   const motionState = document.getElementById('motion-state');
   let pointerId = null;
@@ -712,7 +713,9 @@ async function startWorld() {
   stick.addEventListener('pointercancel', resetStick);
 
   let stickVisible = true;
+  let touchControlsInverted = false;
   try { stickVisible = localStorage.getItem('raphael.mobile.stick') !== 'hidden'; } catch {}
+  try { touchControlsInverted = localStorage.getItem('raphael.mobile.controlsInverted') === 'true'; } catch {}
   function renderStickVisibility() {
     touchLayer.classList.toggle('stick-hidden', !stickVisible);
     stickToggle.classList.toggle('active', stickVisible);
@@ -726,6 +729,21 @@ async function startWorld() {
     renderStickVisibility();
   });
   renderStickVisibility();
+
+  function renderTouchControlDirection() {
+    invertControlsToggle.classList.toggle('inverted', touchControlsInverted);
+    invertControlsToggle.textContent = touchControlsInverted ? 'COMMANDES : INVERSÉES' : 'COMMANDES : NORMALES';
+    invertControlsToggle.setAttribute('aria-pressed', String(touchControlsInverted));
+  }
+  invertControlsToggle.addEventListener('click', event => {
+    event.preventDefault();
+    touchControlsInverted = !touchControlsInverted;
+    touch.y = 0;
+    motion.y = 0;
+    try { localStorage.setItem('raphael.mobile.controlsInverted', String(touchControlsInverted)); } catch {}
+    renderTouchControlDirection();
+  });
+  renderTouchControlDirection();
 
   function orientationAngle() {
     const angle = screen.orientation?.angle ?? window.orientation ?? 0;
@@ -809,7 +827,9 @@ async function startWorld() {
 
   function updateFlight(dt, pad) {
     const yawInput = (keys.ArrowLeft || keys.KeyA || keys.KeyQ ? 1 : 0) + (keys.ArrowRight || keys.KeyD ? -1 : 0) - touch.x - motion.x - pad.x;
-    const pitchInput = (keys.ArrowUp || keys.KeyI ? 1 : 0) + (keys.ArrowDown || keys.KeyK ? -1 : 0) + touch.y + motion.y + pad.y;
+    const mobilePitchDirection = touchControlsInverted ? 1 : -1;
+    const pitchInput = (keys.ArrowUp || keys.KeyI ? 1 : 0) + (keys.ArrowDown || keys.KeyK ? -1 : 0)
+      + (touch.y + motion.y) * mobilePitchDirection + pad.y;
     const climbInput = THREE.MathUtils.clamp(
       (keys.KeyE || keys.PageUp ? 1 : 0)
       + (keys.ControlLeft || keys.ControlRight || keys.KeyC || keys.PageDown ? -1 : 0)
@@ -1041,7 +1061,8 @@ async function startWorld() {
       motionEnabled: motion.enabled,
       motionX: motion.x,
       motionY: motion.y,
-      motionCalibrated: motion.hasSample
+      motionCalibrated: motion.hasSample,
+      controlsInverted: touchControlsInverted
     }),
     teleportToRaceGate: () => {
       const gate = raceGates[raceIndex];

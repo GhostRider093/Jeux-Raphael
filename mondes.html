@@ -196,6 +196,7 @@
     #mobile-control-tools { position:absolute; left:max(12px,env(safe-area-inset-left)); bottom:max(18px,env(safe-area-inset-bottom)); display:flex; flex-wrap:wrap; gap:7px; max-width:calc(100vw - 190px); pointer-events:auto; }
     .mobile-control-toggle { min-height:40px; padding:8px 12px; color:#e7f7fc; border:1px solid rgba(177,225,242,.42); border-radius:12px; background:linear-gradient(180deg,rgba(22,43,56,.92),rgba(5,15,23,.92)); box-shadow:inset 0 1px rgba(255,255,255,.1),0 6px 16px rgba(0,0,0,.28); font:750 9px/1.15 "Bahnschrift SemiCondensed","Segoe UI",sans-serif; letter-spacing:.8px; touch-action:manipulation; }
     .mobile-control-toggle.active { color:#efffe6; border-color:#a9ef7d; background:linear-gradient(180deg,rgba(70,126,48,.9),rgba(28,67,24,.92)); box-shadow:inset 0 1px rgba(255,255,255,.15),0 0 16px rgba(141,233,90,.18); }
+    #invert-controls-toggle.inverted { color:#fff2b7; border-color:#ffc75c; background:linear-gradient(180deg,rgba(130,83,28,.94),rgba(72,40,12,.94)); }
     #motion-state { position:absolute; left:max(14px,env(safe-area-inset-left)); bottom:max(61px,calc(env(safe-area-inset-bottom) + 47px)); color:rgba(225,247,255,.72); font:700 8px/1.2 Arial,sans-serif; text-shadow:0 1px 4px #000; pointer-events:none; }
     #world-stick { position:absolute; left:18px; bottom:max(84px,calc(env(safe-area-inset-bottom) + 72px)); width:112px; height:112px; border:1px solid rgba(255,255,255,.23); border-radius:50%; background:rgba(4,11,18,.45); backdrop-filter:blur(5px); pointer-events:auto; touch-action:none; }
     #world-touch.stick-hidden #world-stick { display:none; }
@@ -325,6 +326,7 @@
       <div id="mobile-control-tools">
         <button id="motion-toggle" class="mobile-control-toggle" type="button">INCLINAISON</button>
         <button id="stick-toggle" class="mobile-control-toggle active" type="button">JOYSTICK</button>
+        <button id="invert-controls-toggle" class="mobile-control-toggle" type="button">COMMANDES : NORMALES</button>
         <button id="fullscreen-toggle" class="mobile-control-toggle" type="button">PLEIN ÉCRAN</button>
       </div>
       <div class="world-touch-buttons">
@@ -393,6 +395,6 @@
   <script src="./background-ambience.js?v=background-20260719"></script>
   <script src="./fighter-cannon-audio.js?v=single-shot-20260719"></script>
   <script src="./fighter-missile-audio.js?v=impact-sync-20260719"></script>
-  <script type="module" src="./maps/world-game.js?v=flight-controls-sync-20260722"></script>
+  <script type="module" src="./maps/world-game.js?v=android-touch-invert-20260722"></script>
 </body>
 </html>
