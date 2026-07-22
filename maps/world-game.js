@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=public-map-paths-20260722';
-import { buildWorld, animateWorld } from './world-builder.js?v=public-map-paths-20260722';
+import { buildWorld, animateWorld } from './world-builder.js?v=chicago-city-500-20260722';
 import { createWorldCombat } from './world-combat.js?v=red-black-direct-20260722';
 
 const params = new URLSearchParams(location.search);

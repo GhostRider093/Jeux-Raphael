@@ -19,7 +19,7 @@ const NOVA_BUILDINGS = [
   { id: 'meshy-tower-a', url: './assets/nova-city/meshy-tower-a.glb', height: 108, unique: true },
   { id: 'meshy-tower-b', url: './assets/nova-city/meshy-tower-b.glb', height: 112, unique: true },
   { id: 'meshy-building-c', url: './assets/nova-city/meshy-building-c.glb', height: 48, weight: 4 },
-  { id: 'chicago', url: './assets/nova-city/chicago.stl', height: 68, rotateX: -Math.PI / 2, weight: 2, stl: true },
+  { id: 'chicago', url: './assets/nova-city/chicago.stl', height: 340, rotateX: -Math.PI / 2, weight: 2, stl: true },
   { id: 'medieval-gate', url: './assets/nova-city/medieval-gate.glb', height: 44, weight: 3 }
 ];
 
