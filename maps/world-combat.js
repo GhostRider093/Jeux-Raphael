@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=red-black-direct-20260722';
+import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=white-halo-20260722';
 
 preloadEnemyFighterModel().catch(() => {});
 

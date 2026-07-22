@@ -19,7 +19,7 @@
   let enemyModelModulePromise=null;
 
   function getEnemyModelModule(){
-    if(!enemyModelModulePromise) enemyModelModulePromise=import('./maps/enemy-fighter-model.js?v=red-black-direct-20260722');
+    if(!enemyModelModulePromise) enemyModelModulePromise=import('./maps/enemy-fighter-model.js?v=white-halo-20260722');
     return enemyModelModulePromise;
   }
   // Start loading the definitive fighter before combat begins. No legacy jet

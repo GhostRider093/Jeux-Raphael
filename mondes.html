@@ -254,14 +254,17 @@
       #radar-scope { width:78px; height:78px; margin-bottom:6px; }
       #combat-lock-state { font-size:9px; }
       #combat-distance,#combat-ammo,#combat-audio-state,#combat-score,#missile-rack-status { font-size:8px; }
-      #flight-hud-top { top:58px; width:72vw; }
-      .flight-top-cell { padding:5px 7px; font-size:8px; } #flight-heading { font-size:13px; }
-      #flight-target-range { top:105px; font-size:9px; }
-      .flight-tape { top:29%; width:72px; height:230px; } #speed-tape { left:2px; } #altitude-tape { right:2px; }
-      .flight-tape-title { font-size:10px; }.flight-tape-mark { font-size:8px; }.flight-tape-value { min-width:55px; padding:5px 4px; font-size:12px; }
-      #flight-reticle { top:48%; width:58vw; height:58vw; }
-      #combat-panel { left:9px; bottom:158px; width:92px; } #radar-scope { width:82px; height:82px; }
-      #flight-weapon-panel { right:10px; top:170px; bottom:auto; min-width:105px; font-size:9px; } #flight-missiles { padding:5px 7px; font-size:11px; }
+      #flight-hud-top { top:55px; width:56vw; }
+      .flight-top-cell { padding:3px 5px; font-size:6px; } #flight-heading { font-size:10px; }
+      #flight-target-range { top:91px; font-size:7px; }
+      .flight-tape { top:33%; width:50px; height:148px; } #speed-tape { left:1px; } #altitude-tape { right:1px; }
+      .flight-tape-title { font-size:7px; }.flight-tape-mark { font-size:6px; }.flight-tape-value { min-width:39px; padding:3px 2px; font-size:9px; }
+      #flight-reticle { top:46%; width:min(38vw,170px); height:min(38vw,170px); }
+      #flight-reticle::before { width:calc(100% + 20px); } #flight-reticle::after { height:calc(100% + 20px); }
+      .reticle-inner-ring { inset:24%; }.reticle-ticks { display:none; } #reticle-range { font-size:6px; }
+      #combat-panel { left:6px; right:auto; top:auto; bottom:142px; width:70px; padding:5px; } #radar-scope { width:58px; height:58px; }
+      #combat-lock-state,#combat-distance,#combat-ammo,#combat-audio-state,#combat-score,#missile-rack-status { font-size:6px; }
+      #flight-weapon-panel { right:6px; top:142px; bottom:auto; min-width:76px; font-size:6px; } #flight-missiles { padding:3px 5px; font-size:8px; }
       .cockpit-dashboard { left:17%; right:17%; height:24%; padding:5.2vh 2vw 1vh; grid-template-columns:.75fr 1.35fr .75fr; gap:4px; }
       .cockpit-screen { min-height:48px; padding:5px; font-size:6px; }.cockpit-bars { height:27px; gap:2px; }.cockpit-bars i { width:4px; }.cockpit-aircraft { height:29px; }.cockpit-aircraft::before { font-size:25px; }
       .cockpit-rail { width:39%; height:26%; bottom:-2%; }.cockpit-glare { bottom:21%; width:43%; height:4%; }
@@ -395,6 +398,6 @@
   <script src="./background-ambience.js?v=background-20260719"></script>
   <script src="./fighter-cannon-audio.js?v=single-shot-20260719"></script>
   <script src="./fighter-missile-audio.js?v=impact-sync-20260719"></script>
-  <script type="module" src="./maps/world-game.js?v=android-touch-invert-20260722"></script>
+  <script type="module" src="./maps/world-game.js?v=mobile-hud-white-halo-20260722"></script>
 </body>
 </html>

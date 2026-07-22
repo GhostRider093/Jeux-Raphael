@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=titan-race-score-20260722';
 import { buildWorld, animateWorld } from './world-builder.js?v=titan-race-score-20260722';
-import { createWorldCombat } from './world-combat.js?v=titan-race-score-20260722';
+import { createWorldCombat } from './world-combat.js?v=white-halo-20260722';
 
 const params = new URLSearchParams(location.search);
 const requestedMap = params.get('map');
