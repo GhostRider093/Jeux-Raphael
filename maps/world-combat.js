@@ -187,10 +187,17 @@ function createAudioSystem(audioStateElement) {
 export function createWorldCombat({ scene, camera, player, world, mode, getHeight, getForward, getSpeed }) {
   const ui = document.getElementById('combat-ui');
   const combatButtons = Array.from(document.querySelectorAll('[data-world-touch="fire"],[data-world-touch="missile"]'));
-  if (mode.type !== 'flight') {
+  if (mode.type !== 'flight' || world.combat === false) {
     ui.hidden = true;
     combatButtons.forEach(button => { button.hidden = true; });
-    return { active: false, update() {}, diagnostics: { active: false } };
+    return {
+      active: false,
+      update() {},
+      diagnostics: {
+        active: false,
+        state: () => ({ locked: false, targetDistance: 0, hp: 0, alive: false, kills: 0, score: 0 })
+      }
+    };
   }
 
   ui.hidden = false;

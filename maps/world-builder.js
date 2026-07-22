@@ -897,14 +897,14 @@ function buildRaceCourse(world, root) {
     const next = points[(index + 1) % points.length];
     const gate = new THREE.Group();
     gate.name = `race-gate-${index + 1}`;
-    const color = index === 0 ? 0xa9ff65 : 0x55dcff;
+    const color = 0x30233f;
     const material = new THREE.MeshStandardMaterial({
-      color, emissive: color, emissiveIntensity: index === 0 ? 2.8 : 1.65,
+      color, emissive: color, emissiveIntensity: .35,
       roughness: .22, metalness: .42
     });
     const ring = new THREE.Mesh(new THREE.TorusGeometry(27, 2.15, 12, 52), material);
     ring.castShadow = true;
-    ring.userData.raceGateRing = { index, baseIntensity: index === 0 ? 2.8 : 1.65 };
+    ring.userData.raceGateRing = { index, baseIntensity: .35 };
     gate.add(ring);
     const markerMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .62, blending: THREE.AdditiveBlending });
     [-1, 1].forEach(side => {
@@ -918,7 +918,7 @@ function buildRaceCourse(world, root) {
     const ground = getWorldHeight(world, point.x, point.z);
     gate.position.set(point.x, ground + (point.clearance || 66), point.z);
     gate.rotation.y = Math.atan2(next.x - point.x, next.z - point.z);
-    gate.userData.raceGate = { index, radius: 31, passed: false };
+    gate.userData.raceGate = { index, radius: 31, passed: false, missed: false, material, markerMaterial, beacon };
     root.add(gate);
     gates.push(gate);
   });

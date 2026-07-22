@@ -281,7 +281,7 @@ export const WORLD_MAPS = [
     description: 'Un grand circuit rapide alterne lignes droites, courbes ouvertes, chicane, S et épingle entre les falaises, avec chronomètre et meilleur temps.',
     sky: 0x4e7292, fog: 0x7c8991, fogDensity: 0.00072, waterLevel: -110,
     terrain: { kind: 'race-canyon', base: 25, amplitude: 230, scale: 0.0048, raceRadius: 600, low: 0x332f2c, mid: 0x655a4c, high: 0xb3a78d },
-    layout: 'race-circuit', population: { trees: 34, rocks: 360, buildings: 6, towers: 14, crystals: 28 },
+    layout: 'race-circuit', combat: false, population: { trees: 34, rocks: 360, buildings: 6, towers: 14, crystals: 28 },
     landmarks: [
       { type: 'radar', x: 0, z: 0, scale: 2.4 },
       { type: 'helipad', x: 0, z: 465, scale: 1.45 },
@@ -307,7 +307,7 @@ export const WORLD_MAPS = [
     ],
     assets: [],
     spawn: { ground: [0, 0, 430], air: [0, 120, 430] }, mission: 'Le Grand Prix des Titans',
-    objectives: ['Franchir les 16 portes dans l’ordre', 'Maîtriser la chicane et l’épingle', 'Battre le meilleur temps du circuit'], modes: allModes
+    objectives: ['Franchir les 16 anneaux dans l’ordre (+50 points)', 'Éviter de rater un anneau (-20 points)', 'Obtenir le meilleur total à l’arrivée'], modes: allModes
   },
   {
     id: 'kenney-road-lab', name: 'Ville des Routes 3D', icon: '▦', category: 'Objets 3D Kenney', seed: 22817, size: 1400,

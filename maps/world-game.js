@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
-import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=public-map-paths-20260722';
-import { buildWorld, animateWorld } from './world-builder.js?v=chicago-city-500-20260722';
-import { createWorldCombat } from './world-combat.js?v=red-black-direct-20260722';
+import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=titan-race-score-20260722';
+import { buildWorld, animateWorld } from './world-builder.js?v=titan-race-score-20260722';
+import { createWorldCombat } from './world-combat.js?v=titan-race-score-20260722';
 
 const params = new URLSearchParams(location.search);
 const requestedMap = params.get('map');
@@ -419,7 +419,7 @@ async function startWorld() {
   document.getElementById('mode-name').textContent = mode.name;
   document.getElementById('mission-title').textContent = world.mission;
   document.getElementById('mission-list').innerHTML = world.objectives.map(item => `<li>${item}</li>`).join('')
-    + (mode.type === 'flight' ? '<li>Abattre 10 chasseurs ennemis au radar</li><li>Missiles illimités</li>' : '')
+    + (mode.type === 'flight' && world.combat !== false ? '<li>Abattre 10 chasseurs ennemis au radar</li><li>Missiles illimités</li>' : '')
     + `<li>Traverser le portail vers ${portalRoute.destination.name}</li>`;
   document.getElementById('back-catalog').href = `mondes.html?mode=${mode.id}`;
   const portalStatus = document.getElementById('portal-status');
@@ -547,11 +547,14 @@ async function startWorld() {
   const raceGateText = document.getElementById('race-gate');
   const raceTimeText = document.getElementById('race-time');
   const raceBestText = document.getElementById('race-best');
+  const raceScoreText = document.getElementById('race-score');
   const raceStorageKey = `raphael.race.best.${world.id}`;
   let raceIndex = 0;
   let raceStartElapsed = null;
   let raceElapsed = 0;
   let raceFinished = false;
+  let raceScore = 0;
+  let raceLastPlaneSide = null;
   let raceBest = null;
   try {
     const stored = Number(localStorage.getItem(raceStorageKey));
@@ -567,9 +570,48 @@ async function startWorld() {
 
   function refreshRaceGates() {
     raceGates.forEach((gate, index) => {
-      gate.visible = !raceFinished && index >= raceIndex;
-      gate.scale.setScalar(index === raceIndex ? 1.12 : .9);
+      const data = gate.userData.raceGate;
+      const isCurrent = !raceFinished && index === raceIndex;
+      const isPassed = data.passed;
+      const isMissed = data.missed;
+      const color = isPassed ? 0xffc928 : isMissed ? 0x8f1d2c : isCurrent ? 0xa52cff : 0x30233f;
+      const intensity = isPassed ? 2.2 : isMissed ? .8 : isCurrent ? 3.15 : .35;
+      data.material.color.setHex(color);
+      data.material.emissive.setHex(color);
+      data.material.emissiveIntensity = intensity;
+      data.markerMaterial.color.setHex(color);
+      data.markerMaterial.opacity = isCurrent || isPassed ? .82 : .22;
+      data.beacon.color.setHex(color);
+      data.beacon.intensity = isCurrent ? 38 : isPassed ? 22 : 5;
+      gate.children[0].userData.raceGateRing.baseIntensity = intensity;
+      gate.visible = true;
+      gate.scale.setScalar(isCurrent ? 1.12 : 1);
     });
+    if (raceScoreText) raceScoreText.textContent = raceFinished ? `TOTAL : ${raceScore} POINTS` : `SCORE : ${raceScore} POINTS`;
+  }
+
+  function completeRaceGate(elapsed, passed) {
+    const gate = raceGates[raceIndex];
+    if (!gate) return;
+    const data = gate.userData.raceGate;
+    data.passed = passed;
+    data.missed = !passed;
+    raceScore += passed ? 50 : -20;
+    if (raceStartElapsed === null) raceStartElapsed = elapsed;
+    raceIndex++;
+    raceLastPlaneSide = null;
+    if (raceIndex >= raceGates.length) {
+      raceElapsed = elapsed - raceStartElapsed;
+      raceFinished = true;
+      raceGateText.textContent = 'ARRIVÉE · COURSE TERMINÉE';
+      raceTimeText.textContent = formatRaceTime(raceElapsed);
+      if (!raceBest || raceElapsed < raceBest) {
+        raceBest = raceElapsed;
+        try { localStorage.setItem(raceStorageKey, String(raceBest)); } catch {}
+        raceBestText.textContent = 'NOUVEAU RECORD';
+      }
+    }
+    refreshRaceGates();
   }
 
   function updateRace(elapsed) {
@@ -581,24 +623,17 @@ async function startWorld() {
     const gate = raceGates[raceIndex];
     if (!gate) return;
     raceGateText.textContent = `${raceStartElapsed === null ? 'DÉPART' : 'PORTE'} ${raceIndex + 1} / ${raceGates.length}`;
+    const localPosition = gate.worldToLocal(player.position.clone());
     const distance = player.position.distanceTo(gate.position);
-    if (distance > gate.userData.raceGate.radius) return;
-    if (raceStartElapsed === null) raceStartElapsed = elapsed;
-    gate.userData.raceGate.passed = true;
-    gate.visible = false;
-    raceIndex++;
-    if (raceIndex >= raceGates.length) {
-      raceElapsed = elapsed - raceStartElapsed;
-      raceFinished = true;
-      raceGateText.textContent = 'ARRIVÉE · CIRCUIT TERMINÉ';
-      raceTimeText.textContent = formatRaceTime(raceElapsed);
-      if (!raceBest || raceElapsed < raceBest) {
-        raceBest = raceElapsed;
-        try { localStorage.setItem(raceStorageKey, String(raceBest)); } catch {}
-        raceBestText.textContent = 'NOUVEAU RECORD';
-      }
+    if (distance <= gate.userData.raceGate.radius) {
+      completeRaceGate(elapsed, true);
+      return;
     }
-    refreshRaceGates();
+    if (raceStartElapsed === null) return;
+    const crossedPlane = raceLastPlaneSide !== null && Math.sign(localPosition.z) !== Math.sign(raceLastPlaneSide);
+    const nearGate = Math.hypot(localPosition.x, localPosition.y) <= gate.userData.raceGate.radius * 2.6;
+    raceLastPlaneSide = localPosition.z;
+    if (crossedPlane && nearGate) completeRaceGate(elapsed, false);
   }
 
   racePanel.hidden = !raceEnabled;
@@ -946,7 +981,8 @@ async function startWorld() {
       running: raceStartElapsed !== null && !raceFinished,
       finished: raceFinished,
       elapsed: raceElapsed,
-      best: raceBest
+      best: raceBest,
+      score: raceScore
     }),
     mobile: () => ({
       stickVisible,
