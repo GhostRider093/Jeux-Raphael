@@ -6,23 +6,23 @@ export const PLAYER_MODES = [
 ];
 
 export const ASSET_LIBRARY = {
-  paris: { url: '../assets/parisian_street_collection_04.glb', targetSize: 150, rotateX: -Math.PI / 2, rotateZ: -Math.PI / 2, label: 'Quartier parisien' },
-  stadium: { url: '../assets/lasvegas_allegiant.glb', targetSize: 210, label: 'Grand stade' },
-  motocross: { url: '../assets/Motocross/Motocross.glb', targetSize: 24, rotateX: -Math.PI / 2, label: 'Moto-cross' },
-  ulvheimA1: { url: '../assets/Ulvheim/ulvheim-A-1.glb', targetSize: 115, rotateX: -Math.PI / 2, label: 'Forteresse Ulvheim A1' },
-  ulvheimA2: { url: '../assets/Ulvheim/ulvheim-A-2.glb', targetSize: 115, rotateX: -Math.PI / 2, label: 'Forteresse Ulvheim A2' },
-  ruin1: { url: '../assets/Ulvheim/ulvheim-A-1-ruin1.glb', targetSize: 78, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 1' },
-  ruin2: { url: '../assets/Ulvheim/ulvheim-A-1-ruin2.glb', targetSize: 72, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 2' },
-  ruin3: { url: '../assets/Ulvheim/ulvheim-A-1-ruin3.glb', targetSize: 72, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 3' },
-  ruin4: { url: '../assets/Ulvheim/ulvheim-A-1-ruin4.glb', targetSize: 70, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 4' },
-  ruin5: { url: '../assets/Ulvheim/ulvheim-A-1-ruin5.glb', targetSize: 82, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 5' },
-  ruin1A: { url: '../assets/Ulvheim/ulvheim-A-2-ruin1A.glb', targetSize: 62, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 1A' },
-  ruin1B: { url: '../assets/Ulvheim/ulvheim-A-2-ruin1B.glb', targetSize: 58, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 1B' },
-  ruin2A: { url: '../assets/Ulvheim/ulvheim-A-2-ruin2A.glb', targetSize: 68, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 2A' },
-  ruin2B: { url: '../assets/Ulvheim/ulvheim-A-2-ruin2B.glb', targetSize: 62, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 2B' },
-  ruin3A: { url: '../assets/Ulvheim/ulvheim-A-2-ruin3A.glb', targetSize: 58, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 3A' },
-  ruin3B: { url: '../assets/Ulvheim/ulvheim-A-2-ruin3B.glb', targetSize: 52, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 3B' },
-  ruinA2Five: { url: '../assets/Ulvheim/ulvheim-A-2-ruin5.glb', targetSize: 72, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim A2-5' }
+  paris: { url: './assets/parisian_street_collection_04.glb', targetSize: 150, rotateX: -Math.PI / 2, rotateZ: -Math.PI / 2, label: 'Quartier parisien' },
+  stadium: { url: './assets/lasvegas_allegiant.glb', targetSize: 210, label: 'Grand stade' },
+  motocross: { url: './assets/Motocross/Motocross.glb', targetSize: 24, rotateX: -Math.PI / 2, label: 'Moto-cross' },
+  ulvheimA1: { url: './assets/Ulvheim/ulvheim-A-1.glb', targetSize: 115, rotateX: -Math.PI / 2, label: 'Forteresse Ulvheim A1' },
+  ulvheimA2: { url: './assets/Ulvheim/ulvheim-A-2.glb', targetSize: 115, rotateX: -Math.PI / 2, label: 'Forteresse Ulvheim A2' },
+  ruin1: { url: './assets/Ulvheim/ulvheim-A-1-ruin1.glb', targetSize: 78, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 1' },
+  ruin2: { url: './assets/Ulvheim/ulvheim-A-1-ruin2.glb', targetSize: 72, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 2' },
+  ruin3: { url: './assets/Ulvheim/ulvheim-A-1-ruin3.glb', targetSize: 72, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 3' },
+  ruin4: { url: './assets/Ulvheim/ulvheim-A-1-ruin4.glb', targetSize: 70, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 4' },
+  ruin5: { url: './assets/Ulvheim/ulvheim-A-1-ruin5.glb', targetSize: 82, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 5' },
+  ruin1A: { url: './assets/Ulvheim/ulvheim-A-2-ruin1A.glb', targetSize: 62, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 1A' },
+  ruin1B: { url: './assets/Ulvheim/ulvheim-A-2-ruin1B.glb', targetSize: 58, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 1B' },
+  ruin2A: { url: './assets/Ulvheim/ulvheim-A-2-ruin2A.glb', targetSize: 68, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 2A' },
+  ruin2B: { url: './assets/Ulvheim/ulvheim-A-2-ruin2B.glb', targetSize: 62, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 2B' },
+  ruin3A: { url: './assets/Ulvheim/ulvheim-A-2-ruin3A.glb', targetSize: 58, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 3A' },
+  ruin3B: { url: './assets/Ulvheim/ulvheim-A-2-ruin3B.glb', targetSize: 52, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim 3B' },
+  ruinA2Five: { url: './assets/Ulvheim/ulvheim-A-2-ruin5.glb', targetSize: 72, rotateX: -Math.PI / 2, label: 'Ruine Ulvheim A2-5' }
 };
 
 Object.assign(ASSET_LIBRARY, KENNEY_ROAD_LIBRARY);

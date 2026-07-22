@@ -34,7 +34,7 @@ const keyFor = file => `kenneyRoad_${file.replace(/\.glb$/i, '').replace(/[^a-z0
 export const KENNEY_ROAD_LIBRARY = Object.fromEntries(KENNEY_ROAD_FILES.map(file => {
   const isFurniture = /^(bridge-pillar|construction-|light-|sign-)/.test(file);
   return [keyFor(file), {
-    url: `../assets/kenney-city-roads/${file}`,
+    url: `./assets/kenney-city-roads/${file}`,
     targetSize: isFurniture ? 20 : 40,
     label: `Kenney ${file.replace(/\.glb$/i, '').replaceAll('-', ' ')}`
   }];

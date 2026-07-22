@@ -282,8 +282,8 @@ async function loadOriginalChasseurInto(player) {
 
 async function loadGroundCharacter(modeId, player, mixers) {
   const modelUrl = modeId === 'robot'
-    ? '../perso/Meshy_AI_Azure_Titan_biped/Meshy_AI_Azure_Titan_biped_Meshy_AI_Meshy_Merged_Animations.glb'
-    : '../perso/Meshy_AI_Pinstripe_Shadows/Meshy_AI_Pinstripe_Shadows_rigged_animations.glb';
+    ? './perso/Meshy_AI_Azure_Titan_biped/Meshy_AI_Azure_Titan_biped_Meshy_AI_Meshy_Merged_Animations.glb'
+    : './perso/Meshy_AI_Pinstripe_Shadows/Meshy_AI_Pinstripe_Shadows_rigged_animations.glb';
   const gltf = await new GLTFLoader().loadAsync(modelUrl);
   // Proportions proches des modes historiques de Raphael : le robot reste
   // imposant sans masquer l'écran d'un téléphone.
