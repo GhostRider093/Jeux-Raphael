@@ -1,5 +1,12 @@
 # Mission du projet Raphael
 
+## REGLE ABSOLUE - EMPLACEMENT DU PROJET
+
+- Le seul workspace autorise est `E:\projet\raphael-online`.
+- Si une session s'ouvre dans `C:\Users\icc34\Projet\raphael`, ne rien y lire, creer, modifier, lancer ni publier : basculer d'abord sur `E:\projet\raphael-online`.
+- La presence eventuelle d'un dossier Raphael sur C: ne l'autorise jamais comme source, sauvegarde ou copie de travail.
+- Avant toute commande ou modification, verifier que le repertoire de travail est bien `E:\projet\raphael-online`.
+
 ## Workspace de travail
 
 - Travailler exclusivement dans `E:\projet\raphael-online`.

@@ -1,12 +1,27 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { OBJLoader } from '../libs/loaders/OBJLoader.js';
+import { STLLoader } from '../libs/loaders/STLLoader.js';
 import { ASSET_LIBRARY } from './world-catalog.js?v=chasseur-default-20260719';
 
 const loader = new GLTFLoader();
 const portalObjLoader = new OBJLoader();
 const portalTextureLoader = new THREE.TextureLoader();
+const stlLoader = new STLLoader();
 const assetCache = new Map();
+const novaBuildingCache = new Map();
+const NOVA_BUILDING_SCALE = 2.4;
+
+const NOVA_BUILDINGS = [
+  { id: 'building-a', url: '../assets/nova-city/building-a.glb', height: 72, unique: true },
+  { id: 'building-b', url: '../assets/nova-city/building-b.glb', height: 82, unique: true },
+  { id: 'building-3d-model-1', url: '../assets/nova-city/building-3d-model-1.glb', height: 76, unique: true },
+  { id: 'meshy-tower-a', url: '../assets/nova-city/meshy-tower-a.glb', height: 108, unique: true },
+  { id: 'meshy-tower-b', url: '../assets/nova-city/meshy-tower-b.glb', height: 112, unique: true },
+  { id: 'meshy-building-c', url: '../assets/nova-city/meshy-building-c.glb', height: 48, weight: 4 },
+  { id: 'chicago', url: '../assets/nova-city/chicago.stl', height: 68, rotateX: -Math.PI / 2, weight: 2, stl: true },
+  { id: 'medieval-gate', url: '../assets/nova-city/medieval-gate.glb', height: 44, weight: 3 }
+];
 
 function seededRandom(seed) {
   let value = seed >>> 0;
@@ -380,6 +395,146 @@ function buildRocks(world, root, random) {
     dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
   }
   mesh.castShadow = true; mesh.receiveShadow = true; root.add(mesh);
+}
+
+function normalizeNovaBuilding(model, spec) {
+  model.rotation.x = spec.rotateX || 0;
+  model.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  model.scale.setScalar(spec.height / Math.max(size.y, .001));
+  model.updateMatrixWorld(true);
+  const fitted = new THREE.Box3().setFromObject(model);
+  const center = fitted.getCenter(new THREE.Vector3());
+  model.position.x -= center.x;
+  model.position.y -= fitted.min.y;
+  model.position.z -= center.z;
+  model.traverse(node => {
+    if (!node.isMesh) return;
+    node.castShadow = false;
+    node.receiveShadow = true;
+    node.frustumCulled = true;
+  });
+  model.userData.novaBuildingId = spec.id;
+  return model;
+}
+
+function makeChicagoCityMaterial(geometry) {
+  geometry.computeBoundingBox();
+  const bounds = geometry.boundingBox;
+  const minimum = bounds.min.clone();
+  const extent = bounds.getSize(new THREE.Vector3()).max(new THREE.Vector3(.001, .001, .001));
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xb8c1c7,
+    roughness: .62,
+    metalness: .12
+  });
+  material.onBeforeCompile = shader => {
+    shader.uniforms.chicagoMin = { value: minimum };
+    shader.uniforms.chicagoExtent = { value: extent };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vChicagoLocalPosition;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvChicagoLocalPosition = position;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vChicagoLocalPosition;\nuniform vec3 chicagoMin;\nuniform vec3 chicagoExtent;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        vec3 cityUv = clamp((vChicagoLocalPosition - chicagoMin) / chicagoExtent, 0.0, 1.0);
+        vec3 cityNormal = normalize(vNormal);
+        float roofMask = smoothstep(0.62, 0.88, cityNormal.y);
+        float facadeMask = 1.0 - roofMask;
+        float facadeCoord = abs(cityNormal.x) > abs(cityNormal.z) ? cityUv.z : cityUv.x;
+        float blockNoise = fract(sin(dot(floor(cityUv.xz * 34.0), vec2(12.9898, 78.233))) * 43758.5453);
+        vec3 stone = mix(vec3(0.31, 0.34, 0.36), vec3(0.68, 0.64, 0.57), blockNoise);
+        vec3 glass = mix(vec3(0.035, 0.09, 0.13), vec3(0.12, 0.24, 0.31), blockNoise);
+        float column = step(0.20, fract(facadeCoord * 118.0)) * step(fract(facadeCoord * 118.0), 0.82);
+        float floorBand = step(0.24, fract(cityUv.y * 92.0)) * step(fract(cityUv.y * 92.0), 0.76);
+        float upperFloors = smoothstep(0.025, 0.08, cityUv.y);
+        float windowMask = facadeMask * column * floorBand * upperFloors;
+        float litNoise = fract(sin(dot(floor(vec2(facadeCoord * 118.0, cityUv.y * 92.0)), vec2(91.7, 43.3))) * 15731.743);
+        vec3 windowColor = mix(glass, vec3(0.88, 0.66, 0.31), step(0.88, litNoise));
+        vec3 roofColor = mix(vec3(0.10, 0.12, 0.13), vec3(0.24, 0.27, 0.28), blockNoise);
+        vec3 urbanColor = mix(stone, windowColor, windowMask * 0.92);
+        urbanColor = mix(urbanColor, roofColor, roofMask);
+        diffuseColor.rgb *= urbanColor * 1.55;
+      `);
+  };
+  material.customProgramCacheKey = () => 'nova-chicago-city-v1';
+  material.userData.proceduralCityTexture = true;
+  return material;
+}
+
+function loadNovaBuilding(spec) {
+  if (novaBuildingCache.has(spec.id)) return novaBuildingCache.get(spec.id);
+  const promise = (spec.stl
+    ? stlLoader.loadAsync(spec.url).then(geometry => {
+        geometry.computeVertexNormals();
+        const mesh = new THREE.Mesh(geometry, spec.id === 'chicago'
+          ? makeChicagoCityMaterial(geometry)
+          : new THREE.MeshStandardMaterial({ color: 0xaeb8bf, roughness: .72, metalness: .16 }));
+        return new THREE.Group().add(mesh);
+      })
+    : loader.loadAsync(spec.url).then(gltf => gltf.scene)
+  ).then(model => normalizeNovaBuilding(model, spec));
+  novaBuildingCache.set(spec.id, promise);
+  return promise;
+}
+
+async function buildNovaCityBuildings(world, root, random, onProgress) {
+  if (world.id !== 'nova-city') return [];
+  onProgress?.(`Nova City : chargement de ${NOVA_BUILDINGS.length} modèles d'immeubles…`);
+  const loaded = await Promise.allSettled(NOVA_BUILDINGS.map(async spec => ({ spec, model: await loadNovaBuilding(spec) })));
+  const available = loaded.filter(result => result.status === 'fulfilled').map(result => result.value);
+  const failed = loaded.filter(result => result.status === 'rejected');
+  if (!available.length) throw new Error('Aucun immeuble 3D Nova City disponible');
+  if (failed.length) console.warn('[nova-city] immeubles indisponibles', failed.map(result => result.reason));
+
+  const reusable = available.filter(item => !item.spec.unique);
+  const weighted = reusable.flatMap(item => Array.from({ length: item.spec.weight || 1 }, () => item));
+  const placements = [...available];
+  const targetCount = 32;
+  while (placements.length < targetCount && weighted.length) placements.push(weighted[Math.floor(random() * weighted.length)]);
+  for (let index = placements.length - 1; index > 0; index--) {
+    const swap = Math.floor(random() * (index + 1));
+    [placements[index], placements[swap]] = [placements[swap], placements[index]];
+  }
+
+  const occupied = [];
+  const minimumSpacing = 340;
+  const findSpacedPoint = () => {
+    let best = null;
+    let bestDistance = -Infinity;
+    for (let attempt = 0; attempt < 180; attempt++) {
+      const point = randomGroundPoint(world, random, 180);
+      const nearest = occupied.length
+        ? Math.min(...occupied.map(other => Math.hypot(point.x - other.x, point.z - other.z)))
+        : Infinity;
+      if (nearest >= minimumSpacing) return point;
+      if (nearest > bestDistance) { best = point; bestDistance = nearest; }
+    }
+    return best || randomGroundPoint(world, random, 180);
+  };
+
+  placements.forEach((item, index) => {
+    const point = findSpacedPoint();
+    occupied.push(point);
+    const wrapper = new THREE.Group();
+    wrapper.name = `nova-building-${index + 1}-${item.spec.id}`;
+    wrapper.add(item.model.clone(true));
+    wrapper.position.set(point.x, point.y, point.z);
+    wrapper.rotation.y = Math.floor(random() * 4) * Math.PI * .5;
+    const scale = item.spec.unique ? .88 + random() * .2 : .72 + random() * .48;
+    wrapper.scale.setScalar(scale * NOVA_BUILDING_SCALE);
+    wrapper.userData.novaBuilding = true;
+    wrapper.userData.sourceModel = item.spec.id;
+    root.add(wrapper);
+  });
+  root.userData.novaBuildings = placements.reduce((summary, item) => {
+    summary[item.spec.id] = (summary[item.spec.id] || 0) + 1;
+    return summary;
+  }, {});
+  root.userData.novaBuildingMinimumSpacing = minimumSpacing;
+  onProgress?.(`Nova City : ${placements.length} immeubles 3D prêts`);
+  return placements;
 }
 
 function buildBuildings(world, root, random) {
@@ -782,14 +937,19 @@ export function buildWorld(scene, world, onProgress, portalRoute) {
   const random = seededRandom(world.seed);
   buildTrees(world, root, random);
   buildRocks(world, root, random);
-  buildBuildings(world, root, random);
-  buildTowers(world, root, random);
+  if (world.id !== 'nova-city') {
+    buildBuildings(world, root, random);
+    buildTowers(world, root, random);
+  }
   buildCrystals(world, root, random);
   buildWorldSupplies(world, root, random);
   (world.landmarks || []).forEach(landmark => root.add(buildLandmark(world, landmark)));
   const raceGates = buildRaceCourse(world, root);
   const portal = buildPortal(world, portalRoute, root);
-  const assetsPromise = placeExistingAssets(world, root, onProgress);
+  const assetsPromise = Promise.all([
+    placeExistingAssets(world, root, onProgress),
+    buildNovaCityBuildings(world, root, random, onProgress)
+  ]);
   return {
     root,
     portal,

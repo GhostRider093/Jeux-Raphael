@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=red-black-direct-20260722';
+
+preloadEnemyFighterModel().catch(() => {});
 
 const LOCK_SEARCH_DELAY = .85;
 const LOCK_ACQUIRE_TIME = 3.6;
@@ -196,6 +199,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   const reticleRange = document.getElementById('reticle-range');
   const aimLead = document.getElementById('aim-lead');
   const diamond = document.getElementById('target-diamond');
+  const seekerDiamond = document.getElementById('missile-seeker-diamond');
   const radarTarget = document.getElementById('radar-target');
   const lockState = document.getElementById('combat-lock-state');
   const distanceState = document.getElementById('combat-distance');
@@ -207,12 +211,21 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   const audio = createAudioSystem(document.getElementById('combat-audio-state'));
 
   const enemy = {
-    mesh: buildEnemyJet(), hp: 100, maxHp: 100, alive: true,
+    mesh: new THREE.Group(), hp: 100, maxHp: 100, alive: true,
     radius: 11.5, phase: 0, holdUntil: 0, velocity: new THREE.Vector3()
   };
-  const initialZ = world.spawn.air[2] - 430;
+  const initialZ = world.spawn.air[2] - 540;
   enemy.mesh.position.set(world.spawn.air[0], world.spawn.air[1] + 24, initialZ);
   scene.add(enemy.mesh);
+  const ready = createEnemyFighterModel({ targetLength: 11.5, thrusters: true }).then(model => {
+    enemy.mesh.clear();
+    enemy.mesh.add(model);
+    enemy.mesh.userData.flames = model.userData.flames || [];
+    document.body.dataset.enemyFighterModel = 'loaded';
+  }).catch(error => {
+    document.body.dataset.enemyFighterModel = 'error';
+    console.warn('[world-combat] modele ennemi rouge et noir non charge', error);
+  });
 
   const bullets = [];
   const missiles = [];
@@ -277,6 +290,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     kills++;
     radarTarget.style.display = 'none';
     diamond.className = '';
+    seekerDiamond.className = '';
     aimLead.className = '';
     reticle.classList.remove('locked', 'acquiring', 'denied');
     lockState.className = 'ok';
@@ -289,7 +303,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
         enemy.alive = true;
         enemy.phase = 0;
         scene.add(enemy.mesh);
-        placeTargetAhead(390 + Math.random() * 100);
+        placeTargetAhead(520 + Math.random() * 100);
         lockState.className = '';
         lockState.textContent = `CONTACT ${kills + 1}/${targetKillCount} · RECHERCHE RADAR`;
       }, 1800);
@@ -398,7 +412,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     if (performance.now() >= enemy.holdUntil) {
       const forward = getForward().clone().setY(0).normalize();
       const right = new THREE.Vector3(-forward.z, 0, forward.x);
-      const forwardDistance = 470 + Math.sin(elapsed * .18) * 55;
+      const forwardDistance = 560 + Math.sin(elapsed * .18) * 65;
       const lateralDistance = Math.sin(elapsed * .27) * Math.min(42, world.size * .035);
       const x = player.position.x + forward.x * forwardDistance + right.x * lateralDistance;
       const z = player.position.z + forward.z * forwardDistance + right.z * lateralDistance;
@@ -467,6 +481,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     if (performance.now() > deniedUntil) reticle.classList.remove('denied');
 
     diamond.className = '';
+    seekerDiamond.className = '';
     aimLead.className = '';
     const overlapsMobileHud = innerWidth <= 720 && aim && aim.sx > innerWidth - 155 && aim.sy < 292;
     if (aim?.visible && aim.screen < 300 && !overlapsMobileHud) {
@@ -475,9 +490,15 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
       const phase = performance.now() * .0042;
       const orbitX = searchStrength * (Math.cos(phase) * 72 + Math.sin(phase * 2.3) * 14);
       const orbitY = searchStrength * (Math.sin(phase) * 48 + Math.cos(phase * 1.7) * 10);
-      diamond.style.left = `${THREE.MathUtils.clamp(aim.sx + orbitX, 27, innerWidth - 27)}px`;
-      diamond.style.top = `${THREE.MathUtils.clamp(aim.sy + orbitY, 27, innerHeight - 27)}px`;
-      diamond.classList.add('visible', locked ? 'locked' : insideCapture ? 'acquiring' : 'tracking');
+      const targetX = THREE.MathUtils.clamp(aim.sx, 27, innerWidth - 27);
+      const targetY = THREE.MathUtils.clamp(aim.sy, 27, innerHeight - 27);
+      diamond.style.left = `${targetX}px`;
+      diamond.style.top = `${targetY}px`;
+      diamond.classList.add('visible');
+      seekerDiamond.style.left = `${THREE.MathUtils.clamp(targetX + orbitX, 27, innerWidth - 27)}px`;
+      seekerDiamond.style.top = `${THREE.MathUtils.clamp(targetY + orbitY, 27, innerHeight - 27)}px`;
+      seekerDiamond.style.opacity = insideCapture || locked ? '1' : '.68';
+      seekerDiamond.classList.add('visible');
     }
 
     if (aim?.visible && !overlapsMobileHud) {
@@ -616,6 +637,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
 
   return {
     active: true,
+    ready,
     update,
     diagnostics: {
       active: true,

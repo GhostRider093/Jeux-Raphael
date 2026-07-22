@@ -3,18 +3,198 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#070b10">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<title>Raphael 3D</title>
+<title>Dead Flight</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --ice: #e9f3f7;
+    --muted: #9baab3;
+    --amber: #e9a84a;
+    --amber-bright: #ffc468;
+    --panel: rgba(7, 11, 16, 0.78);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { min-height: 100%; }
+
+  body {
+    margin: 0;
+    overflow-x: hidden;
+    background: #070b10 url("assets/menu/dead-flight-hero.png") center center / cover no-repeat fixed;
+    color: var(--ice);
+    font-family: "Segoe UI", Arial, sans-serif;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+      linear-gradient(90deg, rgba(4, 7, 11, 0.96) 0%, rgba(4, 7, 11, 0.78) 31%, rgba(4, 7, 11, 0.12) 66%),
+      linear-gradient(0deg, rgba(3, 6, 9, 0.72), transparent 42%);
+    pointer-events: none;
+  }
+
+  .shell {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: clamp(28px, 5vw, 72px);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+  }
+
+  .brand::before {
+    content: "";
+    width: 38px;
+    height: 2px;
+    background: var(--amber);
+    box-shadow: 0 0 14px rgba(233, 168, 74, 0.65);
+  }
+
+  main {
+    width: min(520px, 100%);
+    margin: auto 0;
+    padding: clamp(42px, 8vh, 92px) 0;
+  }
+
+  .eyebrow {
+    margin: 0 0 10px;
+    color: var(--amber-bright);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(58px, 9vw, 118px);
+    line-height: 0.78;
+    letter-spacing: -0.07em;
+    text-transform: uppercase;
+    text-shadow: 0 10px 38px rgba(0, 0, 0, 0.7);
+  }
+
+  h1 span {
+    display: block;
+    margin-left: 0.42em;
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(233, 243, 247, 0.7);
+  }
+
+  .tagline {
+    max-width: 440px;
+    margin: 26px 0 32px;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  nav {
+    display: grid;
+    gap: 10px;
+    width: min(360px, 100%);
+  }
+
+  .menu-link {
+    min-height: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    border: 1px solid rgba(233, 243, 247, 0.17);
+    background: var(--panel);
+    color: var(--ice);
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-decoration: none;
+    text-transform: uppercase;
+    backdrop-filter: blur(8px);
+    transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+  }
+
+  .menu-link::after {
+    content: "›";
+    color: var(--amber-bright);
+    font-size: 25px;
+    font-weight: 400;
+  }
+
+  .menu-link:hover,
+  .menu-link:focus-visible {
+    transform: translateX(7px);
+    border-color: var(--amber);
+    background: rgba(30, 24, 17, 0.9);
+    outline: none;
+  }
+
+  .menu-link.primary {
+    border-color: var(--amber);
+    background: linear-gradient(90deg, rgba(171, 104, 25, 0.92), rgba(85, 50, 15, 0.82));
+  }
+
+  footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    color: rgba(233, 243, 247, 0.48);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 720px) {
+    body { background-position: 64% center; }
+    body::before { background: rgba(4, 7, 11, 0.68); }
+    .shell { padding: 24px 20px; }
+    main { padding: 54px 0; }
+    h1 { font-size: clamp(62px, 21vw, 92px); }
+    footer { flex-direction: column; gap: 7px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .menu-link { transition: none; }
+  }
+</style>
 </head>
 <body>
-<main>
-  <h1>Raphael 3D</h1>
-  <p>Version web statique du jeu et des scenes 3D.</p>
-  <nav aria-label="Pages principales">
-    <a href="vallee.html">La Vallee du Chateau</a>
-    <a href="raphael2.html">Jeu Trottinette</a>
-    <a href="puppet_animation_editor.html">Marionnette animation</a>
-  </nav>
-</main>
+  <div class="shell">
+    <div class="brand">Raphael Online</div>
+
+    <main>
+      <p class="eyebrow">Combat aérien</p>
+      <h1>Dead <span>Flight</span></h1>
+      <p class="tagline">Prenez les commandes du chasseur, traversez les mondes et survivez à l'espace aérien hostile.</p>
+
+      <nav aria-label="Menu principal">
+        <a class="menu-link primary" href="mondes.html">Jouer</a>
+        <a class="menu-link" href="test_manette.html">Configurer la manette</a>
+        <a class="menu-link" href="raphael2.html">Jeux annexes</a>
+      </nav>
+    </main>
+
+    <footer>
+      <span>Dead Flight · Version locale</span>
+      <span>Clavier · Manette</span>
+    </footer>
+  </div>
 </body>
 </html>

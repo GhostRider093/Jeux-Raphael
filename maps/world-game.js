@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=chasseur-default-20260719';
-import { buildWorld, animateWorld } from './world-builder.js?v=ethereal-archway-20260719';
-import { createWorldCombat } from './world-combat.js?v=quiet-lock-tone-20260719';
+import { buildWorld, animateWorld } from './world-builder.js?v=nova-spacing-2-20260722';
+import { createWorldCombat } from './world-combat.js?v=red-black-direct-20260722';
 
 const params = new URLSearchParams(location.search);
 const requestedMap = params.get('map');
+const thumbnailMode = params.get('thumbnail') === '1';
 let selectedMode = getMode(params.get('mode')).id;
 const world = requestedMap ? getWorld(requestedMap) : null;
 
@@ -15,6 +16,8 @@ const modePicker = document.getElementById('mode-picker');
 const mapGrid = document.getElementById('map-grid');
 const searchInput = document.getElementById('map-search');
 let originalChasseurGeometryPromise = null;
+
+if (thumbnailMode) document.body.classList.add('world-thumbnail');
 
 function hexColor(value) {
   return `#${Number(value).toString(16).padStart(6, '0')}`;
@@ -66,7 +69,7 @@ function renderCatalog(filter = '') {
   mapGrid.innerHTML = worlds.map((item, index) => {
     const objectives = item.objectives.map(objective => `<li>${objective}</li>`).join('');
     return `
-      <article class="map-card" style="--map-color:${hexColor(item.sky)};--delay:${Math.min(index, 10) * .035}s">
+      <article class="map-card" style="--map-color:${hexColor(item.sky)};--map-image:url('./assets/world-previews/${item.id}.png');--delay:${Math.min(index, 10) * .035}s">
         <div class="map-visual"><span class="map-icon">${item.icon}</span><span class="map-number">${String(index + 1).padStart(2, '0')}</span></div>
         <div class="map-content">
           <div class="map-category">${item.category}</div>
@@ -301,27 +304,59 @@ function deadZone(value, zone = .13) {
   return Math.sign(value) * (Math.abs(value) - zone) / (1 - zone);
 }
 
+const WORLD_GAMEPAD_PROFILE_KEY = 'raphael.flightGamepadBindings.v1';
+const WORLD_GAMEPAD_DEFAULTS = {
+  yaw: { type: 'axis', index: 0, scale: -1 },
+  pitch: { type: 'axis', index: 1, scale: 1 },
+  throttle: { type: 'axis', index: 3, scale: -1 },
+  brake: { type: 'button', index: 6, scale: 1 },
+  boost: { type: 'button', index: 5, scale: 1 },
+  loop: { type: 'button', index: 10, scale: 1 },
+  fire: { type: 'button', index: 0, scale: 1 },
+  missile: { type: 'button', index: 1, scale: 1 },
+  view: { type: 'button', index: 3, scale: 1 },
+  exit: { type: 'button', index: 9, scale: 1 }
+};
+let worldGamepadProfile = {};
+try {
+  worldGamepadProfile = JSON.parse(localStorage.getItem(WORLD_GAMEPAD_PROFILE_KEY) || '{}') || {};
+} catch (error) {
+  worldGamepadProfile = {};
+}
+
+function readConfiguredControl(pad, action, zone = .13) {
+  const binding = worldGamepadProfile[action] || WORLD_GAMEPAD_DEFAULTS[action];
+  if (!binding || !pad) return 0;
+  const scale = Number.isFinite(binding.scale) ? binding.scale : 1;
+  if (binding.type === 'axis') return THREE.MathUtils.clamp(deadZone(pad.axes[binding.index], zone) * scale, -1, 1);
+  return THREE.MathUtils.clamp((pad.buttons[binding.index]?.value || 0) * scale, -1, 1);
+}
+
 function readGamepad() {
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads.find(item => !/audio|headset|speaker|microphone/i.test(item.id)) || null;
   if (!pad) return { x: 0, y: 0, throttle: 0, brake: 0, boost: false, acro: false, jump: false, view: false, portal: false, fire: false, missile: false, name: 'Aucune manette' };
-  const standard = pad.mapping === 'standard' || /xbox|dual|playstation|microsoft/i.test(pad.id);
-  const throttle = standard ? (pad.buttons[7]?.value || 0) : Number.isFinite(pad.axes[3]) ? (1 - pad.axes[3]) * .5 : 0;
+  const yaw = readConfiguredControl(pad, 'yaw');
+  const pitch = readConfiguredControl(pad, 'pitch');
+  const throttleBinding = worldGamepadProfile.throttle || WORLD_GAMEPAD_DEFAULTS.throttle;
+  const throttleValue = readConfiguredControl(pad, 'throttle', .05);
+  const throttle = throttleBinding.type === 'axis' ? (throttleValue + 1) * .5 : Math.max(0, throttleValue);
   return {
-    x: deadZone(pad.axes[0]), y: deadZone(pad.axes[1]), throttle,
-    brake: standard ? (pad.buttons[6]?.value || 0) : 0,
-    boost: !!pad.buttons[5]?.pressed,
-    acro: !!pad.buttons[10]?.pressed,
+    x: -yaw, y: pitch, throttle,
+    brake: Math.max(0, readConfiguredControl(pad, 'brake', .05)),
+    boost: readConfiguredControl(pad, 'boost', .08) > .55,
+    acro: readConfiguredControl(pad, 'loop', .08) > .55,
     jump: !!pad.buttons[0]?.pressed,
-    fire: !!pad.buttons[0]?.pressed,
-    missile: standard ? !!pad.buttons[2]?.pressed : !!pad.buttons[1]?.pressed,
-    view: standard ? !!pad.buttons[3]?.pressed : !!pad.buttons[2]?.pressed,
-    portal: standard ? (!!pad.buttons[1]?.pressed || !!pad.buttons[4]?.pressed) : !!pad.buttons[4]?.pressed,
+    fire: readConfiguredControl(pad, 'fire', .08) > .55,
+    missile: readConfiguredControl(pad, 'missile', .08) > .55,
+    view: readConfiguredControl(pad, 'view', .08) > .55,
+    exit: readConfiguredControl(pad, 'exit', .08) > .55,
+    portal: !!pad.buttons[4]?.pressed,
     name: pad.id.replace(/\s*\(.*?Vendor.*?\)/i, '').slice(0, 30)
   };
 }
 
-function startWorld() {
+async function startWorld() {
   const wrap = document.getElementById('world-canvas');
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, innerWidth < 700 ? 1.35 : 2));
@@ -336,6 +371,7 @@ function startWorld() {
   const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, .2, 4200);
   const status = document.getElementById('asset-status');
   const mode = getMode(selectedMode);
+  document.body.classList.toggle('world-flight-active', mode.type === 'flight');
   let assetMessage = 'Préparation des objets 3D…';
   let pilotMessage = mode.type === 'flight' ? 'chargement du chasseur original…' : 'chargement du personnage…';
   const renderLoadStatus = () => { status.textContent = `${assetMessage} · ${pilotMessage}`; };
@@ -357,8 +393,9 @@ function startWorld() {
   }
   scene.add(player);
   const mixers = [];
+  let pilotPromise;
   if (mode.type === 'flight') {
-    loadOriginalChasseurInto(player).then(() => {
+    pilotPromise = loadOriginalChasseurInto(player).then(() => {
       pilotMessage = 'chasseur original prêt';
       renderLoadStatus();
     }).catch(error => {
@@ -367,7 +404,7 @@ function startWorld() {
       renderLoadStatus();
     });
   } else {
-    loadGroundCharacter(mode.id, player, mixers).then(() => {
+    pilotPromise = loadGroundCharacter(mode.id, player, mixers).then(() => {
       pilotMessage = 'personnage prêt';
       renderLoadStatus();
     }).catch(error => {
@@ -393,9 +430,25 @@ function startWorld() {
   const motion = { enabled: false, x: 0, y: 0, neutralBeta: 0, neutralGamma: 0, hasSample: false };
   // Tous les points de départ sont placés au sud de la zone jouable : le pilote
   // doit donc regarder vers le centre de la carte au lancement.
-  let yaw = 0, pitch = 0, speed = mode.type === 'flight' ? 35 : 0, verticalVelocity = 0, cameraWide = mode.type === 'flight', lastView = false;
+  let yaw = 0, pitch = mode.type === 'flight' ? .12 : 0, speed = mode.type === 'flight' ? 72 : 0, verticalVelocity = 0, cameraWide = mode.type === 'flight', cockpitView = false, lastView = false;
+  let launchSequence = mode.type === 'flight' ? 4.2 : 0;
   let aerobatic = null, aerobaticArmed = true;
   const clock = new THREE.Clock();
+  const cycleCameraView = () => {
+    if (mode.type !== 'flight') {
+      cameraWide = !cameraWide;
+      return;
+    }
+    if (cockpitView) {
+      cockpitView = false;
+      cameraWide = true;
+    } else if (cameraWide) {
+      cameraWide = false;
+    } else {
+      cockpitView = true;
+    }
+    document.body.classList.toggle('world-cockpit-view', cockpitView);
+  };
   const cameraForward = new THREE.Vector3(0, 0, -1);
   const getFlightForward = () => {
     const cp = Math.cos(pitch);
@@ -407,13 +460,41 @@ function startWorld() {
     getForward: getFlightForward,
     getSpeed: () => speed
   });
+  const speedTapeMarks = document.getElementById('speed-tape-marks');
+  const altitudeTapeMarks = document.getElementById('altitude-tape-marks');
+  const speedValue = document.getElementById('speed-value');
+  const altitudeValue = document.getElementById('altitude-value');
+  const flightHeading = document.getElementById('flight-heading');
+  const flightLock = document.getElementById('flight-lock');
+  const flightTargetRange = document.getElementById('flight-target-range');
+  const makeTapeMarks = element => {
+    if (!element) return [];
+    return Array.from({ length: 9 }, (_, index) => {
+      const mark = document.createElement('div');
+      const label = document.createElement('span');
+      mark.className = 'flight-tape-mark';
+      mark.style.top = `${index * 12.5}%`;
+      mark.appendChild(label);
+      element.appendChild(mark);
+      return label;
+    });
+  };
+  const speedMarks = makeTapeMarks(speedTapeMarks);
+  const altitudeMarks = makeTapeMarks(altitudeTapeMarks);
+  const updateTape = (element, labels, value, step) => {
+    const base = Math.round(value / step) * step;
+    labels.forEach((label, index) => {
+      label.textContent = Math.max(0, base + (index - 4) * step);
+    });
+    element.style.transform = `translateY(${((value - base) / step) * 12.5}%)`;
+  };
 
   const mobileLayout = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
   if (mobileLayout) {
     const game = document.getElementById('game');
     const infoDrawer = document.getElementById('mobile-info-drawer');
     const infoToggle = document.getElementById('mobile-info-toggle');
-    ['game-hud', 'mission-panel', 'race-panel', 'combat-panel'].forEach(id => {
+    ['game-hud', 'mission-panel', 'race-panel'].forEach(id => {
       const panel = document.getElementById(id);
       if (panel) infoDrawer.appendChild(panel);
     });
@@ -529,7 +610,7 @@ function startWorld() {
   window.addEventListener('keydown', event => {
     keys[event.code] = true;
     if (event.code === 'Escape') location.href = `mondes.html?mode=${mode.id}`;
-    if (event.code === 'KeyV') cameraWide = !cameraWide;
+    if (event.code === 'KeyV') cycleCameraView();
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
   });
   window.addEventListener('keyup', event => { keys[event.code] = false; });
@@ -642,7 +723,7 @@ function startWorld() {
         }
         return;
       }
-      if (action === 'view' && active) cameraWide = !cameraWide;
+      if (action === 'view' && active) cycleCameraView();
     };
     button.addEventListener('pointerdown', event => { event.preventDefault(); button.setPointerCapture(event.pointerId); set(true); });
     button.addEventListener('pointerup', () => set(false));
@@ -678,12 +759,17 @@ function startWorld() {
       : 1.35;
     yaw += THREE.MathUtils.clamp(yawInput, -1, 1) * steering * dt;
     pitch = THREE.MathUtils.clamp(pitch + THREE.MathUtils.clamp(pitchInput, -1, 1) * .82 * dt, -.62, .62);
+    if (launchSequence > 0) {
+      launchSequence = Math.max(0, launchSequence - dt);
+      pitch += (.14 - pitch) * Math.min(1, dt * 2.6);
+      targetSpeed = Math.max(targetSpeed, 78);
+    }
     const forward = getFlightForward();
     player.position.addScaledVector(forward, speed * dt);
     player.position.x = THREE.MathUtils.clamp(player.position.x, -built.bounds, built.bounds);
     player.position.z = THREE.MathUtils.clamp(player.position.z, -built.bounds, built.bounds);
     const minimum = built.getHeight(player.position.x, player.position.z) + 9;
-    player.position.y = THREE.MathUtils.clamp(player.position.y, minimum, 680);
+    player.position.y = THREE.MathUtils.clamp(player.position.y, minimum, 2000);
     if (player.position.y <= minimum + .1) pitch = Math.max(0, pitch);
     let acroRoll = 0, acroPitch = 0;
     if (aerobatic) {
@@ -694,16 +780,27 @@ function startWorld() {
       else acroPitch = -angle;
       if (progress >= 1) aerobatic = null;
     }
-    player.rotation.set(pitch + acroPitch, yaw, THREE.MathUtils.clamp(yawInput, -1, 1) * .5 + acroRoll);
+    // La trajectoire conserve son tangage, seule l'attitude visuelle du
+    // chasseur est inversée : nez levé en montée, nez baissé en descente.
+    player.rotation.set(-pitch + acroPitch, yaw, THREE.MathUtils.clamp(yawInput, -1, 1) * .5 + acroRoll);
     (player.userData.flames || []).forEach((flame, index) => flame.scale.setScalar(.75 + speed / 80 + Math.sin(performance.now() * .04 + index) * .08));
     cameraForward.lerp(forward, Math.min(1, dt * 4)).normalize();
     const speedRatio = raceTuning ? THREE.MathUtils.clamp(speed / boostSpeed, 0, 1) : 0;
-    camera.fov += ((raceTuning ? 64 + speedRatio * 18 : 64) - camera.fov) * Math.min(1, dt * 3.5);
+    const targetFov = cockpitView ? 72 : raceTuning ? 64 + speedRatio * 18 : 64;
+    camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3.5);
     camera.updateProjectionMatrix();
-    const distance = cameraWide ? 90 : 48 + speedRatio * 18, height = cameraWide ? 28 : 12 + speedRatio * 4;
-    const desired = player.position.clone().addScaledVector(cameraForward, -distance).add(new THREE.Vector3(0, height, 0));
-    camera.position.lerp(desired, Math.min(1, dt * 5.5));
-    camera.lookAt(player.position.clone().addScaledVector(forward, 25));
+    player.visible = !cockpitView;
+    if (cockpitView) {
+      const desired = player.position.clone().addScaledVector(forward, 3.2).add(new THREE.Vector3(0, 2.7, 0));
+      camera.position.lerp(desired, Math.min(1, dt * 12));
+      camera.up.set(0, 1, 0);
+      camera.lookAt(player.position.clone().addScaledVector(forward, 90).add(new THREE.Vector3(0, 2.2, 0)));
+    } else {
+      const distance = cameraWide ? 112 : 61 + speedRatio * 21, height = cameraWide ? 32 : 15 + speedRatio * 4;
+      const desired = player.position.clone().addScaledVector(cameraForward, -distance).add(new THREE.Vector3(0, height, 0));
+      camera.position.lerp(desired, Math.min(1, dt * 5.5));
+      camera.lookAt(player.position.clone().addScaledVector(forward, 43));
+    }
   }
 
   function updateGround(dt, pad) {
@@ -735,10 +832,23 @@ function startWorld() {
   }
 
   function updateHud(pad) {
-    document.getElementById('world-speed').textContent = `${Math.round(Math.abs(speed) * 3.6)} km/h`;
-    document.getElementById('world-altitude').textContent = `Altitude ${Math.round(player.position.y)} m`;
+    const speedKmh = Math.round(Math.abs(speed) * 3.6);
+    const altitude = Math.max(0, Math.round(player.position.y));
+    document.getElementById('world-speed').textContent = `${speedKmh} km/h`;
+    document.getElementById('world-altitude').textContent = `Altitude ${altitude} m`;
     document.getElementById('world-coordinates').textContent = `X ${Math.round(player.position.x)} · Z ${Math.round(player.position.z)}`;
     document.getElementById('world-gamepad').textContent = pad.name;
+    if (mode.type === 'flight') {
+      const heading = Math.round(((THREE.MathUtils.radToDeg(yaw) % 360) + 360) % 360);
+      const combatState = combat.diagnostics.state();
+      speedValue.textContent = String(speedKmh).padStart(3, '0');
+      altitudeValue.textContent = String(altitude).padStart(3, '0');
+      flightHeading.textContent = `HDG ${String(heading).padStart(3, '0')}°`;
+      flightLock.textContent = combatState.locked ? 'LOCK' : 'SCAN';
+      flightTargetRange.textContent = `CIBLE ${Math.round(combatState.targetDistance)} M`;
+      updateTape(speedTapeMarks, speedMarks, speedKmh, 20);
+      updateTape(altitudeTapeMarks, altitudeMarks, altitude, 50);
+    }
   }
 
   const portalPrompt = document.getElementById('portal-prompt');
@@ -789,14 +899,16 @@ function startWorld() {
     }
   }
 
-  let elapsed = 0;
+  let elapsed = 0, lastExit = false;
   function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(.05, clock.getDelta());
     elapsed += dt;
     const pad = readGamepad();
+    if (pad.exit && !lastExit) location.href = 'mondes.html';
+    lastExit = pad.exit;
     const viewPressed = pad.view;
-    if (viewPressed && !lastView) cameraWide = !cameraWide;
+    if (viewPressed && !lastView) cycleCameraView();
     lastView = viewPressed;
     if (mode.type === 'flight') updateFlight(dt, pad); else updateGround(dt, pad);
     updateRace(elapsed);
@@ -820,6 +932,8 @@ function startWorld() {
     worldId: world.id,
     modeId: mode.id,
     objectCount: () => built.root.children.length,
+    novaBuildings: () => ({ ...(built.root.userData.novaBuildings || {}) }),
+    novaBuildingMinimumSpacing: () => built.root.userData.novaBuildingMinimumSpacing || 0,
     playerPosition: () => player.position.toArray(),
     aerobatic: () => ({ active: aerobatic?.type || null, rotation: player.rotation.toArray().slice(0, 3) }),
     portalDestination: portalRoute.destination.id,
@@ -860,5 +974,20 @@ function startWorld() {
       return player.position.toArray();
     }
   };
+  const loading = document.getElementById('world-loading');
+  const loadingText = document.getElementById('world-loading-text');
+  try {
+    loadingText.textContent = 'Chargement complet de la ville et des appareilsâ€¦';
+    await Promise.all([built.assetsPromise, pilotPromise, combat.ready || Promise.resolve()]);
+    assetMessage = 'Tous les objets 3D sont prÃªts';
+  } catch (error) {
+    console.warn('[mondes] chargement partiel', error);
+    assetMessage = 'Chargement terminÃ© avec modÃ¨le de secours';
+  }
+  renderLoadStatus();
+  renderer.render(scene, camera);
+  loading.classList.add('ready');
+  loading.setAttribute('aria-hidden', 'true');
+  clock.start();
   animate();
 }

@@ -3,20 +3,161 @@
 <head>
 <meta charset="UTF-8">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<title>Trottinette 3D</title>
+<title>Jeux annexes · Dead Flight</title>
 <style>
 body { margin: 0; overflow: hidden; font-family: Arial; }
 
 #menu {
   position: absolute;
-  width: 100%; height: 100%;
-  background: #111; color: white;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
+  inset: 0;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 75% 10%, rgba(51, 96, 126, 0.36), transparent 42%),
+    linear-gradient(145deg, #111b24, #070a0e 68%);
+  color: white;
+  padding: clamp(28px, 5vw, 72px);
 }
 
 button { padding: 15px; margin: 10px; font-size: 20px; }
-.worlds-button { background: #f2b544; color: #16120a; border: 0; border-radius: 8px; font-weight: 800; }
+
+.games-header {
+  width: min(1180px, 100%);
+  margin: 0 auto 28px;
+}
+
+.games-kicker {
+  margin: 0 0 8px;
+  color: #f2b544;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.games-header h1 {
+  margin: 0;
+  font-size: clamp(38px, 6vw, 70px);
+  letter-spacing: -0.04em;
+}
+
+.games-header p {
+  max-width: 620px;
+  margin: 10px 0 0;
+  color: #aebdca;
+  line-height: 1.55;
+}
+
+.games-grid {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.game-tile {
+  position: relative;
+  min-height: 164px;
+  overflow: hidden;
+  margin: 0;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 80% 15%, rgba(79, 170, 218, 0.28), transparent 40%),
+    linear-gradient(145deg, rgba(35, 51, 64, 0.98), rgba(14, 21, 28, 0.98));
+  color: #eef7fc;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28), inset 0 1px rgba(255, 255, 255, 0.05);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.game-tile::after {
+  content: "›";
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  color: #f2b544;
+  font-size: 30px;
+  font-weight: 400;
+}
+
+.game-icon {
+  position: absolute;
+  top: 18px;
+  left: 20px;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 13px;
+  background: rgba(5, 10, 15, 0.48);
+  font-size: 25px;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.game-name {
+  max-width: calc(100% - 28px);
+  color: #f4f8fb;
+  font-size: 17px;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.game-type {
+  color: #91a6b5;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.game-tile:nth-child(3n + 2) {
+  background:
+    radial-gradient(circle at 80% 15%, rgba(166, 103, 220, 0.27), transparent 40%),
+    linear-gradient(145deg, rgba(42, 39, 61, 0.98), rgba(16, 17, 27, 0.98));
+}
+
+.game-tile:nth-child(3n) {
+  background:
+    radial-gradient(circle at 80% 15%, rgba(224, 130, 56, 0.27), transparent 40%),
+    linear-gradient(145deg, rgba(55, 42, 31, 0.98), rgba(22, 18, 16, 0.98));
+}
+
+.game-tile:hover,
+.game-tile:focus-visible {
+  transform: translateY(-6px) scale(1.015);
+  border-color: #f2b544;
+  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(242, 181, 68, 0.18);
+  outline: none;
+}
+
+.game-tile.utility {
+  border-color: rgba(242, 181, 68, 0.48);
+  background:
+    radial-gradient(circle at 80% 15%, rgba(242, 181, 68, 0.3), transparent 42%),
+    linear-gradient(145deg, rgba(74, 54, 27, 0.98), rgba(29, 25, 20, 0.98));
+}
+
+.back-to-menu {
+  display: inline-flex;
+  margin-top: 26px;
+  color: #b9c7d2;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.back-to-menu:hover { color: #f2b544; }
 
 #hud {
   position: absolute;
@@ -130,29 +271,47 @@ button { padding: 15px; margin: 10px; font-size: 20px; }
 }
 
 @media (max-width: 760px) {
+  #menu { padding: 24px 18px 42px; }
+  .games-grid { grid-template-columns: 1fr; }
+  .game-tile { min-height: 78px; }
+
   .gamepad-list,
   .gamepad-live {
     grid-template-columns: 1fr;
     flex-direction: column;
   }
 }
+
+@media (min-width: 761px) and (max-width: 1080px) {
+  .games-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>
 </head>
 <body>
 
 <div id="menu">
-  <h1>Jeu Trottinette</h1>
-  <button class="worlds-button" onclick="location.href='mondes.html'">Explorer les 22 mondes</button>
-  <button onclick="start('scooter')">Jouer avec la trottinette</button>
-  <button onclick="start('mech')">Jouer avec le personnage</button>
-  <button onclick="start('car')">Jouer avec la voiture</button>
-  <button onclick="start('titan')">Jouer avec le bot anime</button>
-  <button onclick="start('pinstripe')">Jouer avec le Pinstripe Shadows</button>
-  <button onclick="start('chasseur')">Jouer avec l'avion chasseur</button>
-  <button onclick="start('wargun')">Jouer avec le Wargun</button>
-  <button onclick="start('fly')">Survoler la ville</button>
-  <button onclick="openGamepadMapper()">Regler la manette</button>
-  <button onclick="location.href='puppet_animation_editor.html'">Marionnette animation</button>
+  <header class="games-header">
+    <p class="games-kicker">Dead Flight</p>
+    <h1>Jeux</h1>
+    <p>Choisissez une expérience annexe. Les jeux sont rangés comme dans une bibliothèque, de gauche à droite puis ligne par ligne.</p>
+  </header>
+
+  <div class="games-grid">
+    <button class="game-tile" onclick="start('scooter')"><span class="game-icon">🛴</span><span class="game-name">Trottinette</span><span class="game-type">Course urbaine</span></button>
+    <button class="game-tile" onclick="start('mech')"><span class="game-icon">🏃</span><span class="game-name">Personnage</span><span class="game-type">Exploration</span></button>
+    <button class="game-tile" onclick="start('car')"><span class="game-icon">🏎</span><span class="game-name">Voiture</span><span class="game-type">Conduite</span></button>
+    <button class="game-tile" onclick="start('titan')"><span class="game-icon">🤖</span><span class="game-name">Bot animé</span><span class="game-type">Robot</span></button>
+    <button class="game-tile" onclick="start('pinstripe')"><span class="game-icon">◆</span><span class="game-name">Pinstripe Shadows</span><span class="game-type">Personnage</span></button>
+    <button class="game-tile" onclick="start('chasseur')"><span class="game-icon">✈</span><span class="game-name">Avion chasseur</span><span class="game-type">Combat aérien</span></button>
+    <button class="game-tile" onclick="start('wargun')"><span class="game-icon">⌖</span><span class="game-name">Wargun</span><span class="game-type">Action</span></button>
+    <button class="game-tile" onclick="start('fly')"><span class="game-icon">☁</span><span class="game-name">Survol de la ville</span><span class="game-type">Vol libre</span></button>
+    <button class="game-tile utility" onclick="openGamepadMapper()"><span class="game-icon">🎮</span><span class="game-name">Régler la manette</span><span class="game-type">Configuration</span></button>
+    <button class="game-tile utility" onclick="location.href='puppet_animation_editor.html'"><span class="game-icon">♙</span><span class="game-name">Animation marionnette</span><span class="game-type">Création</span></button>
+  </div>
+
+  <div class="games-header">
+    <a class="back-to-menu" href="index.html">← Retour au menu principal</a>
+  </div>
 </div>
 
 <div id="hud" style="display:none; position:absolute; top:12px; left:12px; background:rgba(0,0,0,0.55); color:white; font:14px monospace; padding:10px 16px; border-radius:8px; z-index:30; pointer-events:none; line-height:1.7;"></div>
@@ -218,7 +377,7 @@ button { padding: 15px; margin: 10px; font-size: 20px; }
 <script src="wargun.js?v=wargun-obj-texture-20260708c"></script>
 <script src="rzphzel.js?v=aerobatics-20260719"></script>
 <script src="combat.js?v=bright-tracers-20260719"></script>
-<script src="air-combat.js?v=quiet-lock-tone-20260719"></script>
+<script src="air-combat.js?v=blue-yellow-targeting-20260722"></script>
 <script src="sector-streaming.js?v=sectors-20260718"></script>
 <script src="ulvheim.js?v=ulvheim-20260618b"></script>
 

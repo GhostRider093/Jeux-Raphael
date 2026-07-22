@@ -3,8 +3,8 @@ setlocal EnableExtensions
 title Raphael - Lancement du jeu
 cd /d "%~dp0"
 
-set "RAPHAEL_URL=http://127.0.0.1:8000/raphael2.html"
-set "RAPHAEL_PORT=8000"
+set "RAPHAEL_URL=http://127.0.0.1:8010/index.html"
+set "RAPHAEL_PORT=8010"
 
 powershell -NoProfile -Command "try { $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%RAPHAEL_URL%'; if($r.StatusCode -eq 200){exit 0} } catch {}; exit 1" >nul 2>&1
 if not errorlevel 1 goto :OPEN_GAME
@@ -41,7 +41,7 @@ if errorlevel 1 (
 )
 
 echo Demarrage de Raphael...
-start "Serveur Raphael" /min "%PYTHON_EXE%" %PYTHON_ARGS% -m http.server %RAPHAEL_PORT% --bind 127.0.0.1
+start "Serveur Raphael E" /min "%PYTHON_EXE%" %PYTHON_ARGS% -m http.server %RAPHAEL_PORT% --bind 127.0.0.1 --directory "%~dp0."
 
 for /L %%G in (1,1,12) do (
   powershell -NoProfile -Command "try { $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 '%RAPHAEL_URL%'; if($r.StatusCode -eq 200){exit 0} } catch {}; exit 1" >nul 2>&1

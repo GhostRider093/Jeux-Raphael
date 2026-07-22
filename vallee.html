@@ -570,7 +570,7 @@ let gunCooldown=0;
 const bullets=[];
 const MAX_MISSILES=4; let missileAmmo=MAX_MISSILES;
 const missiles=[], explosions=[];
-let prevBtnB=false, prevKeyG=false;
+let prevBtnB=false, prevKeyG=false, prevViewControl=false, prevExitControl=false;
 const wingMissiles=[];  // meshes statiques accrochés sous les ailes
 
 // État caméra libre
@@ -608,7 +608,11 @@ const SHARED_FLIGHT_BINDING_DEFAULTS={
   brake:{type:'button',index:6,scale:1},
   climb:{type:'axis',index:3,scale:-1},
   boost:{type:'button',index:5,scale:1},
-  fire:{type:'button',index:2,scale:1}
+  fire:{type:'button',index:2,scale:1},
+  missile:{type:'button',index:1,scale:1},
+  view:{type:'button',index:3,scale:1},
+  loop:{type:'button',index:10,scale:1},
+  exit:{type:'button',index:9,scale:1}
 };
 let sharedFlightBindings={};
 try{
@@ -789,8 +793,15 @@ function updateFlight(delta){
       // L3 (btn 10) = zoom moins (caméra plus loin) · R3 (btn 11) = zoom plus (caméra plus proche)
       if(readBtn(gp,10)>.5) gpCamDistMult=Math.min(4.0, gpCamDistMult+1.5*delta);
       if(readBtn(gp,11)>.5) gpCamDistMult=Math.max(0.25,gpCamDistMult-1.5*delta);
+
+      const viewControl=readSharedFlightControl(gp,'view',.08)>.55;
+      if(viewControl&&!prevViewControl)gpCamDistMult=gpCamDistMult<.7?1:gpCamDistMult<1.6?2.2:.5;
+      prevViewControl=viewControl;
+      const exitControl=readSharedFlightControl(gp,'exit',.08)>.55;
+      if(exitControl&&!prevExitControl){prevExitControl=true;exitPlayMode();return;}
+      prevExitControl=exitControl;
     }
-    const acroHeld=!!(keys['KeyX']||(gp&&readBtn(gp,10)>.5));
+    const acroHeld=!!(keys['KeyX']||(gp&&readSharedFlightControl(gp,'loop',.08)>.55));
     const acroAxis=Math.max(Math.abs(yawIn),Math.abs(pitchIn));
     if((!acroHeld||acroAxis<.28)&&!flightAerobatic)flightAerobaticArmed=true;
     if(acroHeld&&flightAerobaticArmed&&!flightAerobatic&&acroAxis>.55){
@@ -851,8 +862,8 @@ function updateFlight(delta){
     // ── Armes ────────────────────────────────────────────────────
     if(flightType!=='chasseur'){
       const trajectoryDir=new THREE.Vector3(fwd.x*flightSpeed,verticalSpeed,fwd.z*flightSpeed).normalize();
-      const btnANow=(gp&&readBtn(gp,2)>.5)||keys['Space'];
-      const btnBNow=(gp&&readBtn(gp,1)>.5)||keys['KeyG'];
+      const btnANow=(gp&&readSharedFlightControl(gp,'fire',.08)>.55)||keys['Space'];
+      const btnBNow=(gp&&readSharedFlightControl(gp,'missile',.08)>.55)||keys['KeyG'];
       gunCooldown-=delta;
       if(btnANow&&gunCooldown<=0){ fireBullet(playerMesh.position.clone(),trajectoryDir); gunCooldown=GUN_RATE; }
       if(btnBNow&&!prevBtnB) fireMissile(playerMesh,fwd);

@@ -142,6 +142,7 @@
   function showCrosshair() {
     if (!crosshair) {
       crosshair = document.createElement("div");
+      crosshair.id = "combat-crosshair";
       crosshair.innerHTML =
         '<svg width="80" height="80" viewBox="0 0 80 80">' +
         '<circle cx="40" cy="40" r="26" fill="none" stroke="#39ff88" stroke-width="2" opacity="0.85"/>' +
@@ -158,6 +159,7 @@
       document.body.appendChild(crosshair);
 
       hudEl = document.createElement("div");
+      hudEl.id = "combat-target-hud";
       Object.assign(hudEl.style, {
         position: "absolute", top: "12px", right: "16px",
         color: "#39ff88", font: "bold 16px monospace", textShadow: "0 0 4px #000",
