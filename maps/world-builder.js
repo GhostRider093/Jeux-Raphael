@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { OBJLoader } from '../libs/loaders/OBJLoader.js';
 import { STLLoader } from '../libs/loaders/STLLoader.js';
-import { ASSET_LIBRARY } from './world-catalog.js?v=chasseur-default-20260719';
+import { ASSET_LIBRARY } from './world-catalog.js?v=public-map-paths-20260722';
 
 const loader = new GLTFLoader();
 const portalObjLoader = new OBJLoader();
