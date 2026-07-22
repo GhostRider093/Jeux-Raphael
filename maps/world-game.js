@@ -494,7 +494,7 @@ async function startWorld() {
     const game = document.getElementById('game');
     const infoDrawer = document.getElementById('mobile-info-drawer');
     const infoToggle = document.getElementById('mobile-info-toggle');
-    ['game-hud', 'mission-panel', 'race-panel'].forEach(id => {
+    ['game-hud', 'mission-panel'].forEach(id => {
       const panel = document.getElementById(id);
       if (panel) infoDrawer.appendChild(panel);
     });
@@ -545,10 +545,15 @@ async function startWorld() {
   const raceEnabled = mode.type === 'flight' && raceGates.length > 0;
   const racePanel = document.getElementById('race-panel');
   const raceGateText = document.getElementById('race-gate');
+  const raceTimeLabel = document.getElementById('race-time-label');
   const raceTimeText = document.getElementById('race-time');
   const raceBestText = document.getElementById('race-best');
   const raceScoreText = document.getElementById('race-score');
+  const raceRadarArrow = document.getElementById('race-radar-arrow');
+  const raceRadarDistance = document.getElementById('race-radar-distance');
+  const raceAward = document.getElementById('race-award');
   const raceStorageKey = `raphael.race.best.${world.id}`;
+  const raceTimeLimit = 210;
   let raceIndex = 0;
   let raceStartElapsed = null;
   let raceElapsed = 0;
@@ -567,6 +572,25 @@ async function startWorld() {
     const remaining = safe - minutes * 60;
     return `${String(minutes).padStart(2, '0')}:${remaining.toFixed(3).padStart(6, '0')}`;
   };
+
+  function showRaceAward(passed) {
+    if (!raceAward) return;
+    raceAward.textContent = passed ? '+50 POINTS' : '−20 POINTS';
+    raceAward.classList.remove('show', 'missed');
+    if (!passed) raceAward.classList.add('missed');
+    void raceAward.offsetWidth;
+    raceAward.classList.add('show');
+  }
+
+  function updateRaceRadar(gate) {
+    if (!gate || !raceRadarArrow || !raceRadarDistance) return;
+    const dx = gate.position.x - player.position.x;
+    const dz = gate.position.z - player.position.z;
+    const targetYaw = Math.atan2(-dx, -dz);
+    const relativeAngle = THREE.MathUtils.radToDeg(targetYaw - yaw);
+    raceRadarArrow.style.transform = `translate(-50%,-88%) rotate(${relativeAngle}deg)`;
+    raceRadarDistance.textContent = `PROCHAIN POINT · ${Math.round(Math.hypot(dx, dz))} m`;
+  }
 
   function refreshRaceGates() {
     raceGates.forEach((gate, index) => {
@@ -597,6 +621,7 @@ async function startWorld() {
     data.passed = passed;
     data.missed = !passed;
     raceScore += passed ? 50 : -20;
+    showRaceAward(passed);
     if (raceStartElapsed === null) raceStartElapsed = elapsed;
     raceIndex++;
     raceLastPlaneSide = null;
@@ -604,6 +629,7 @@ async function startWorld() {
       raceElapsed = elapsed - raceStartElapsed;
       raceFinished = true;
       raceGateText.textContent = 'ARRIVÉE · COURSE TERMINÉE';
+      raceTimeLabel.textContent = 'TEMPS FINAL';
       raceTimeText.textContent = formatRaceTime(raceElapsed);
       if (!raceBest || raceElapsed < raceBest) {
         raceBest = raceElapsed;
@@ -618,10 +644,22 @@ async function startWorld() {
     if (!raceEnabled) return;
     if (raceFinished) return;
     if (raceStartElapsed !== null) raceElapsed = elapsed - raceStartElapsed;
-    raceTimeText.textContent = formatRaceTime(raceElapsed);
+    const remaining = Math.max(0, raceTimeLimit - raceElapsed);
+    raceTimeText.textContent = formatRaceTime(remaining);
+    raceTimeText.style.color = remaining <= 30 ? '#ff6572' : '#b8ff76';
     raceBestText.textContent = `Record : ${raceBest ? formatRaceTime(raceBest) : '--:--.---'}`;
     const gate = raceGates[raceIndex];
     if (!gate) return;
+    updateRaceRadar(gate);
+    if (raceStartElapsed !== null && remaining <= 0) {
+      raceFinished = true;
+      raceGateText.textContent = 'TEMPS ÉCOULÉ · COURSE TERMINÉE';
+      raceTimeLabel.textContent = 'TEMPS RESTANT';
+      raceTimeText.textContent = '00:00.000';
+      raceRadarDistance.textContent = 'COURSE TERMINÉE';
+      refreshRaceGates();
+      return;
+    }
     raceGateText.textContent = `${raceStartElapsed === null ? 'DÉPART' : 'PORTE'} ${raceIndex + 1} / ${raceGates.length}`;
     const localPosition = gate.worldToLocal(player.position.clone());
     const distance = player.position.distanceTo(gate.position);
@@ -638,6 +676,7 @@ async function startWorld() {
 
   racePanel.hidden = !raceEnabled;
   if (raceEnabled) {
+    raceTimeText.textContent = formatRaceTime(raceTimeLimit);
     raceBestText.textContent = `Record : ${raceBest ? formatRaceTime(raceBest) : '--:--.---'}`;
     refreshRaceGates();
   }
@@ -981,6 +1020,7 @@ async function startWorld() {
       running: raceStartElapsed !== null && !raceFinished,
       finished: raceFinished,
       elapsed: raceElapsed,
+      remaining: Math.max(0, raceTimeLimit - raceElapsed),
       best: raceBest,
       score: raceScore
     }),
