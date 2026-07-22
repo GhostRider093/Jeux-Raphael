@@ -308,11 +308,12 @@ const WORLD_GAMEPAD_PROFILE_KEY = 'raphael.flightGamepadBindings.v1';
 const WORLD_GAMEPAD_DEFAULTS = {
   yaw: { type: 'axis', index: 0, scale: -1 },
   pitch: { type: 'axis', index: 1, scale: 1 },
-  throttle: { type: 'axis', index: 3, scale: -1 },
+  throttle: { type: 'button', index: 7, scale: 1 },
   brake: { type: 'button', index: 6, scale: 1 },
+  climb: { type: 'axis', index: 3, scale: -1 },
   boost: { type: 'button', index: 5, scale: 1 },
   loop: { type: 'button', index: 10, scale: 1 },
-  fire: { type: 'button', index: 0, scale: 1 },
+  fire: { type: 'button', index: 2, scale: 1 },
   missile: { type: 'button', index: 1, scale: 1 },
   view: { type: 'button', index: 3, scale: 1 },
   exit: { type: 'button', index: 9, scale: 1 }
@@ -335,7 +336,7 @@ function readConfiguredControl(pad, action, zone = .13) {
 function readGamepad() {
   const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
   const pad = pads.find(item => !/audio|headset|speaker|microphone/i.test(item.id)) || null;
-  if (!pad) return { x: 0, y: 0, throttle: 0, brake: 0, boost: false, acro: false, jump: false, view: false, portal: false, fire: false, missile: false, name: 'Aucune manette' };
+  if (!pad) return { x: 0, y: 0, throttle: 0, brake: 0, climb: 0, boost: false, acro: false, jump: false, view: false, portal: false, fire: false, missile: false, name: 'Aucune manette' };
   const yaw = readConfiguredControl(pad, 'yaw');
   const pitch = readConfiguredControl(pad, 'pitch');
   const throttleBinding = worldGamepadProfile.throttle || WORLD_GAMEPAD_DEFAULTS.throttle;
@@ -344,6 +345,7 @@ function readGamepad() {
   return {
     x: -yaw, y: pitch, throttle,
     brake: Math.max(0, readConfiguredControl(pad, 'brake', .05)),
+    climb: readConfiguredControl(pad, 'climb', .18),
     boost: readConfiguredControl(pad, 'boost', .08) > .55,
     acro: readConfiguredControl(pad, 'loop', .08) > .55,
     jump: !!pad.buttons[0]?.pressed,
@@ -430,7 +432,7 @@ async function startWorld() {
   const motion = { enabled: false, x: 0, y: 0, neutralBeta: 0, neutralGamma: 0, hasSample: false };
   // Tous les points de départ sont placés au sud de la zone jouable : le pilote
   // doit donc regarder vers le centre de la carte au lancement.
-  let yaw = 0, pitch = mode.type === 'flight' ? .12 : 0, speed = mode.type === 'flight' ? 72 : 0, verticalVelocity = 0, cameraWide = mode.type === 'flight', cockpitView = false, lastView = false;
+  let yaw = 0, pitch = mode.type === 'flight' ? .12 : 0, flightVisualPitch = pitch, speed = mode.type === 'flight' ? 72 : 0, verticalVelocity = 0, cameraWide = mode.type === 'flight', cockpitView = false, lastView = false;
   let launchSequence = mode.type === 'flight' ? 4.2 : 0;
   let aerobatic = null, aerobaticArmed = true;
   const clock = new THREE.Clock();
@@ -808,6 +810,11 @@ async function startWorld() {
   function updateFlight(dt, pad) {
     const yawInput = (keys.ArrowLeft || keys.KeyA || keys.KeyQ ? 1 : 0) + (keys.ArrowRight || keys.KeyD ? -1 : 0) - touch.x - motion.x - pad.x;
     const pitchInput = (keys.ArrowUp || keys.KeyI ? 1 : 0) + (keys.ArrowDown || keys.KeyK ? -1 : 0) + touch.y + motion.y + pad.y;
+    const climbInput = THREE.MathUtils.clamp(
+      (keys.KeyE || keys.PageUp ? 1 : 0)
+      + (keys.ControlLeft || keys.ControlRight || keys.KeyC || keys.PageDown ? -1 : 0)
+      + (pad.climb || 0), -1, 1
+    );
     const acroHeld = !!(keys.KeyX || touch.acro || pad.acro);
     const acroAxis = Math.max(Math.abs(yawInput), Math.abs(pitchInput));
     if ((!acroHeld || acroAxis < .28) && !aerobatic) aerobaticArmed = true;
@@ -823,23 +830,24 @@ async function startWorld() {
     const boostSpeed = raceTuning ? 168 : 92;
     let targetSpeed = cruiseSpeed;
     if (keys.KeyW || keys.KeyZ || touch.boost) targetSpeed = fullSpeed;
-    if (keys.KeyS || pad.brake > .1) targetSpeed = 12;
-    if (pad.throttle > .05) targetSpeed = 12 + pad.throttle * fullSpeed;
+    if (keys.KeyS) targetSpeed = 0;
+    if (pad.throttle > .05) targetSpeed = Math.max(8, pad.throttle * fullSpeed);
+    if (pad.brake > .05) targetSpeed = Math.max(0, targetSpeed * (1 - pad.brake * .9));
     if (keys.ShiftLeft || keys.ShiftRight || pad.boost) targetSpeed = boostSpeed;
-    speed += (targetSpeed - speed) * Math.min(1, dt * (raceTuning ? 3.25 : 2.4));
+    speed += (targetSpeed - speed) * Math.min(1, dt * 2.7);
     window.RaphaelFighterEngine?.update(speed / boostSpeed, targetSpeed >= boostSpeed * .9);
-    const steering = raceTuning
-      ? THREE.MathUtils.lerp(1.42, .92, THREE.MathUtils.clamp(speed / boostSpeed, 0, 1))
-      : 1.35;
-    yaw += THREE.MathUtils.clamp(yawInput, -1, 1) * steering * dt;
-    pitch = THREE.MathUtils.clamp(pitch + THREE.MathUtils.clamp(pitchInput, -1, 1) * .82 * dt, -.62, .62);
+    yaw += THREE.MathUtils.clamp(yawInput, -1, 1) * 1.55 * dt;
+    pitch = THREE.MathUtils.clamp(pitch + THREE.MathUtils.clamp(pitchInput, -1, 1) * .95 * dt, -.48, .52);
     if (launchSequence > 0) {
       launchSequence = Math.max(0, launchSequence - dt);
       pitch += (.14 - pitch) * Math.min(1, dt * 2.6);
       targetSpeed = Math.max(targetSpeed, 78);
     }
     const forward = getFlightForward();
-    player.position.addScaledVector(forward, speed * dt);
+    const verticalSpeed = forward.y * speed + climbInput * 30;
+    player.position.x += forward.x * speed * dt;
+    player.position.y += verticalSpeed * dt;
+    player.position.z += forward.z * speed * dt;
     player.position.x = THREE.MathUtils.clamp(player.position.x, -built.bounds, built.bounds);
     player.position.z = THREE.MathUtils.clamp(player.position.z, -built.bounds, built.bounds);
     const minimum = built.getHeight(player.position.x, player.position.z) + 9;
@@ -854,9 +862,12 @@ async function startWorld() {
       else acroPitch = -angle;
       if (progress >= 1) aerobatic = null;
     }
-    // La trajectoire conserve son tangage, seule l'attitude visuelle du
-    // chasseur est inversée : nez levé en montée, nez baissé en descente.
-    player.rotation.set(-pitch + acroPitch, yaw, THREE.MathUtils.clamp(yawInput, -1, 1) * .5 + acroRoll);
+    const horizontalSpeed = Math.max(.001, Math.hypot(forward.x * speed, forward.z * speed));
+    const trajectoryPitch = THREE.MathUtils.clamp(Math.atan2(verticalSpeed, horizontalSpeed), -.62, .62);
+    flightVisualPitch += (trajectoryPitch - flightVisualPitch) * Math.min(1, dt * 6.5);
+    // Le modèle OBJ a son axe de tangage visuel inverse : une trajectoire
+    // montante lève le nez, une trajectoire descendante le fait piquer.
+    player.rotation.set(-flightVisualPitch + acroPitch, yaw, THREE.MathUtils.clamp(yawInput, -1, 1) * .45 + acroRoll);
     (player.userData.flames || []).forEach((flame, index) => flame.scale.setScalar(.75 + speed / 80 + Math.sin(performance.now() * .04 + index) * .08));
     cameraForward.lerp(forward, Math.min(1, dt * 4)).normalize();
     const speedRatio = raceTuning ? THREE.MathUtils.clamp(speed / boostSpeed, 0, 1) : 0;
@@ -1009,6 +1020,7 @@ async function startWorld() {
     novaBuildings: () => ({ ...(built.root.userData.novaBuildings || {}) }),
     novaBuildingMinimumSpacing: () => built.root.userData.novaBuildingMinimumSpacing || 0,
     playerPosition: () => player.position.toArray(),
+    flight: () => ({ pitch, visualPitch: flightVisualPitch, yaw, speed, rotation: player.rotation.toArray().slice(0, 3) }),
     aerobatic: () => ({ active: aerobatic?.type || null, rotation: player.rotation.toArray().slice(0, 3) }),
     portalDestination: portalRoute.destination.id,
     portalPosition: () => built.portal?.position.toArray() || null,
