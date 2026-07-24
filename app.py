@@ -5,11 +5,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from multiplayer.routes import router as multiplayer_router
+
 ROOT = Path(__file__).resolve().parent
 PROFILE_FILE = ROOT / "config" / "gamepad-profile.json"
 MAX_PROFILE_SIZE = 64 * 1024
 
 app = FastAPI(title="Nova Flight Service", version="2.0.0")
+app.include_router(multiplayer_router)
 
 
 @app.middleware("http")
@@ -25,7 +28,7 @@ async def security_headers(request: Request, call_next):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "nova-flight"}
+    return {"ok": True, "service": "nova-flight", "multiplayer": 2}
 
 
 @app.get("/api/gamepad-profile")
