@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "gamepadId": "Xbox 360 Controller (XInput STANDARD GAMEPAD)",
+  "savedAt": "2026-07-23T10:32:20.148Z",
+  "yaw": {
+    "type": "axis",
+    "index": 0,
+    "scale": 1
+  },
+  "pitch": {
+    "type": "axis",
+    "index": 1,
+    "scale": 1
+  },
+  "throttle": {
+    "type": "axis",
+    "index": 3,
+    "scale": -1
+  },
+  "fire": {
+    "type": "button",
+    "index": 7,
+    "scale": 1
+  },
+  "missile": {
+    "type": "button",
+    "index": 5,
+    "scale": 1
+  },
+  "view": {
+    "type": "button",
+    "index": 3,
+    "scale": 1
+  },
+  "boost": {
+    "type": "button",
+    "index": 5,
+    "scale": 1
+  },
+  "loop": {
+    "type": "button",
+    "index": 2,
+    "scale": 1
+  },
+  "brake": {
+    "type": "button",
+    "index": 1,
+    "scale": 1
+  },
+  "exit": {
+    "type": "button",
+    "index": 9,
+    "scale": 1
+  }
+}
