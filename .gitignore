@@ -4,5 +4,3 @@ Thumbs.db
 *.err.log
 __pycache__/
 *.pyc
-data/
-.env

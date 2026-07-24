@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<script src="/assets/auth-guard.js"></script>
 <meta charset="UTF-8">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <title>La Vallée du Château</title>
@@ -619,11 +618,6 @@ let sharedFlightBindings={};
 try{
   sharedFlightBindings=JSON.parse(localStorage.getItem('raphael.flightGamepadBindings.v1')||'{}')||{};
 }catch(error){ sharedFlightBindings={}; }
-fetch('/api/gamepad-profile',{cache:'no-store'}).then(response=>response.ok?response.json():null).then(profile=>{
-  if(!profile||!Object.keys(profile).length)return;
-  sharedFlightBindings=profile;
-  localStorage.setItem('raphael.flightGamepadBindings.v1',JSON.stringify(profile));
-}).catch(error=>console.warn('[gamepad] profil serveur indisponible',error));
 function readSharedFlightControl(gp,action,dead=.08){
   const binding=sharedFlightBindings[action]||SHARED_FLIGHT_BINDING_DEFAULTS[action];
   if(!binding||!gp)return 0;

@@ -319,21 +319,6 @@ const WORLD_GAMEPAD_DEFAULTS = {
   exit: { type: 'button', index: 9, scale: 1 }
 };
 let worldGamepadProfile = {};
-async function syncWorldGamepadProfile() {
-  try {
-    const response = await fetch('/api/gamepad-profile', { cache: 'no-store' });
-    if (!response.ok) return reloadWorldGamepadProfile();
-    const profile = await response.json();
-    if (profile && Object.keys(profile).length) {
-      worldGamepadProfile = profile;
-      localStorage.setItem(WORLD_GAMEPAD_PROFILE_KEY, JSON.stringify(profile));
-      return profile;
-    }
-  } catch (error) {
-    console.warn('[gamepad] profil serveur indisponible', error);
-  }
-  return reloadWorldGamepadProfile();
-}
 function reloadWorldGamepadProfile() {
   try {
     worldGamepadProfile = JSON.parse(localStorage.getItem(WORLD_GAMEPAD_PROFILE_KEY) || '{}') || {};
@@ -342,7 +327,6 @@ function reloadWorldGamepadProfile() {
   }
   return worldGamepadProfile;
 }
-await syncWorldGamepadProfile();
 reloadWorldGamepadProfile();
 window.addEventListener('storage', event => {
   if (event.key === WORLD_GAMEPAD_PROFILE_KEY) reloadWorldGamepadProfile();
@@ -520,27 +504,20 @@ async function startWorld() {
     element.style.transform = `translateY(${((value - base) / step) * 12.5}%)`;
   };
 
-  const mobileLayout = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches
-    || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-    || (navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) <= 900);
-  document.body.classList.toggle('world-mobile-layout', mobileLayout);
+  const mobileLayout = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
   if (mobileLayout) {
     const game = document.getElementById('game');
     const infoDrawer = document.getElementById('mobile-info-drawer');
     const infoToggle = document.getElementById('mobile-info-toggle');
-    ['back-catalog', 'game-hud', 'mission-panel', 'race-panel', 'combat-panel', 'motion-state', 'mobile-control-tools'].forEach(id => {
+    ['game-hud', 'mission-panel'].forEach(id => {
       const panel = document.getElementById(id);
       if (panel) infoDrawer.appendChild(panel);
     });
-    const worldIdent = document.querySelector('.game-topbar > .world-ident');
-    if (worldIdent) infoDrawer.insertBefore(worldIdent, infoDrawer.firstChild);
-    const mainGameLink = document.querySelector('.game-topbar .game-actions > a[href="raphael2.html"]');
-    if (mainGameLink) infoDrawer.insertBefore(mainGameLink, infoDrawer.firstChild);
     const setInfoOpen = open => {
       game.classList.toggle('mobile-info-open', open);
       infoDrawer.setAttribute('aria-hidden', String(!open));
       infoToggle.setAttribute('aria-expanded', String(open));
-      infoToggle.textContent = open ? 'MENU −' : 'MENU';
+      infoToggle.textContent = open ? 'INFOS −' : 'INFOS +';
     };
     infoToggle.addEventListener('click', event => {
       event.preventDefault();
@@ -550,19 +527,6 @@ async function startWorld() {
 
     const fullscreenToggle = document.getElementById('fullscreen-toggle');
     const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
-    const enterMobileFullscreen = async () => {
-      if (fullscreenElement()) return true;
-      const root = document.documentElement;
-      const request = root.requestFullscreen || root.webkitRequestFullscreen;
-      if (!request) return false;
-      try {
-        await request.call(root, { navigationUI: 'hide' });
-        try { await screen.orientation?.lock?.('landscape'); } catch {}
-        return true;
-      } catch {
-        return false;
-      }
-    };
     const renderFullscreenButton = () => {
       const active = !!fullscreenElement();
       fullscreenToggle.classList.toggle('active', active);
@@ -575,7 +539,10 @@ async function startWorld() {
           const exit = document.exitFullscreen || document.webkitExitFullscreen;
           if (exit) await exit.call(document);
         } else {
-          if (!await enterMobileFullscreen()) throw new Error('indisponible');
+          const root = document.documentElement;
+          const request = root.requestFullscreen || root.webkitRequestFullscreen;
+          if (!request) throw new Error('indisponible');
+          await request.call(root, { navigationUI: 'hide' });
         }
       } catch {
         fullscreenToggle.textContent = 'PLEIN ÉCRAN INDISPO';
@@ -587,19 +554,6 @@ async function startWorld() {
     document.addEventListener('fullscreenchange', renderFullscreenButton);
     document.addEventListener('webkitfullscreenchange', renderFullscreenButton);
     renderFullscreenButton();
-    // Les navigateurs mobiles refusent souvent le plein écran au chargement.
-    // On tente immédiatement, puis de nouveau au premier geste autorisé.
-    void enterMobileFullscreen();
-    let fullscreenGestureHandled = false;
-    const enterOnFirstTouch = () => {
-      if (fullscreenGestureHandled) return;
-      fullscreenGestureHandled = true;
-      void enterMobileFullscreen().then(active => {
-        if (active) renderFullscreenButton();
-      });
-    };
-    window.addEventListener('pointerdown', enterOnFirstTouch, { once: true, capture: true });
-    window.addEventListener('touchstart', enterOnFirstTouch, { once: true, capture: true, passive: true });
   }
 
   const raceGates = built.raceGates || [];
@@ -963,8 +917,7 @@ async function startWorld() {
       const distance = cameraWide ? 112 : 61 + speedRatio * 21, height = cameraWide ? 32 : 15 + speedRatio * 4;
       const desired = player.position.clone().addScaledVector(cameraForward, -distance).add(new THREE.Vector3(0, height, 0));
       camera.position.lerp(desired, Math.min(1, dt * 5.5));
-      const mobileFramingLift = mobileLayout ? 8.5 : 0;
-      camera.lookAt(player.position.clone().addScaledVector(forward, 43).add(new THREE.Vector3(0, mobileFramingLift, 0)));
+      camera.lookAt(player.position.clone().addScaledVector(forward, 43));
     }
   }
 

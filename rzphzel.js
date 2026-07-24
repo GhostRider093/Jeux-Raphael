@@ -2947,15 +2947,6 @@ const FLIGHT_GAMEPAD_ACTIONS = [
 ];
 
 let flightGamepadBindings = loadFlightGamepadBindings();
-fetch("/api/gamepad-profile", { cache: "no-store" })
-  .then(response => response.ok ? response.json() : null)
-  .then(profile => {
-    if (!profile || !Object.keys(profile).length) return;
-    flightGamepadBindings = profile;
-    window.localStorage.setItem(FLIGHT_GAMEPAD_BINDINGS_KEY, JSON.stringify(profile));
-    if (gamepadMapperState.open) renderGamepadMapper();
-  })
-  .catch(error => console.warn("[gamepad] profil serveur indisponible", error));
 const gamepadMapperState = {
   open: false,
   captureAction: null,
@@ -2977,11 +2968,6 @@ function loadFlightGamepadBindings() {
 function saveFlightGamepadBindings() {
   try {
     window.localStorage.setItem(FLIGHT_GAMEPAD_BINDINGS_KEY, JSON.stringify(flightGamepadBindings));
-    fetch("/api/gamepad-profile", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(flightGamepadBindings)
-    }).catch(error => console.warn("[gamepad] sauvegarde serveur impossible", error));
   } catch (error) {
     console.warn("[gamepad] impossible de sauvegarder les commandes", error);
   }
@@ -2991,8 +2977,6 @@ function resetFlightGamepadBindings() {
   flightGamepadBindings = {};
   try {
     window.localStorage.removeItem(FLIGHT_GAMEPAD_BINDINGS_KEY);
-    fetch("/api/gamepad-profile", { method: "DELETE" })
-      .catch(error => console.warn("[gamepad] reinitialisation serveur impossible", error));
   } catch (error) {
     console.warn("[gamepad] impossible de reinitialiser les commandes", error);
   }
