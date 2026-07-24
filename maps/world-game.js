@@ -3,6 +3,7 @@ import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=titan-race-score-20260722';
 import { buildWorld, animateWorld } from './world-builder.js?v=titan-race-score-20260722';
 import { createWorldCombat } from './world-combat.js?v=white-halo-20260722';
+import { createTwoPlayerMultiplayer } from './world-multiplayer.js?v=duel-2p-20260724';
 
 const params = new URLSearchParams(location.search);
 const requestedMap = params.get('map');
@@ -474,6 +475,22 @@ async function startWorld() {
     getHeight: built.getHeight,
     getForward: getFlightForward,
     getSpeed: () => speed
+  });
+  const multiplayer = createTwoPlayerMultiplayer({
+    scene,
+    player,
+    getForward: getFlightForward,
+    getSpeed: () => speed,
+    spawn,
+    createRemoteAircraft: async () => {
+      const remote = buildJet();
+      try {
+        await loadOriginalChasseurInto(remote);
+      } catch (error) {
+        console.warn('[multiplayer] chasseur distant simplifié', error);
+      }
+      return remote;
+    }
   });
   const speedTapeMarks = document.getElementById('speed-tape-marks');
   const altitudeTapeMarks = document.getElementById('altitude-tape-marks');
@@ -1031,6 +1048,10 @@ async function startWorld() {
     if (mode.type === 'flight') updateFlight(dt, pad); else updateGround(dt, pad);
     updateRace(elapsed);
     combat.update(dt, elapsed, pad, keys, touch);
+    multiplayer.update(dt, {
+      fire: !!(keys.Space || keys.KeyF || touch.fire || pad.fire),
+      missile: !!(keys.KeyG || keys.KeyM || touch.missile || pad.missile)
+    });
     updatePortal(dt, pad);
     mixers.forEach(item => item.mixer.update(dt));
     animateWorld(built.root, elapsed);
@@ -1044,6 +1065,7 @@ async function startWorld() {
     renderer.setPixelRatio(Math.min(devicePixelRatio, innerWidth < 700 ? 1.35 : 2));
     renderer.setSize(innerWidth, innerHeight);
   });
+  window.addEventListener('beforeunload', () => multiplayer.close(), { once: true });
 
   window.__raphaelWorldDiagnostics = {
     catalogCount: WORLD_MAPS.length,
@@ -1058,6 +1080,7 @@ async function startWorld() {
     portalDestination: portalRoute.destination.id,
     portalPosition: () => built.portal?.position.toArray() || null,
     combat: combat.diagnostics,
+    multiplayer: multiplayer.diagnostics || (() => ({ active: false })),
     race: () => ({
       enabled: raceEnabled,
       gate: raceIndex,

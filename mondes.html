@@ -74,6 +74,9 @@
     #game-hud { position:absolute; z-index:24; left:15px; bottom:15px; width:min(330px,calc(100vw - 30px)); padding:13px 15px; border:1px solid rgba(255,255,255,.14); border-radius:11px; background:rgba(4,11,18,.68); backdrop-filter:blur(8px); color:rgba(225,242,252,.78); font:11px/1.6 Consolas,monospace; pointer-events:none; }
     #game-hud strong { color:#a8ee78; }
     #game-hud .hud-grid { display:grid; grid-template-columns:1fr 1fr; gap:2px 10px; margin:6px 0; }
+    #multiplayer-panel { position:absolute; z-index:42; top:max(92px,calc(env(safe-area-inset-top) + 80px)); right:max(14px,env(safe-area-inset-right)); width:min(330px,calc(100vw - 28px)); padding:9px 16px; border:1px solid rgba(83,217,255,.72); border-radius:9px; background:rgba(3,13,21,.82); box-shadow:0 0 26px rgba(37,176,224,.24); text-align:center; pointer-events:none; }
+    #multiplayer-status { color:#dff8ff; font:800 12px/1.4 Consolas,monospace; letter-spacing:1px; }
+    #multiplayer-health { margin-top:3px; color:#7fffb3; font:700 11px/1.2 Consolas,monospace; }
     #asset-status { color:#6fdaff; }
     #portal-status { color:#b79cff; }
     #portal-prompt { position:absolute; z-index:29; left:50%; bottom:92px; width:min(360px,calc(100vw - 28px)); padding:13px 16px; transform:translate(-50%,18px); opacity:0; text-align:center; border:1px solid rgba(119,232,255,.46); border-radius:12px; background:rgba(5,12,28,.78); backdrop-filter:blur(10px); pointer-events:none; transition:opacity .2s,transform .2s; }
@@ -221,6 +224,9 @@
       #mobile-info-drawer #race-panel[hidden], #mobile-info-drawer #combat-panel[hidden] { display:none !important; }
     }
     @media (max-width:720px) {
+      #multiplayer-panel { top:max(106px,calc(env(safe-area-inset-top) + 94px)); right:10px; width:min(176px,calc(100vw - 20px)); padding:7px 9px; }
+      #multiplayer-status { font-size:8px; letter-spacing:.4px; }
+      #multiplayer-health { font-size:8px; }
       .catalog-header { padding:28px 16px 18px; }
       .catalog-nav { margin-bottom:25px; }
       h1 { letter-spacing:-1.8px; }
@@ -291,6 +297,10 @@
 
   <main id="game" hidden>
     <div id="world-canvas"></div>
+    <aside id="multiplayer-panel" hidden>
+      <div id="multiplayer-status">MULTIJOUEUR · CONNEXION…</div>
+      <div id="multiplayer-health">INTÉGRITÉ 100</div>
+    </aside>
     <div id="world-loading" role="status" aria-live="polite"><div class="world-loading-card"><div class="world-loading-title">NOVA FLIGHT</div><div id="world-loading-text">PrÃ©paration de la missionâ€¦</div><div class="world-loading-bar"></div></div></div>
     <div class="game-topbar">
       <div class="game-actions">

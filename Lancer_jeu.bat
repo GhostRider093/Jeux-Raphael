@@ -4,9 +4,10 @@ title Raphael - Lancement du jeu
 cd /d "%~dp0"
 
 set "RAPHAEL_URL=http://127.0.0.1:8010/index.html"
+set "RAPHAEL_HEALTH_URL=http://127.0.0.1:8010/api/health"
 set "RAPHAEL_PORT=8010"
 
-powershell -NoProfile -Command "try { $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%RAPHAEL_URL%'; if($r.StatusCode -eq 200){exit 0} } catch {}; exit 1" >nul 2>&1
+powershell -NoProfile -Command "try { $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%RAPHAEL_HEALTH_URL%'; if($r.StatusCode -eq 200){exit 0} } catch {}; exit 1" >nul 2>&1
 if not errorlevel 1 goto :OPEN_GAME
 
 where py >nul 2>&1
@@ -30,6 +31,17 @@ pause
 exit /b 1
 
 :CHECK_PORT
+"%PYTHON_EXE%" %PYTHON_ARGS% -c "import fastapi,uvicorn,itsdangerous,websockets" >nul 2>&1
+if errorlevel 1 (
+  echo Installation des dependances Nova Flight...
+  "%PYTHON_EXE%" %PYTHON_ARGS% -m pip install -r "%~dp0requirements.txt"
+  if errorlevel 1 (
+    echo ERREUR : installation des dependances impossible.
+    pause
+    exit /b 1
+  )
+)
+
 powershell -NoProfile -Command "$c=Get-NetTCPConnection -LocalPort %RAPHAEL_PORT% -State Listen -ErrorAction SilentlyContinue; if($c){exit 1}else{exit 0}" >nul 2>&1
 if errorlevel 1 (
   echo.
@@ -41,7 +53,7 @@ if errorlevel 1 (
 )
 
 echo Demarrage de Raphael...
-start "Serveur Raphael E" /min "%PYTHON_EXE%" %PYTHON_ARGS% -m http.server %RAPHAEL_PORT% --bind 127.0.0.1 --directory "%~dp0."
+start "Serveur Raphael E" /min "%PYTHON_EXE%" %PYTHON_ARGS% "%~dp0server_raphael.py"
 
 for /L %%G in (1,1,12) do (
   powershell -NoProfile -Command "try { $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 '%RAPHAEL_URL%'; if($r.StatusCode -eq 200){exit 0} } catch {}; exit 1" >nul 2>&1
