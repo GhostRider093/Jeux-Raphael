@@ -28,18 +28,24 @@ function loadTemplate() {
 
   templatePromise = new OBJLoader().loadAsync(MODEL_URL).then(object => {
 
-    // Red/black identification panels: the target remains readable and now
-    // matches the red combat reticle instead of flashing blue while loading.
+    // Cible « hologramme » : couleur vive cyan, fortement émissive et légèrement
+    // translucide, pour rester très visible à distance dans la ville.
     const materials = [
-      new THREE.MeshStandardMaterial({ color: 0xd7192d, emissive: 0x4f0008, emissiveIntensity: .34, metalness: .5, roughness: .3 }),
-      new THREE.MeshStandardMaterial({ color: 0x11151b, emissive: 0x210006, emissiveIntensity: .16, metalness: .72, roughness: .24 })
+      new THREE.MeshStandardMaterial({ color: 0x0b4a55, emissive: 0x4dffff, emissiveIntensity: 2.4, metalness: .1, roughness: .3, transparent: true, opacity: .96, toneMapped: false }),
+      new THREE.MeshStandardMaterial({ color: 0x0d5240, emissive: 0x74ffd8, emissiveIntensity: 2.1, metalness: .1, roughness: .35, transparent: true, opacity: .95, toneMapped: false })
     ];
+    const wireMaterial = new THREE.MeshBasicMaterial({ color: 0xbfffff, wireframe: true, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
     let meshIndex = 0;
     object.traverse(node => {
       if (!node.isMesh) return;
       node.material = materials[meshIndex++ % materials.length];
-      node.castShadow = true;
-      node.receiveShadow = true;
+      node.castShadow = false;
+      node.receiveShadow = false;
+      // Surcouche filaire additive : accentue le rendu hologramme.
+      const wire = new THREE.Mesh(node.geometry, wireMaterial);
+      wire.name = 'enemy-hologram-wire';
+      wire.renderOrder = 4;
+      node.add(wire);
     });
 
     const bounds = new THREE.Box3().setFromObject(object);
@@ -81,41 +87,40 @@ export async function createEnemyFighterModel({ targetLength = 10, thrusters = t
   const instance = template.clone(true);
   instance.name = 'enemy-fighter-red-black';
   instance.scale.multiplyScalar(targetLength * 1.1);
-  const glowMaterial = new THREE.MeshBasicMaterial({
-    color: 0xf4ffff,
-    side: THREE.BackSide,
-    transparent: true,
-    opacity: .72,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    toneMapped: false
-  });
+  // Contour sombre plein (silhouette) : fait ressortir l'ennemi cyan sur TOUS
+  // les fonds, y compris les immeubles clairs ou l'additif serait invisible.
+  const outlineMaterial = new THREE.MeshBasicMaterial({ color: 0x00121a, side: THREE.BackSide, toneMapped: false });
   const visibleMeshes = [];
-  instance.traverse(node => { if (node.isMesh) visibleMeshes.push(node); });
+  instance.traverse(node => { if (node.isMesh && node.name !== 'enemy-hologram-wire') visibleMeshes.push(node); });
   visibleMeshes.forEach(mesh => {
-    const outline = new THREE.Mesh(mesh.geometry, glowMaterial);
-    outline.name = 'enemy-white-fluorescent-outline';
-    outline.scale.setScalar(1.1);
-    outline.renderOrder = 3;
+    const outline = new THREE.Mesh(mesh.geometry, outlineMaterial);
+    outline.name = 'enemy-hologram-outline';
+    outline.scale.setScalar(1.18);
+    outline.renderOrder = 1;
     mesh.add(outline);
   });
-  const visibilityLight = new THREE.PointLight(0xeeffff, 48, targetLength * 12, 1.7);
-  visibilityLight.name = 'enemy-white-visibility-light';
+  const visibilityLight = new THREE.PointLight(0x5ffcff, 90, targetLength * 16, 1.6);
+  visibilityLight.name = 'enemy-hologram-light';
   instance.add(visibilityLight);
-  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: getWhiteGlowTexture(),
-    color: 0xf4ffff,
-    transparent: true,
-    opacity: .68,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    toneMapped: false
-  }));
-  halo.name = 'enemy-white-fluorescent-halo';
-  halo.position.y = .05;
-  halo.scale.set(2.35, 2.35, 1);
-  halo.renderOrder = 2;
-  instance.add(halo);
+  const makeHalo = (scale, opacity, order) => {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: getWhiteGlowTexture(),
+      color: 0x8dfcff,
+      transparent: true,
+      opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false
+    }));
+    sprite.name = 'enemy-hologram-halo';
+    sprite.position.y = .05;
+    sprite.scale.set(scale, scale, 1);
+    sprite.renderOrder = order;
+    return sprite;
+  };
+  // Halo proche (net) + grand halo (visible de tres loin).
+  instance.add(makeHalo(6, .95, 2));
+  instance.add(makeHalo(13, .5, 1));
   if (thrusters) addThrusters(instance);
   return instance;
 }

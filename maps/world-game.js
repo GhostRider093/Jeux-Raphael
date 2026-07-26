@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
+import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=titan-race-score-20260722';
 import { buildWorld, animateWorld } from './world-builder.js?v=titan-race-score-20260722';
 import { createWorldCombat } from './world-combat.js?v=white-halo-20260722';
@@ -8,6 +9,9 @@ import { createTwoPlayerMultiplayer } from './world-multiplayer.js?v=duel-2p-202
 const params = new URLSearchParams(location.search);
 const requestedMap = params.get('map');
 const thumbnailMode = params.get('thumbnail') === '1';
+// Detection appareil tactile : fiable meme en paysage (contrairement a innerWidth seul).
+const isMobileDevice = window.matchMedia('(pointer: coarse)').matches
+  || Math.min(window.innerWidth, window.innerHeight) < 700;
 let selectedMode = getMode(params.get('mode')).id;
 const world = requestedMap ? getWorld(requestedMap) : null;
 
@@ -19,6 +23,7 @@ const searchInput = document.getElementById('map-search');
 let originalChasseurGeometryPromise = null;
 
 if (thumbnailMode) document.body.classList.add('world-thumbnail');
+if (isMobileDevice) document.body.classList.add('is-mobile');
 
 function hexColor(value) {
   return `#${Number(value).toString(16).padStart(6, '0')}`;
@@ -246,7 +251,7 @@ async function loadOriginalChasseurInto(player) {
   mesh.rotation.set(0, -Math.PI / 2, 0);
   const wrapper = new THREE.Group();
   wrapper.add(mesh);
-  fitOriginalChasseur(wrapper);
+  fitOriginalChasseur(wrapper, 19.5);
   wrapper.updateMatrixWorld(true);
 
   const box = new THREE.Box3().setFromObject(wrapper);
@@ -285,7 +290,7 @@ async function loadGroundCharacter(modeId, player, mixers) {
   const modelUrl = modeId === 'robot'
     ? './perso/Meshy_AI_Azure_Titan_biped/Meshy_AI_Azure_Titan_biped_Meshy_AI_Meshy_Merged_Animations.glb'
     : './perso/Meshy_AI_Pinstripe_Shadows/Meshy_AI_Pinstripe_Shadows_rigged_animations.glb';
-  const gltf = await new GLTFLoader().loadAsync(modelUrl);
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(modelUrl);
   // Proportions proches des modes historiques de Raphael : le robot reste
   // imposant sans masquer l'écran d'un téléphone.
   normalizeLoadedModel(gltf.scene, modeId === 'robot' ? 3.4 : 2.6);
@@ -374,17 +379,24 @@ function readGamepad() {
 
 async function startWorld() {
   const wrap = document.getElementById('world-canvas');
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, innerWidth < 700 ? 1.35 : 2));
+  const renderer = new THREE.WebGLRenderer({ antialias: !isMobileDevice, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, isMobileDevice ? 1 : 2));
   renderer.setSize(innerWidth, innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = !isMobileDevice;
+  renderer.shadowMap.type = isMobileDevice ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   wrap.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, .2, 4200);
+  // HUD : descendre l'avion de 20% dans le viewport via un decalage de vue.
+  // La position reelle (lat/lon) et le reticule central ne bougent pas.
+  const CAMERA_VERTICAL_DROP = 0.20;
+  function applyCameraViewDrop() {
+    camera.setViewOffset(innerWidth, innerHeight, 0, -innerHeight * CAMERA_VERTICAL_DROP, innerWidth, innerHeight);
+  }
+  applyCameraViewDrop();
   const status = document.getElementById('asset-status');
   const mode = getMode(selectedMode);
   document.body.classList.toggle('world-flight-active', mode.type === 'flight');
@@ -855,6 +867,75 @@ async function startWorld() {
     button.addEventListener('lostpointercapture', () => set(false));
   });
 
+  // === Menu hamburger : regroupe Monde / Jeu principal / Info+ / Inclinaison / Joystick / Commande vocale / Plein ecran + titre ===
+  const hudMenuToggle = document.getElementById('hud-menu-toggle');
+  const hudMenuPanel = document.getElementById('hud-menu-panel');
+  if (hudMenuToggle && hudMenuPanel) {
+    const menuItems = [
+      document.getElementById('world-title'),
+      document.getElementById('back-catalog'),
+      document.querySelector('.game-actions a[href="raphael2.html"]'),
+      document.getElementById('mobile-info-toggle'),
+      document.getElementById('motion-toggle'),
+      document.getElementById('stick-toggle'),
+      document.getElementById('voice-toggle'),
+      document.getElementById('fullscreen-toggle'),
+      document.getElementById('invert-controls-toggle')
+    ];
+    menuItems.forEach(el => { if (el) hudMenuPanel.appendChild(el); });
+    const setMenuOpen = open => {
+      hudMenuPanel.classList.toggle('open', open);
+      hudMenuToggle.classList.toggle('active', open);
+      hudMenuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    hudMenuToggle.addEventListener('click', event => {
+      event.stopPropagation();
+      setMenuOpen(!hudMenuPanel.classList.contains('open'));
+    });
+    document.addEventListener('pointerdown', event => {
+      if (!hudMenuPanel.classList.contains('open')) return;
+      if (hudMenuPanel.contains(event.target) || hudMenuToggle.contains(event.target)) return;
+      setMenuOpen(false);
+    });
+  }
+
+  // === Commande vocale (optionnelle, Web Speech API) : declenche les boutons existants sans toucher la logique ===
+  const voiceToggle = document.getElementById('voice-toggle');
+  if (voiceToggle) {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    // Web Speech API exige un contexte securise (localhost ou HTTPS) : sinon on desactive proprement.
+    if (!SpeechRec || !window.isSecureContext) {
+      voiceToggle.textContent = 'VOCAL INDISPONIBLE';
+      voiceToggle.disabled = true;
+    } else {
+      const pulseTouch = action => {
+        const btn = document.querySelector(`[data-world-touch="${action}"]`);
+        touch[action] = true;
+        if (btn) btn.classList.add('active');
+        setTimeout(() => { touch[action] = false; if (btn) btn.classList.remove('active'); }, 200);
+      };
+      const recognition = new SpeechRec();
+      recognition.lang = 'fr-FR';
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      let voiceOn = false;
+      recognition.onresult = event => {
+        const said = event.results[event.results.length - 1][0].transcript.toLowerCase();
+        if (/(feu|tir|canon)/.test(said)) pulseTouch('fire');
+        else if (/(missile|roquette)/.test(said)) pulseTouch('missile');
+        else if (/(boost|turbo|acc)/.test(said)) pulseTouch('boost');
+      };
+      recognition.onend = () => { if (voiceOn) { try { recognition.start(); } catch (_) {} } };
+      recognition.onerror = () => {};
+      voiceToggle.addEventListener('click', () => {
+        voiceOn = !voiceOn;
+        voiceToggle.classList.toggle('active', voiceOn);
+        voiceToggle.textContent = voiceOn ? 'VOCALE : ON' : 'COMMANDE VOCALE';
+        if (voiceOn) { try { recognition.start(); } catch (_) {} } else { try { recognition.stop(); } catch (_) {} }
+      });
+    }
+  }
+
   function updateFlight(dt, pad) {
     const yawInput = (keys.ArrowLeft || keys.KeyA || keys.KeyQ ? 1 : 0) + (keys.ArrowRight || keys.KeyD ? -1 : 0) - touch.x - motion.x - pad.x;
     const mobilePitchDirection = touchControlsInverted ? 1 : -1;
@@ -1061,8 +1142,8 @@ async function startWorld() {
 
   window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setPixelRatio(Math.min(devicePixelRatio, innerWidth < 700 ? 1.35 : 2));
+    applyCameraViewDrop();
+    renderer.setPixelRatio(Math.min(devicePixelRatio, isMobileDevice ? 1 : 2));
     renderer.setSize(innerWidth, innerHeight);
   });
   window.addEventListener('beforeunload', () => multiplayer.close(), { once: true });

@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { OBJLoader } from '../libs/loaders/OBJLoader.js';
 import { STLLoader } from '../libs/loaders/STLLoader.js';
+import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 import { ASSET_LIBRARY } from './world-catalog.js?v=public-map-paths-20260722';
 
-const loader = new GLTFLoader();
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const portalObjLoader = new OBJLoader();
 const portalTextureLoader = new THREE.TextureLoader();
 const stlLoader = new STLLoader();
@@ -829,7 +830,8 @@ function buildPortal(world, route, root) {
   const texture = portalTextureLoader.load('./assets/portal-archway/ethereal-rune-archway.png');
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
-  portalObjLoader.load('./assets/portal-archway/ethereal-rune-archway.obj', object => {
+  loader.load('./assets/portal-archway/ethereal-rune-archway.glb', gltf => {
+    const object = gltf.scene;
     object.traverse(node => {
       if (!node.isMesh) return;
       node.material = new THREE.MeshStandardMaterial({

@@ -1,0 +1,25 @@
+[Unit]
+Description=Nova Flight - service HTTP et multijoueur (SSO Ghost Chat)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/nova-flight
+EnvironmentFile=/home/ubuntu/nova-flight/.env
+ExecStart=/home/ubuntu/nova-flight/.venv/bin/python server_raphael.py
+Restart=on-failure
+RestartSec=5
+
+# Les salons sont en memoire: un seul processus, sinon chaque worker aurait
+# sa propre liste de salons et les deux pilotes ne se retrouveraient jamais.
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/nova-flight
+
+[Install]
+WantedBy=multi-user.target

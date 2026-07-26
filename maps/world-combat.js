@@ -224,7 +224,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   const initialZ = world.spawn.air[2] - 540;
   enemy.mesh.position.set(world.spawn.air[0], world.spawn.air[1] + 24, initialZ);
   scene.add(enemy.mesh);
-  const ready = createEnemyFighterModel({ targetLength: 11.5, thrusters: true }).then(model => {
+  const ready = createEnemyFighterModel({ targetLength: 20, thrusters: true }).then(model => {
     enemy.mesh.clear();
     enemy.mesh.add(model);
     enemy.mesh.userData.flames = model.userData.flames || [];
@@ -275,20 +275,42 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   function spawnExplosion(position, scale = 1) {
     audio.explosion();
     const parts = [];
-    [0xff3b16, 0xff9f24, 0xffe36a].forEach((color, index) => {
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry((2.8 - index * .5) * scale, 12, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .9, blending: THREE.AdditiveBlending, depthWrite: false }));
-      mesh.position.copy(position).add(new THREE.Vector3((index - 1) * 2, index * 1.2, (1 - index) * 1.7));
+    // Boule de feu multi-couches : flash blanc -> jaune -> orange -> rouge -> fumee.
+    const layers = [
+      { color: 0xffffff, r: 2.4 },
+      { color: 0xfff2a0, r: 3.0 },
+      { color: 0xff9f24, r: 3.7 },
+      { color: 0xff3b16, r: 4.4 },
+      { color: 0x551a0a, r: 5.2 }
+    ];
+    layers.forEach((layer, index) => {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(layer.r * scale, 14, 10),
+        new THREE.MeshBasicMaterial({ color: layer.color, transparent: true, opacity: .92, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false })
+      );
+      mesh.position.copy(position).add(new THREE.Vector3((index - 2) * 2.2 * scale, (index - 1) * 1.4 * scale, (2 - index) * 1.9 * scale));
+      mesh.renderOrder = 5;
       scene.add(mesh);
       parts.push(mesh);
     });
-    explosions.push({ parts, life: .85, maxLife: .85 });
+    // Onde de choc en anneau.
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(3.6 * scale, .55 * scale, 10, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: .85, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false })
+    );
+    ring.position.copy(position);
+    ring.lookAt(camera.position);
+    ring.renderOrder = 5;
+    scene.add(ring);
+    parts.push(ring);
+    explosions.push({ parts, life: 1.2, maxLife: 1.2 });
   }
 
   function destroyEnemy() {
     if (!enemy.alive) return;
     enemy.alive = false;
     enemy.hp = 0;
-    spawnExplosion(targetPoint(), 1.6);
+    spawnExplosion(targetPoint(), 3.2);
     scene.remove(enemy.mesh);
     locked = false;
     lockProgress = 0;
@@ -310,7 +332,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
         enemy.alive = true;
         enemy.phase = 0;
         scene.add(enemy.mesh);
-        placeTargetAhead(520 + Math.random() * 100);
+        placeTargetAhead(380 + Math.random() * 90);
         lockState.className = '';
         lockState.textContent = `CONTACT ${kills + 1}/${targetKillCount} · RECHERCHE RADAR`;
       }, 1800);
@@ -597,8 +619,8 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
       explosion.life -= dt;
       const progress = 1 - explosion.life / explosion.maxLife;
       explosion.parts.forEach((part, partIndex) => {
-        part.scale.setScalar(1 + progress * (4.5 + partIndex));
-        part.material.opacity = Math.max(0, .9 * (1 - progress));
+        part.scale.setScalar(1 + progress * (2.6 + partIndex * .55));
+        part.material.opacity = Math.max(0, .92 * (1 - progress * progress));
       });
       if (explosion.life <= 0) {
         explosion.parts.forEach(part => scene.remove(part));
