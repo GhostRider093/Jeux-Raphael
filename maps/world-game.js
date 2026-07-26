@@ -390,13 +390,6 @@ async function startWorld() {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, .2, 4200);
-  // HUD : descendre l'avion de 20% dans le viewport via un decalage de vue.
-  // La position reelle (lat/lon) et le reticule central ne bougent pas.
-  const CAMERA_VERTICAL_DROP = 0.20;
-  function applyCameraViewDrop() {
-    camera.setViewOffset(innerWidth, innerHeight, 0, -innerHeight * CAMERA_VERTICAL_DROP, innerWidth, innerHeight);
-  }
-  applyCameraViewDrop();
   const status = document.getElementById('asset-status');
   const mode = getMode(selectedMode);
   document.body.classList.toggle('world-flight-active', mode.type === 'flight');
@@ -867,75 +860,6 @@ async function startWorld() {
     button.addEventListener('lostpointercapture', () => set(false));
   });
 
-  // === Menu hamburger : regroupe Monde / Jeu principal / Info+ / Inclinaison / Joystick / Commande vocale / Plein ecran + titre ===
-  const hudMenuToggle = document.getElementById('hud-menu-toggle');
-  const hudMenuPanel = document.getElementById('hud-menu-panel');
-  if (hudMenuToggle && hudMenuPanel) {
-    const menuItems = [
-      document.getElementById('world-title'),
-      document.getElementById('back-catalog'),
-      document.querySelector('.game-actions a[href="raphael2.html"]'),
-      document.getElementById('mobile-info-toggle'),
-      document.getElementById('motion-toggle'),
-      document.getElementById('stick-toggle'),
-      document.getElementById('voice-toggle'),
-      document.getElementById('fullscreen-toggle'),
-      document.getElementById('invert-controls-toggle')
-    ];
-    menuItems.forEach(el => { if (el) hudMenuPanel.appendChild(el); });
-    const setMenuOpen = open => {
-      hudMenuPanel.classList.toggle('open', open);
-      hudMenuToggle.classList.toggle('active', open);
-      hudMenuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    };
-    hudMenuToggle.addEventListener('click', event => {
-      event.stopPropagation();
-      setMenuOpen(!hudMenuPanel.classList.contains('open'));
-    });
-    document.addEventListener('pointerdown', event => {
-      if (!hudMenuPanel.classList.contains('open')) return;
-      if (hudMenuPanel.contains(event.target) || hudMenuToggle.contains(event.target)) return;
-      setMenuOpen(false);
-    });
-  }
-
-  // === Commande vocale (optionnelle, Web Speech API) : declenche les boutons existants sans toucher la logique ===
-  const voiceToggle = document.getElementById('voice-toggle');
-  if (voiceToggle) {
-    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    // Web Speech API exige un contexte securise (localhost ou HTTPS) : sinon on desactive proprement.
-    if (!SpeechRec || !window.isSecureContext) {
-      voiceToggle.textContent = 'VOCAL INDISPONIBLE';
-      voiceToggle.disabled = true;
-    } else {
-      const pulseTouch = action => {
-        const btn = document.querySelector(`[data-world-touch="${action}"]`);
-        touch[action] = true;
-        if (btn) btn.classList.add('active');
-        setTimeout(() => { touch[action] = false; if (btn) btn.classList.remove('active'); }, 200);
-      };
-      const recognition = new SpeechRec();
-      recognition.lang = 'fr-FR';
-      recognition.continuous = true;
-      recognition.interimResults = false;
-      let voiceOn = false;
-      recognition.onresult = event => {
-        const said = event.results[event.results.length - 1][0].transcript.toLowerCase();
-        if (/(feu|tir|canon)/.test(said)) pulseTouch('fire');
-        else if (/(missile|roquette)/.test(said)) pulseTouch('missile');
-        else if (/(boost|turbo|acc)/.test(said)) pulseTouch('boost');
-      };
-      recognition.onend = () => { if (voiceOn) { try { recognition.start(); } catch (_) {} } };
-      recognition.onerror = () => {};
-      voiceToggle.addEventListener('click', () => {
-        voiceOn = !voiceOn;
-        voiceToggle.classList.toggle('active', voiceOn);
-        voiceToggle.textContent = voiceOn ? 'VOCALE : ON' : 'COMMANDE VOCALE';
-        if (voiceOn) { try { recognition.start(); } catch (_) {} } else { try { recognition.stop(); } catch (_) {} }
-      });
-    }
-  }
-
   function updateFlight(dt, pad) {
     const yawInput = (keys.ArrowLeft || keys.KeyA || keys.KeyQ ? 1 : 0) + (keys.ArrowRight || keys.KeyD ? -1 : 0) - touch.x - motion.x - pad.x;
     const mobilePitchDirection = touchControlsInverted ? 1 : -1;
@@ -1142,7 +1066,7 @@ async function startWorld() {
 
   window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
-    applyCameraViewDrop();
+    camera.updateProjectionMatrix();
     renderer.setPixelRatio(Math.min(devicePixelRatio, isMobileDevice ? 1 : 2));
     renderer.setSize(innerWidth, innerHeight);
   });

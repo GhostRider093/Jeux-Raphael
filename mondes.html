@@ -276,39 +276,6 @@
       .cockpit-rail { width:39%; height:26%; bottom:-2%; }.cockpit-glare { bottom:21%; width:43%; height:4%; }
     }
     @media (pointer:coarse) { #world-touch { display:block; } }
-
-    /* ============ Refonte HUD NovaCity ============ */
-    /* 2. Reticule central reduit a 40% (reste centre) */
-    #flight-reticle { transform: translate(-50%,-50%) scale(.5) !important; }
-    /* Retrait du marqueur de visee jaune sur l'ennemi */
-    #aim-lead { display: none !important; }
-    /* 3. Nettoyage : on ne garde que Vitesse + Altitude (+ reticule + radar) */
-    #flight-hud-top, #flight-target-range, #combat-lock-state, #flight-weapon-panel, #reticle-range { display: none !important; }
-    /* 3b. Altitude allegee : reglette retiree, lecteur compact */
-    #altitude-tape .flight-tape-line, #altitude-tape .flight-tape-marks { display: none !important; }
-    #altitude-tape .flight-tape-title { font-size: 12px; opacity: .78; }
-    #altitude-value { top: 6px !important; transform: none !important; min-width: 0 !important; padding: 4px 9px !important; font-size: 15px !important; background: rgba(4,14,22,.5) !important; border: 1px solid rgba(200,239,252,.4) !important; box-shadow: none !important; clip-path: none !important; }
-    /* 5. Radar en haut a droite */
-    #combat-panel { left: auto !important; right: max(14px,env(safe-area-inset-right)) !important; top: max(14px,env(safe-area-inset-top)) !important; bottom: auto !important; width: 126px !important; padding: 0 !important; }
-    #radar-scope { width: 118px !important; height: 118px !important; margin: 0 0 0 auto !important; }
-    /* 6. Boutons d'action (Canon / Missile / Boost) : legerement plus bas */
-    .world-fire-buttons { bottom: max(58px, calc(env(safe-area-inset-bottom) + 46px)) !important; }
-    .world-touch-buttons { bottom: max(140px, calc(env(safe-area-inset-bottom) + 128px)) !important; }
-    /* 4. Menu hamburger (haut-gauche) */
-    #hud-menu-toggle { position: absolute; z-index: 46; top: max(12px,env(safe-area-inset-top)); left: max(12px,env(safe-area-inset-left)); width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; font-size: 22px; line-height: 1; color: #e7f7fc; border: 1px solid rgba(177,225,242,.42); border-radius: 12px; background: linear-gradient(180deg,rgba(22,43,56,.94),rgba(5,15,23,.94)); box-shadow: inset 0 1px rgba(255,255,255,.1),0 6px 16px rgba(0,0,0,.34); backdrop-filter: blur(8px); pointer-events: auto; cursor: pointer; }
-    #hud-menu-toggle.active { border-color: #a9ef7d; color: #eaffdf; }
-    #hud-menu-panel { position: absolute; z-index: 45; top: max(66px,calc(env(safe-area-inset-top) + 54px)); left: max(12px,env(safe-area-inset-left)); width: min(250px,calc(100vw - 24px)); max-height: min(72vh,540px); overflow: auto; display: none; flex-direction: column; gap: 7px; padding: 12px; border: 1px solid rgba(99,217,255,.32); border-radius: 14px; background: rgba(3,10,18,.95); box-shadow: 0 18px 55px rgba(0,0,0,.62); backdrop-filter: blur(12px); pointer-events: auto; }
-    #hud-menu-panel.open { display: flex; }
-    #hud-menu-panel > * { display: flex; align-items: center; width: 100%; box-sizing: border-box; min-height: 42px; margin: 0; text-align: left; }
-    #hud-menu-panel #world-title { order: -1; display: block; font-size: 17px; font-weight: 900; color: #e9f8ff; text-align: center; padding: 0 0 8px; margin-bottom: 2px; border-bottom: 1px solid rgba(255,255,255,.12); }
-    /* Elements deplaces dans le menu / non listes : retires du HUD */
-    .game-topbar { display: none !important; }
-    #mobile-control-tools, #motion-state { display: none !important; }
-    @media (max-width:720px) {
-      #radar-scope { width: 92px !important; height: 92px !important; }
-      #combat-panel { width: 98px !important; }
-      #hud-menu-panel { width: min(230px,calc(100vw - 20px)); }
-    }
   </style>
 </head>
 <body>
@@ -330,8 +297,6 @@
 
   <main id="game" hidden>
     <div id="world-canvas"></div>
-    <button id="hud-menu-toggle" type="button" aria-label="Menu de réglages" aria-expanded="false">☰</button>
-    <div id="hud-menu-panel" role="menu" aria-label="Réglages"></div>
     <aside id="multiplayer-panel" hidden>
       <div id="multiplayer-status">MULTIJOUEUR · CONNEXION…</div>
       <div id="multiplayer-health">INTÉGRITÉ 100</div>
@@ -375,7 +340,6 @@
         <button id="motion-toggle" class="mobile-control-toggle" type="button">INCLINAISON</button>
         <button id="stick-toggle" class="mobile-control-toggle active" type="button">JOYSTICK</button>
         <button id="invert-controls-toggle" class="mobile-control-toggle" type="button">COMMANDES : NORMALES</button>
-        <button id="voice-toggle" class="mobile-control-toggle" type="button">COMMANDE VOCALE</button>
         <button id="fullscreen-toggle" class="mobile-control-toggle" type="button">PLEIN ÉCRAN</button>
       </div>
       <div class="world-touch-buttons">
