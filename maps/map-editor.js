@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { WORLD_MAPS, getPortalRoute } from './world-catalog.js?v=cockpit-cibles-20260730';
-import { buildWorld } from './world-builder.js?v=cockpit-cibles-20260730';
-import { OBJECT_FAMILIES, OBJECT_LIBRARY, createLibraryObject, libraryKeysByFamily } from './object-library.js?v=cockpit-cibles-20260730';
-import { captureBaseline, serializeEdits, applyEdits } from './custom-map-format.js?v=cockpit-cibles-20260730';
-import { listCustomMaps, loadCustomMap, saveCustomMap, downloadCustomMap, slugify } from '../custom-maps.js?v=cockpit-cibles-20260730';
+import { WORLD_MAPS, getPortalRoute } from './world-catalog.js?v=sans-halo-20260730';
+import { buildWorld } from './world-builder.js?v=sans-halo-20260730';
+import { OBJECT_FAMILIES, OBJECT_LIBRARY, createLibraryObject, libraryKeysByFamily } from './object-library.js?v=sans-halo-20260730';
+import { captureBaseline, serializeEdits, applyEdits } from './custom-map-format.js?v=sans-halo-20260730';
+import { listCustomMaps, loadCustomMap, saveCustomMap, downloadCustomMap, slugify } from '../custom-maps.js?v=sans-halo-20260730';
 
 // ==========================================================================
 //  EDITEUR DE CARTES

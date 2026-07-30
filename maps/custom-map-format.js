@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createLibraryObject } from './object-library.js?v=cockpit-cibles-20260730';
+import { createLibraryObject } from './object-library.js?v=sans-halo-20260730';
 
 // ==========================================================================
 //  FORMAT DES CARTES PERSO

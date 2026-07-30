@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=hologram-20260730';
-import { createExplosionSystem } from './world-explosion.js?v=cockpit-cibles-20260730';
+import { createExplosionSystem } from './world-explosion.js?v=sans-halo-20260730';
 
 preloadEnemyFighterModel().catch(() => {});
 

@@ -2,17 +2,17 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 import { GAMEPAD_PROFILE_KEY, loadMergedProfile, readLocalProfile } from '../gamepad-profile.js';
-import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey } from '../input-shaping.js?v=cockpit-cibles-20260730';
-import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=cockpit-cibles-20260730';
-import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=cockpit-cibles-20260730';
-import { buildWorld, animateWorld } from './world-builder.js?v=cockpit-cibles-20260730';
-import { createWorldCombat } from './world-combat.js?v=cockpit-cibles-20260730';
-import { createTargetRange } from './world-targets.js?v=cockpit-cibles-20260730';
-import { createExplosionSystem } from './world-explosion.js?v=cockpit-cibles-20260730';
-import { queryHit, collisionStats } from './world-collision.js?v=cockpit-cibles-20260730';
-import { addBoxFromCenter } from './world-collision.js?v=cockpit-cibles-20260730';
-import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=cockpit-cibles-20260730';
-import { loadCustomMap } from '../custom-maps.js?v=cockpit-cibles-20260730';
+import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey } from '../input-shaping.js?v=sans-halo-20260730';
+import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=sans-halo-20260730';
+import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=sans-halo-20260730';
+import { buildWorld, animateWorld } from './world-builder.js?v=sans-halo-20260730';
+import { createWorldCombat } from './world-combat.js?v=sans-halo-20260730';
+import { createTargetRange } from './world-targets.js?v=sans-halo-20260730';
+import { createExplosionSystem } from './world-explosion.js?v=sans-halo-20260730';
+import { queryHit, collisionStats } from './world-collision.js?v=sans-halo-20260730';
+import { addBoxFromCenter } from './world-collision.js?v=sans-halo-20260730';
+import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=sans-halo-20260730';
+import { loadCustomMap } from '../custom-maps.js?v=sans-halo-20260730';
 import { createTwoPlayerMultiplayer } from './world-multiplayer.js?v=duel-2p-20260724';
 
 const params = new URLSearchParams(location.search);
@@ -83,6 +83,12 @@ function renderCatalog(filter = '') {
   const worlds = WORLD_MAPS.filter(item => !term || `${item.name} ${item.category} ${item.description}`.toLowerCase().includes(term));
   mapGrid.innerHTML = worlds.map((item, index) => {
     const objectives = item.objectives.map(objective => `<li>${objective}</li>`).join('');
+    // Le champ `modes` etait declare sur chaque monde mais jamais applique :
+    // on pouvait lancer un mode au sol dans un circuit spatial, qui n'a pas de
+    // sol. Le lien retombe donc sur un mode reellement supporte.
+    const allowed = item.modes || [];
+    const launchMode = allowed.includes(selectedMode) ? selectedMode : (allowed[0] || 'chasseur');
+    const restricted = launchMode !== selectedMode;
     return `
       <article class="map-card" style="--map-color:${hexColor(item.sky)};--map-image:url('./assets/world-previews/${item.id}.png');--delay:${Math.min(index, 10) * .035}s">
         <div class="map-visual"><span class="map-icon">${item.icon}</span><span class="map-number">${String(index + 1).padStart(2, '0')}</span></div>
@@ -92,7 +98,7 @@ function renderCatalog(filter = '') {
           <p class="map-tagline">${item.tagline}</p>
           <p>${item.description}</p>
           <ul>${objectives}</ul>
-          <a class="launch-map" href="mondes.html?map=${encodeURIComponent(item.id)}&mode=${encodeURIComponent(selectedMode)}">Explorer avec ${getMode(selectedMode).name}</a>
+          <a class="launch-map" href="mondes.html?map=${encodeURIComponent(item.id)}&mode=${encodeURIComponent(launchMode)}">Explorer avec ${getMode(launchMode).name}${restricted ? ' (seul mode possible ici)' : ''}</a>
         </div>
       </article>
     `;
@@ -537,6 +543,7 @@ async function startWorld() {
   // Ordres clavier lisses : une touche est binaire, la rampe rend possible un
   // ajustement fin sans rendre la commande molle.
   let keyYaw = 0, keyPitch = 0;
+  let boostAudioOn = false;      // evite de relancer le coup a chaque image
 
   // ── ENVELOPPE DE VOL ──────────────────────────────────────────────────────
   // Le tangage etait bride a -27/+30 degres, ce qui bloquait le nez au bout
@@ -1266,6 +1273,19 @@ async function startWorld() {
     if (lightSpeed > 1) targetSpeed = Math.max(targetSpeed, boostSpeed) * lightSpeed;
     speed += (targetSpeed - speed) * smoothing(4.4, dt);
     window.RaphaelFighterEngine?.update(speed / boostSpeed, targetSpeed >= boostSpeed * .9);
+
+    // ── SUR-REGIME ──────────────────────────────────────────────────────────
+    // L'intensite part du plein regime et non de zero : le souffle ne doit se
+    // faire entendre qu'en poussee franche, sinon il tourne en fond permanent.
+    const surge = THREE.MathUtils.clamp((speed - fullSpeed) / Math.max(1, boostSpeed - fullSpeed), 0, 1);
+    const surgeTotal = Math.max(surge, lightSpeedBlend);
+    if (surgeTotal > .12) {
+      if (!boostAudioOn) { boostAudioOn = true; window.RaphaelBoostAudio?.punch(); }
+      window.RaphaelBoostAudio?.update(surgeTotal);
+    } else if (boostAudioOn) {
+      boostAudioOn = false;
+      window.RaphaelBoostAudio?.stop();
+    }
     yaw += THREE.MathUtils.clamp(yawInput, -1, 1) * 1.55 * dt;
     pitch = THREE.MathUtils.clamp(pitch + THREE.MathUtils.clamp(pitchInput, -1, 1) * pitchRate * dt, -pitchDownLimit, pitchUpLimit);
     if (launchSequence > 0) {

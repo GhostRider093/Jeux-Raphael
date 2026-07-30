@@ -22,11 +22,11 @@
     .lead { max-width:760px; color:rgba(222,240,252,.72); font-size:15px; line-height:1.6; }
     .lead strong { color:var(--lime); }
     .back-link { display:inline-block; margin-bottom:22px; padding:9px 14px; color:#cbeeff;
-      text-decoration:none; border:1px solid rgba(255,255,255,.18); border-radius:9px; background:rgba(255,255,255,.05); }
+      text-decoration:none; border:1px solid rgba(255,255,255,.18); border-radius:0; background:rgba(255,255,255,.05); }
     #world-grid { max-width:1400px; margin:26px auto 0; display:grid;
       grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:13px; }
     .world-pick { padding:15px 16px; text-align:left; cursor:pointer; color:#dceeff;
-      border:1px solid rgba(255,255,255,.13); border-radius:13px; background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.13); border-radius:0; background:rgba(255,255,255,.05);
       transition:border-color .16s, background .16s, transform .16s; }
     .world-pick:hover { border-color:rgba(99,217,255,.55); background:rgba(28,74,102,.4); transform:translateY(-3px); }
     .world-pick .wp-icon { font-size:24px; }
@@ -39,9 +39,15 @@
     #canvas-host { position:absolute; inset:0; }
     #canvas-host canvas { display:block; width:100% !important; height:100% !important; }
 
-    .panel { position:absolute; z-index:20; padding:12px; border:1px solid rgba(122,200,255,.26);
-      border-radius:12px; background:var(--panel); backdrop-filter:blur(10px);
-      box-shadow:0 14px 40px rgba(0,0,0,.45); }
+    /* Registre « planche d'architecte » : angles taillés au biseau, jamais
+       adoucis, et un filet d'un pixel sur l'arête haute. */
+    .panel { position:absolute; z-index:20; padding:13px; border:1px solid rgba(150,205,230,.32);
+      border-radius:0; background:var(--panel); backdrop-filter:blur(10px);
+      box-shadow:0 0 0 1px rgba(3,10,17,.9), 0 18px 44px rgba(0,0,0,.5);
+      clip-path:polygon(0 9px, 9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%); }
+    .panel::before { content:""; position:absolute; left:0; right:0; top:0; height:2px;
+      background:linear-gradient(90deg, var(--cyan), transparent 62%); }
+    .lib-btn, .act, .world-pick { text-transform:uppercase; letter-spacing:1.1px; }
     .panel h2 { margin:0 0 9px; color:var(--cyan); font:800 11px/1 Arial; letter-spacing:1.6px; text-transform:uppercase; }
 
     #palette { left:12px; top:12px; bottom:12px; width:212px; overflow-y:auto; }
@@ -49,7 +55,7 @@
     .fam-name { margin-bottom:5px; color:rgba(214,236,248,.62); font:800 9px/1 Arial; letter-spacing:1.4px; text-transform:uppercase; }
     .fam-items { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
     .lib-btn { padding:7px 5px; cursor:pointer; color:#dbeeff; font-size:10.5px; font-weight:700; line-height:1.25;
-      border:1px solid rgba(255,255,255,.14); border-radius:7px; background:rgba(255,255,255,.05); }
+      border:1px solid rgba(255,255,255,.14); border-radius:0; background:rgba(255,255,255,.05); }
     .lib-btn:hover { border-color:var(--lime); background:rgba(82,132,48,.3); }
 
     #inspector { right:12px; top:12px; width:238px; }
@@ -58,12 +64,12 @@
     .row { display:grid; grid-template-columns:14px 1fr 1fr 1fr; gap:4px; align-items:center; margin-bottom:5px; }
     .row span { color:rgba(214,236,248,.6); font:800 10px Consolas,monospace; }
     .row input { width:100%; min-width:0; padding:4px 5px; color:#eaf7ff; text-align:right;
-      border:1px solid rgba(255,255,255,.16); border-radius:5px; background:rgba(2,10,18,.7);
+      border:1px solid rgba(255,255,255,.16); border-radius:0; background:rgba(2,10,18,.7);
       font:11px Consolas,monospace; }
     .row input:focus { outline:none; border-color:var(--cyan); }
     .btn-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:9px; }
     .act { padding:7px 4px; cursor:pointer; color:#dbeeff; font-size:11px; font-weight:800;
-      border:1px solid rgba(255,255,255,.16); border-radius:7px; background:rgba(255,255,255,.06); }
+      border:1px solid rgba(255,255,255,.16); border-radius:0; background:rgba(255,255,255,.06); }
     .act:hover { border-color:var(--cyan); background:rgba(24,72,100,.55); }
     .act.danger { color:#ffd3d3; border-color:rgba(255,120,120,.4); }
     .act.danger:hover { background:rgba(120,26,26,.5); border-color:#ff7a7a; }
@@ -71,9 +77,9 @@
     #toolbar { left:50%; bottom:12px; transform:translateX(-50%); display:flex; align-items:center; gap:8px; padding:9px 12px; }
     #toolbar label { display:flex; align-items:center; gap:5px; color:rgba(214,236,248,.75); font-size:11px; font-weight:700; }
     #toolbar input[type=number] { width:52px; padding:3px 5px; color:#eaf7ff; text-align:right;
-      border:1px solid rgba(255,255,255,.16); border-radius:5px; background:rgba(2,10,18,.7); font:11px Consolas,monospace; }
+      border:1px solid rgba(255,255,255,.16); border-radius:0; background:rgba(2,10,18,.7); font:11px Consolas,monospace; }
     #map-name { width:130px; padding:4px 7px; color:#eaf7ff;
-      border:1px solid rgba(255,255,255,.16); border-radius:6px; background:rgba(2,10,18,.7); font:12px Inter,Arial; }
+      border:1px solid rgba(255,255,255,.16); border-radius:0; background:rgba(2,10,18,.7); font:12px Inter,Arial; }
     #map-name:focus { outline:none; border-color:var(--lime); }
     .sep { width:1px; height:20px; background:rgba(255,255,255,.16); }
 
@@ -190,6 +196,6 @@
   }
 }
 </script>
-<script type="module" src="./maps/map-editor.js?v=cockpit-cibles-20260730"></script>
+<script type="module" src="./maps/map-editor.js?v=sans-halo-20260730"></script>
 </body>
 </html>
