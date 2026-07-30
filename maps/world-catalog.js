@@ -39,6 +39,29 @@ export const WORLD_MAPS = [
     layout: 'grid', population: { trees: 70, rocks: 25, buildings: 145, towers: 22, crystals: 0 },
     landmarks: [{ type: 'spire', x: 0, z: -40, scale: 2.4 }, { type: 'dome', x: -270, z: 180, scale: 1.7 }, { type: 'helipad', x: 250, z: -230, scale: 1.4 }],
     assets: [{ key: 'stadium', x: 280, z: 250, rotation: 0.35 }, { key: 'paris', x: -310, z: -260, rotation: -0.6 }],
+    // Circuit urbain de 16 portes : une grande boucle autour des districts,
+    // depart face au nord depuis le point d'apparition aerien. Les altitudes
+    // alternent pour obliger a monter et descendre entre les tours. Toute
+    // porte qui se retrouverait dans un immeuble est ecartee automatiquement
+    // au chargement (voir clearRaceGatesFromBuildings dans world-game.js).
+    raceCourse: [
+      { x: 0, z: 300, clearance: 95 },
+      { x: 220, z: 200, clearance: 110 },
+      { x: 420, z: 60, clearance: 120 },
+      { x: 520, z: -140, clearance: 100 },
+      { x: 460, z: -360, clearance: 125 },
+      { x: 260, z: -500, clearance: 110 },
+      { x: 20, z: -560, clearance: 95 },
+      { x: -230, z: -490, clearance: 118 },
+      { x: -430, z: -330, clearance: 105 },
+      { x: -540, z: -110, clearance: 130 },
+      { x: -480, z: 130, clearance: 100 },
+      { x: -300, z: 320, clearance: 115 },
+      { x: -80, z: 430, clearance: 95 },
+      { x: 150, z: 490, clearance: 112 },
+      { x: 380, z: 380, clearance: 125 },
+      { x: 480, z: 180, clearance: 100 }
+    ],
     spawn: { ground: [-40, 0, 330], air: [0, 120, 430] }, mission: 'Patrouille des districts',
     objectives: ['Passer sous la tour Nova', 'Rejoindre le stade', 'Boucler le périphérique'], modes: allModes
   },
@@ -319,6 +342,240 @@ export const WORLD_MAPS = [
     landmarks: [], assets: KENNEY_ROAD_PLACEMENTS,
     spawn: { ground: [0, 0, 440], air: [0, 115, 520] }, mission: 'Inspection du nouveau kit routier',
     objectives: ['Parcourir les 72 objets 3D', 'Traverser le rond-point et le pont', 'Inspecter la zone de chantier'], modes: allModes
+  },
+  {
+    // Circuit spatial : ni sol, ni relief, ni vegetation. Le terrain de type
+    // `space` renvoie un plancher unique tres bas, si loin qu'il n'est jamais
+    // atteint : le pilote dispose de toute la hauteur du circuit.
+    id: 'stellar-circuit', name: 'Circuit Stellaire', icon: '✦', category: 'Course spatiale', seed: 31337, size: 2400,
+    tagline: 'Un circuit en orbite, jalonné de tunnels qui propulsent à la vitesse lumière.',
+    description: 'Seize portes d’énergie tracent une boucle en trois dimensions entre les astéroïdes. Quatre tunnels d’accélération catapultent le vaisseau à la vitesse lumière sur les grandes lignes droites.',
+    sky: 0x03050f, fog: 0x05081a, fogDensity: 0.00012,
+    terrain: { kind: 'space', base: -900, amplitude: 0, scale: 0.004, low: 0x101020, mid: 0x101020, high: 0x101020 },
+    layout: 'race-circuit', combat: false,
+    // Ambiance relevee : la scene etait trop sombre, les roches claires et les
+    // parois du massif ont besoin d'etre lues.
+    ambientColor: 0x4a5f8f, ambientIntensity: 1.15,
+    nebulaColors: [0x5f3fd8, 0xd83f92, 0x2f9fd0, 0x9a3fd8, 0xd87a2f, 0x3fd8b0],
+    sun: { x: -0.35, y: 0.42, z: -1, distance: 3150, radius: 190, color: 0xfffaf0, glowColor: 0xffd27a, intensity: 3.6 },
+    gateRadius: 78,   // portes larges : elles doivent tenir dans un couloir de roche
+    // Planetes lointaines. `distance` reste sous le plan lointain de la camera
+    // (4200) sinon elles seraient purement ecretees.
+    planets: [
+      {
+        // La Terre : planisphere genere au chargement (oceans, continents,
+        // reliefs, calottes) plus une couche nuageuse en rotation propre.
+        // Poser un fichier de carte equirectangulaire et renseigner
+        // `textureUrl` suffit a passer a une vraie Terre photographique.
+        // Placee du cote de l'arrivee : on boucle le tour face a elle, et le
+        // tunnel final prolonge cette direction jusqu'au portail.
+        id: 'terre', x: 0.1, y: 0.12, z: 1, distance: 3500, radius: 330,
+        earthLike: true, clouds: true, seed: 1969,
+        color: 0xffffff, emissive: 0x0d2a4a, emissiveIntensity: 0.12,
+        atmosphere: 0x7fd4ff, spin: 0.014
+        // textureUrl: './assets/planets/earth.jpg'
+      },
+      {
+        id: 'ferrum', x: -0.9, y: -0.22, z: 0.5, distance: 2600, radius: 240,
+        color: 0xb06a3c, emissive: 0x4a1f0d, emissiveIntensity: 0.3,
+        ring: { inner: 1.5, outer: 2.5, color: 0xe8c191, tilt: -1.15, yaw: 0.4 }, spin: 0.02
+      },
+      {
+        id: 'vesper', x: 0.85, y: 0.3, z: 0.6, distance: 2400, radius: 150,
+        color: 0x8a5fc4, emissive: 0x2e1352, emissiveIntensity: 0.42,
+        atmosphere: 0xc9a2ff, spin: 0.026
+      }
+    ],
+    population: { trees: 0, rocks: 0, buildings: 0, towers: 0, crystals: 0, asteroids: 95 },
+    verticalSpan: 380,        // demi-hauteur du nuage d'asteroides
+    asteroidClearance: 170,   // rayon degage autour de la trajectoire
+    landmarks: [],
+    // Boucle tridimensionnelle : l'altitude varie fortement d'une porte a
+    // l'autre, c'est ce qui distingue une course spatiale d'un circuit a plat.
+    raceCourse: [
+      { x: 0, y: 0, z: 760, clearance: 66 },
+      { x: 330, y: 90, z: 660, clearance: 66 },
+      { x: 600, y: 170, z: 400, clearance: 66 },
+      { x: 720, y: 60, z: 60, clearance: 66 },
+      { x: 640, y: -110, z: -300, clearance: 66 },
+      { x: 380, y: -200, z: -600, clearance: 66 },
+      { x: 40, y: -120, z: -760, clearance: 66 },
+      { x: -320, y: 40, z: -690, clearance: 66 },
+      { x: -610, y: 180, z: -430, clearance: 66 },
+      { x: -740, y: 240, z: -70, clearance: 66 },
+      { x: -660, y: 120, z: 300, clearance: 66 },
+      { x: -420, y: -60, z: 600, clearance: 66 },
+      { x: -120, y: -170, z: 740, clearance: 66 },
+      { x: 200, y: -90, z: 800, clearance: 66 },
+      { x: 480, y: 60, z: 700, clearance: 66 },
+      { x: 300, y: 150, z: 820, clearance: 66 }
+    ],
+    // Tunnels d'acceleration : de vrais couloirs incurves, larges, qui relient
+    // deux portes. `path` donne les points de controle de la courbe ; rester a
+    // l'interieur `bonusHold` secondes rapporte `bonus` points.
+    speedZones: [
+      {
+        radius: 265, multiplier: 2.8, bonus: 150, bonusHold: 5, arcs: 18,
+        path: [[600, 170, 400], [690, 190, 260], [740, 110, 120], [720, 60, 60]]
+      },
+      {
+        radius: 265, multiplier: 2.8, bonus: 150, bonusHold: 5, arcs: 18,
+        path: [[640, -110, -300], [520, -190, -470], [280, -220, -640], [40, -120, -760]]
+      },
+      {
+        radius: 285, multiplier: 3.2, bonus: 150, bonusHold: 6, arcs: 20, color: 0xb46cff,
+        path: [[-740, 240, -70], [-780, 220, 90], [-720, 160, 240], [-660, 120, 300]]
+      },
+      {
+        radius: 285, multiplier: 3.2, bonus: 150, bonusHold: 6, arcs: 20, color: 0xb46cff,
+        path: [[-420, -60, 600], [-280, -160, 700], [-40, -170, 790], [200, -90, 800]]
+      },
+      {
+        // Tunnel de sortie : il prolonge la derniere porte vers la Terre et
+        // debouche sur le portail. Poussee maximale, aucune prime — c'est un
+        // couloir de depart, pas un exercice.
+        radius: 320, multiplier: 4.2, bonus: 0, bonusHold: 999, arcs: 22, color: 0x8ad8ff,
+        path: [[300, 150, 820], [240, 145, 900], [170, 138, 990], [112, 132, 1062]]
+      }
+    ],
+    // Massif rocheux : la roche est empilee AUTOUR de ce trace, jamais dedans,
+    // donc le couloir reste franchissable par construction. Il suit exactement
+    // les portes 7 a 11, qui se retrouvent ainsi encastrees dans les parois.
+    rockMassifs: [
+      {
+        // Plus large que le plus large des tunnels de vitesse (285), sinon la
+        // roche mordrait dans le tunnel qui traverse ce meme segment.
+        corridorRadius: 340,
+        shellThickness: 460,
+        chunks: 340,
+        chunkSize: [55, 190],
+        color: 0xc4bcab,          // roche claire : une roche sombre serait invisible
+        emissive: 0x33302a,
+        lamps: 16,
+        lampColor: 0xffb552,
+        path: [
+          [40, -120, -760],
+          [-160, -40, -740],
+          [-320, 40, -690],
+          [-480, 120, -570],
+          [-610, 180, -430],
+          [-700, 220, -260],
+          [-740, 240, -70],
+          [-700, 170, 130],
+          [-660, 120, 300]
+        ]
+      }
+    ],
+    // Portail d'arrivee : flottant, aligne sur la direction de la Terre, et
+    // avec un rayon d'activation large car on l'aborde a la vitesse lumiere.
+    portalAnchor: { x: 112, y: 111, z: 1080, facing: Math.PI },
+    portalActivationRadius: 95,
+    spawn: { ground: [0, 0, 900], air: [0, 0, 900] }, mission: 'Qualification du Circuit Stellaire',
+    objectives: ['Franchir les 16 portes d’énergie', 'Traverser les tunnels de vitesse lumière', 'Éviter la ceinture d’astéroïdes'],
+    modes: ['chasseur']
+  },
+  {
+    // Canyon des Titans II — le tour raconte une progression :
+    //   forêt basse → montée en montagne → couloirs de parois → redescente.
+    // Les tracés sont `groundRelative` : ils suivent le relief, ce qui permet
+    // d'écrire un couloir qui grimpe sans connaître l'altitude à l'avance.
+    id: 'titan-race-alpine', name: 'Canyon des Titans II', icon: '⛰', category: 'Course de montagne', seed: 48271, size: 2000,
+    tagline: 'Le circuit quitte la vallée, grimpe dans le massif et redescend en frôlant les sapins.',
+    description: 'Une course en trois temps : slalom entre les sapins au fond de la vallée, ascension dans des couloirs de parois rocheuses percés de tunnels d’accélération, puis plongée vers la forêt. Seize portes, quatre tunnels, deux massifs.',
+    sky: 0x7fb3d5, fog: 0xc3d9e6, fogDensity: 0.00048, waterLevel: -120,
+    // Amplitude forte et relèvement vers les bords : vallée au centre,
+    // hautes parois à la périphérie. C'est ce gradient qui fait la montée.
+    terrain: { kind: 'alpine', base: 8, amplitude: 340, scale: 0.0042, low: 0x3d5145, mid: 0x6f7466, high: 0xf0f4f6, snowLine: 210 },
+    layout: 'race-circuit', combat: false,
+    // Sapins denses au centre : c'est la section où l'on slalome.
+    population: { trees: 520, rocks: 320, buildings: 0, towers: 6, crystals: 14 },
+    gateRadius: 46,
+    landmarks: [
+      { type: 'helipad', x: 0, z: 700, scale: 1.5 },
+      { type: 'arch', x: -420, z: 250, scale: 1.7 },
+      { type: 'radar', x: 300, z: -560, scale: 1.9 }
+    ],
+    raceCourse: [
+      // 1-4 · fond de vallée, entre les sapins, très bas
+      { x: 0, z: 620, clearance: 42 },
+      { x: 250, z: 480, clearance: 40 },
+      { x: 430, z: 250, clearance: 46 },
+      { x: 520, z: -20, clearance: 58 },
+      // 5-8 · on quitte la vallée, le relief monte
+      { x: 610, z: -290, clearance: 80 },
+      { x: 520, z: -540, clearance: 105 },
+      { x: 290, z: -700, clearance: 120 },
+      { x: 20, z: -760, clearance: 135 },
+      // 9-12 · couloirs de parois, au plus haut
+      { x: -270, z: -690, clearance: 140 },
+      { x: -520, z: -510, clearance: 150 },
+      { x: -680, z: -260, clearance: 145 },
+      { x: -720, z: 30, clearance: 130 },
+      // 13-16 · plongée vers la forêt
+      { x: -600, z: 320, clearance: 100 },
+      { x: -400, z: 520, clearance: 70 },
+      { x: -160, z: 640, clearance: 48 },
+      { x: 90, z: 700, clearance: 40 }
+    ],
+    // Deux massifs : l'ascension puis la crête. La roche est empilée autour du
+    // tracé, jamais dedans — le couloir reste franchissable par construction.
+    rockMassifs: [
+      {
+        groundRelative: true,
+        corridorRadius: 210, shellThickness: 330, chunks: 300, chunkSize: [50, 165],
+        color: 0xa9a294, emissive: 0x2c2822, lamps: 12, lampColor: 0xffc06a,
+        path: [
+          [610, -290, 80], [560, -430, 95], [520, -540, 105],
+          [420, -640, 115], [290, -700, 120], [150, -745, 128], [20, -760, 135]
+        ]
+      },
+      {
+        groundRelative: true,
+        corridorRadius: 225, shellThickness: 360, chunks: 320, chunkSize: [55, 180],
+        color: 0xb4ad9e, emissive: 0x2c2822, lamps: 14, lampColor: 0xffb552,
+        path: [
+          [-270, -690, 140], [-410, -610, 146], [-520, -510, 150],
+          [-620, -390, 150], [-680, -260, 145], [-715, -120, 138], [-720, 30, 130]
+        ]
+      }
+    ],
+    // Tunnels : deux dans les parois, un sur la crête, un dans la descente.
+    // Rayon inférieur au couloir du massif, sinon la roche mordrait dedans.
+    speedZones: [
+      {
+        groundRelative: true, radius: 130, multiplier: 2.6, bonus: 150, bonusHold: 5, arcs: 16,
+        path: [[520, -540, 105], [470, -600, 110], [370, -665, 116], [290, -700, 120]]
+      },
+      {
+        groundRelative: true, radius: 140, multiplier: 3, bonus: 150, bonusHold: 5, arcs: 18, color: 0xb46cff,
+        path: [[-520, -510, 150], [-590, -430, 150], [-650, -340, 148], [-680, -260, 145]]
+      },
+      {
+        groundRelative: true, radius: 140, multiplier: 3, bonus: 150, bonusHold: 6, arcs: 18, color: 0xb46cff,
+        path: [[-720, 30, 130], [-700, 150, 118], [-660, 250, 108], [-600, 320, 100]]
+      },
+      {
+        // Descente vers la forêt : large et rapide, elle relance avant le
+        // slalom entre les sapins.
+        groundRelative: true, radius: 120, multiplier: 2.6, bonus: 150, bonusHold: 5, arcs: 16,
+        path: [[-400, 520, 70], [-320, 580, 60], [-240, 620, 52], [-160, 640, 48]]
+      }
+    ],
+    // Cibles a abattre, posees dans la descente et le retour en vallee : on
+    // tire en sortant du massif, pas pendant les couloirs etroits.
+    targets: [
+      { x: -560, z: 400, clearance: 95 },
+      { x: -470, z: 470, clearance: 78 },
+      { x: -350, z: 545, clearance: 66 },
+      { x: -230, z: 600, clearance: 56 },
+      { x: -60, z: 665, clearance: 50 },
+      { x: 150, z: 660, clearance: 48 },
+      { x: 320, z: 545, clearance: 52 },
+      { x: 470, z: 360, clearance: 58 }
+    ],
+    spawn: { ground: [0, 0, 760], air: [0, 120, 760] }, mission: 'Ascension du massif des Titans',
+    objectives: ['Slalomer entre les sapins de la vallée', 'Franchir les couloirs de parois', 'Enchaîner les quatre tunnels'],
+    modes: ['chasseur']
   }
 ];
 

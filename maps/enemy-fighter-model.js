@@ -7,6 +7,12 @@ const MODEL_URL = `${ASSET_DIR}Meshy_AI_Create_an_ultra_reali_0722015421_texture
 let templatePromise = null;
 let whiteGlowTexture = null;
 
+// Taille du halo de reperage, en unites d'ecran : avec `sizeAttenuation: false`
+// une valeur de 1 couvre a peu pres la hauteur du champ de vision. 0.085
+// represente donc environ 8 % de la hauteur de l'ecran, quelle que soit la
+// distance de l'ennemi.
+const BEACON_SCREEN_SIZE = .085;
+
 function getWhiteGlowTexture() {
   if (whiteGlowTexture) return whiteGlowTexture;
   const canvas = document.createElement('canvas');
@@ -102,14 +108,16 @@ export async function createEnemyFighterModel({ targetLength = 10, thrusters = t
   const visibilityLight = new THREE.PointLight(0x5ffcff, 90, targetLength * 16, 1.6);
   visibilityLight.name = 'enemy-hologram-light';
   instance.add(visibilityLight);
-  const makeHalo = (scale, opacity, order) => {
+  const makeHalo = (scale, opacity, order, color, sizeAttenuation = true) => {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: getWhiteGlowTexture(),
-      color: 0x8dfcff,
+      color,
       transparent: true,
       opacity,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      depthTest: false,
+      sizeAttenuation,
       toneMapped: false
     }));
     sprite.name = 'enemy-hologram-halo';
@@ -118,9 +126,27 @@ export async function createEnemyFighterModel({ targetLength = 10, thrusters = t
     sprite.renderOrder = order;
     return sprite;
   };
-  // Halo proche (net) + grand halo (visible de tres loin).
-  instance.add(makeHalo(6, .95, 2));
-  instance.add(makeHalo(13, .5, 1));
+
+  // Halos proches : ils grandissent avec l'appareil, donnent la presence et la
+  // taille apparente. Coeur blanc pur, aura holographique autour.
+  instance.add(makeHalo(9, 1, 4, 0xffffff));
+  instance.add(makeHalo(19, .72, 3, 0xc8fdff));
+  instance.add(makeHalo(34, .38, 2, 0x8dfcff));
+
+  // Halo de reperage : `sizeAttenuation: false` fige sa taille a l'ecran, il ne
+  // retrecit donc pas avec la distance. C'est ce qui manquait — les halos
+  // classiques disparaissaient justement quand l'ennemi devenait lointain.
+  // `depthTest: false` le laisse traverser les immeubles : la cible reste
+  // reperable meme masquee par une tour.
+  const beacon = makeHalo(1, .92, 5, 0xffffff, false);
+  beacon.name = 'enemy-hologram-beacon';
+  // Un sprite herite de l'echelle de son parent. Celle de l'instance depend du
+  // modele importe, donc on l'annule au lieu de la supposer : la taille finale
+  // a l'ecran est ainsi la meme quel que soit l'appareil.
+  const instanceScale = instance.scale.x || 1;
+  const beaconScreenSize = BEACON_SCREEN_SIZE / instanceScale;
+  beacon.scale.set(beaconScreenSize, beaconScreenSize, 1);
+  instance.add(beacon);
   if (thrusters) addThrusters(instance);
   return instance;
 }

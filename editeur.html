@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Raphael — Éditeur de cartes</title>
+  <style>
+    :root { color-scheme: dark; --cyan:#63d9ff; --lime:#a4ed72; --panel:rgba(7,15,25,.92); }
+    * { box-sizing:border-box; }
+    html, body { margin:0; height:100%; overflow:hidden; background:#06101a; color:#e8f5ff;
+      font-family:Inter,Segoe UI,Arial,sans-serif; }
+    [hidden] { display:none !important; }
+    button, input, select { font:inherit; }
+
+    /* ── CHOIX DU MONDE DE BASE ───────────────────────────────────────────── */
+    #picker { position:fixed; inset:0; overflow:auto; padding:38px 26px 60px;
+      background:radial-gradient(circle at 20% 8%, rgba(42,132,171,.22), transparent 32rem),
+                 linear-gradient(180deg,#0a1725,#050a10 60%); }
+    .picker-head { max-width:1400px; margin:0 auto 26px; }
+    .kicker { color:var(--cyan); font:800 12px/1 Arial; letter-spacing:2.6px; text-transform:uppercase; }
+    h1 { margin:10px 0 12px; font-size:clamp(30px,4.6vw,54px); line-height:1; letter-spacing:-1.6px; }
+    .lead { max-width:760px; color:rgba(222,240,252,.72); font-size:15px; line-height:1.6; }
+    .lead strong { color:var(--lime); }
+    .back-link { display:inline-block; margin-bottom:22px; padding:9px 14px; color:#cbeeff;
+      text-decoration:none; border:1px solid rgba(255,255,255,.18); border-radius:9px; background:rgba(255,255,255,.05); }
+    #world-grid { max-width:1400px; margin:26px auto 0; display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:13px; }
+    .world-pick { padding:15px 16px; text-align:left; cursor:pointer; color:#dceeff;
+      border:1px solid rgba(255,255,255,.13); border-radius:13px; background:rgba(255,255,255,.05);
+      transition:border-color .16s, background .16s, transform .16s; }
+    .world-pick:hover { border-color:rgba(99,217,255,.55); background:rgba(28,74,102,.4); transform:translateY(-3px); }
+    .world-pick .wp-icon { font-size:24px; }
+    .world-pick .wp-name { margin-top:6px; font-size:16px; font-weight:800; }
+    .world-pick .wp-cat { margin-top:2px; color:var(--cyan); font:800 10px/1 Arial; letter-spacing:1.2px; text-transform:uppercase; }
+    .world-pick .wp-meta { margin-top:8px; color:rgba(200,226,242,.6); font:11px/1.4 Consolas,monospace; }
+
+    /* ── ÉDITEUR ──────────────────────────────────────────────────────────── */
+    #editor { position:fixed; inset:0; }
+    #canvas-host { position:absolute; inset:0; }
+    #canvas-host canvas { display:block; width:100% !important; height:100% !important; }
+
+    .panel { position:absolute; z-index:20; padding:12px; border:1px solid rgba(122,200,255,.26);
+      border-radius:12px; background:var(--panel); backdrop-filter:blur(10px);
+      box-shadow:0 14px 40px rgba(0,0,0,.45); }
+    .panel h2 { margin:0 0 9px; color:var(--cyan); font:800 11px/1 Arial; letter-spacing:1.6px; text-transform:uppercase; }
+
+    #palette { left:12px; top:12px; bottom:12px; width:212px; overflow-y:auto; }
+    .fam { margin-bottom:12px; }
+    .fam-name { margin-bottom:5px; color:rgba(214,236,248,.62); font:800 9px/1 Arial; letter-spacing:1.4px; text-transform:uppercase; }
+    .fam-items { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+    .lib-btn { padding:7px 5px; cursor:pointer; color:#dbeeff; font-size:10.5px; font-weight:700; line-height:1.25;
+      border:1px solid rgba(255,255,255,.14); border-radius:7px; background:rgba(255,255,255,.05); }
+    .lib-btn:hover { border-color:var(--lime); background:rgba(82,132,48,.3); }
+
+    #inspector { right:12px; top:12px; width:238px; }
+    #inspector.empty .insp-body { display:none; }
+    .insp-none { color:rgba(214,236,248,.55); font-size:11.5px; line-height:1.5; }
+    .row { display:grid; grid-template-columns:14px 1fr 1fr 1fr; gap:4px; align-items:center; margin-bottom:5px; }
+    .row span { color:rgba(214,236,248,.6); font:800 10px Consolas,monospace; }
+    .row input { width:100%; min-width:0; padding:4px 5px; color:#eaf7ff; text-align:right;
+      border:1px solid rgba(255,255,255,.16); border-radius:5px; background:rgba(2,10,18,.7);
+      font:11px Consolas,monospace; }
+    .row input:focus { outline:none; border-color:var(--cyan); }
+    .btn-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:9px; }
+    .act { padding:7px 4px; cursor:pointer; color:#dbeeff; font-size:11px; font-weight:800;
+      border:1px solid rgba(255,255,255,.16); border-radius:7px; background:rgba(255,255,255,.06); }
+    .act:hover { border-color:var(--cyan); background:rgba(24,72,100,.55); }
+    .act.danger { color:#ffd3d3; border-color:rgba(255,120,120,.4); }
+    .act.danger:hover { background:rgba(120,26,26,.5); border-color:#ff7a7a; }
+
+    #toolbar { left:50%; bottom:12px; transform:translateX(-50%); display:flex; align-items:center; gap:8px; padding:9px 12px; }
+    #toolbar label { display:flex; align-items:center; gap:5px; color:rgba(214,236,248,.75); font-size:11px; font-weight:700; }
+    #toolbar input[type=number] { width:52px; padding:3px 5px; color:#eaf7ff; text-align:right;
+      border:1px solid rgba(255,255,255,.16); border-radius:5px; background:rgba(2,10,18,.7); font:11px Consolas,monospace; }
+    #map-name { width:130px; padding:4px 7px; color:#eaf7ff;
+      border:1px solid rgba(255,255,255,.16); border-radius:6px; background:rgba(2,10,18,.7); font:12px Inter,Arial; }
+    #map-name:focus { outline:none; border-color:var(--lime); }
+    .sep { width:1px; height:20px; background:rgba(255,255,255,.16); }
+
+    #status { left:50%; top:12px; transform:translateX(-50%); padding:8px 16px; max-width:60vw;
+      color:#cdeeff; font:12px Consolas,monospace; text-align:center; }
+    #status b { color:var(--lime); }
+
+    #loading { position:absolute; z-index:60; inset:0; display:grid; place-items:center;
+      background:linear-gradient(180deg,#071827,#02070c); }
+    #loading div { color:#8be6ff; font-size:14px; }
+
+    #hint { right:12px; bottom:12px; width:262px; color:rgba(206,232,246,.66); font-size:11px; line-height:1.7; }
+    #hint b { color:#cdeeff; }
+
+    /* Rectangle de selection multiple, purement decoratif : le calcul se fait
+       en projetant chaque objet a l'ecran. */
+    #rubber { position:absolute; z-index:30; pointer-events:none;
+      border:1.5px dashed var(--lime); background:rgba(164,237,114,.13); }
+    /* Piece armee depuis la bibliotheque : le curseur annonce la pose. */
+    body.placing #canvas-host { cursor:crosshair; }
+    .lib-btn.armed { color:#07121b; border-color:var(--lime); background:var(--lime); }
+
+    @media (max-width:900px) {
+      #palette { width:150px; } #inspector, #hint { width:180px; }
+      #toolbar { flex-wrap:wrap; max-width:calc(100vw - 24px); justify-content:center; }
+    }
+  </style>
+</head>
+<body>
+
+<section id="picker">
+  <div class="picker-head">
+    <a class="back-link" href="./index.html">← Menu</a>
+    <div class="kicker">Nova Flight · Éditeur</div>
+    <h1>Créer une carte</h1>
+    <p class="lead">
+      Choisis un monde de départ. Il sera <strong>dupliqué</strong> : la carte d’origine
+      n’est jamais modifiée. Tu pourras ensuite déplacer, tourner, retourner, agrandir,
+      supprimer et ajouter tout ce que contient la carte.
+    </p>
+  </div>
+  <div id="world-grid"></div>
+</section>
+
+<section id="editor" hidden>
+  <div id="canvas-host"></div>
+
+  <aside class="panel" id="palette">
+    <h2>Bibliothèque</h2>
+    <div id="palette-body"></div>
+  </aside>
+
+  <aside class="panel empty" id="inspector">
+    <h2>Objet sélectionné</h2>
+    <p class="insp-none" id="insp-none">Clique un objet dans la scène pour le sélectionner.</p>
+    <div class="insp-body">
+      <div class="row"><span>P</span>
+        <input id="px" type="number" step="1"><input id="py" type="number" step="1"><input id="pz" type="number" step="1"></div>
+      <div class="row"><span>R</span>
+        <input id="rx" type="number" step="5"><input id="ry" type="number" step="5"><input id="rz" type="number" step="5"></div>
+      <div class="row"><span>T</span>
+        <input id="sx" type="number" step="0.1"><input id="sy" type="number" step="0.1"><input id="sz" type="number" step="0.1"></div>
+      <div class="btn-grid">
+        <button class="act" data-act="rot-y">↻ 45° Y</button>
+        <button class="act" data-act="rot-x">↻ 45° X</button>
+        <button class="act" data-act="flip-x">⇋ Miroir X</button>
+        <button class="act" data-act="flip-y">⇅ Miroir Y</button>
+        <button class="act" data-act="bigger">＋ Agrandir</button>
+        <button class="act" data-act="smaller">－ Réduire</button>
+        <button class="act" data-act="duplicate">⧉ Dupliquer</button>
+        <button class="act danger" data-act="delete">✕ Supprimer</button>
+      </div>
+    </div>
+  </aside>
+
+  <aside class="panel" id="hint">
+    <b>Bibliothèque</b> : clique une pièce, puis clique dans la carte pour la poser<br>
+    <b>Glisser un objet</b> le déplace · <b>Maj + glisser</b> change l’altitude<br>
+    <b>Glisser dans le vide</b> trace un rectangle et sélectionne tout dedans<br>
+    <b>Poignées jaunes</b> : tire une face pour étirer sur cet axe seul<br>
+    <b>Molette</b> : agrandit la sélection — ou zoome si rien n’est sélectionné<br>
+    (verrouillée pendant un déplacement)<br>
+    <b>Ctrl + molette</b> zoome toujours · <b>Clic droit glissé</b> tourne la vue<br>
+    <b>Maj + clic</b> ajoute ou retire de la sélection<br>
+    <b>Ctrl+Z</b> annule · <b>Suppr</b> supprime · <b>D</b> duplique · <b>R</b> tourne
+  </aside>
+  <div id="rubber" hidden></div>
+
+  <div class="panel" id="status">Chargement…</div>
+
+  <div class="panel" id="toolbar">
+    <label><input type="checkbox" id="snap-on"> Grille</label>
+    <label>Pas <input type="number" id="snap-step" value="10" min="1" max="200" step="1"></label>
+    <div class="sep"></div>
+    <button class="act" id="btn-reset-view">Vue d’ensemble</button>
+    <button class="act" id="btn-count">Inventaire</button>
+    <div class="sep"></div>
+    <input type="text" id="map-name" placeholder="Nom de la carte" maxlength="40">
+    <button class="act" id="btn-save" style="border-color:var(--lime);color:#dfffc9">💾 Enregistrer</button>
+    <button class="act" id="btn-play">▶ Jouer</button>
+    <button class="act" id="btn-export">⇩ Fichier</button>
+    <div class="sep"></div>
+    <a class="act" href="./editeur.html" style="text-decoration:none;display:inline-block">Changer de base</a>
+  </div>
+
+  <div id="loading"><div>Construction du monde…</div></div>
+</section>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./libs/three.module.js",
+    "three/addons/": "./libs/"
+  }
+}
+</script>
+<script type="module" src="./maps/map-editor.js?v=cockpit-cibles-20260730"></script>
+</body>
+</html>

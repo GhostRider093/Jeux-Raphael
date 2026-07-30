@@ -4,6 +4,7 @@ import { OBJLoader } from '../libs/loaders/OBJLoader.js';
 import { STLLoader } from '../libs/loaders/STLLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 import { ASSET_LIBRARY } from './world-catalog.js?v=public-map-paths-20260722';
+import { createCollisionField, addBox3, addBoxFromCenter, addHeightfield } from './world-collision.js?v=cockpit-cibles-20260730';
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const portalObjLoader = new OBJLoader();
@@ -12,6 +13,66 @@ const stlLoader = new STLLoader();
 const assetCache = new Map();
 const novaBuildingCache = new Map();
 const NOVA_BUILDING_SCALE = 2.4;
+// Rayon de la sphere de collision du pilote, cale sur l'envergure du chasseur.
+const PILOT_COLLISION_RADIUS = 7;
+// Garde-fous de l'enregistrement des collisions sur les modeles composites.
+const COLLISION_MESH_LIMIT = 240;    // plafond par objet, protege les gros GLB
+const COLLISION_MIN_HEIGHT = 6;      // en dessous, l'objet passe sous le chasseur
+const COLLISION_COLUMN_SIZE = 14;    // finesse de la grille de colonnes, en unites
+
+/**
+ * Enregistre un objet compose de primitives, maillage par maillage.
+ *
+ * Exact et bon marche pour les groupes construits ici (murs, tours, blocs) ou
+ * chaque maillage est deja une boite.
+ */
+function registerMeshColliders(collision, object) {
+  if (!collision) return;
+  object.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  let registered = 0;
+  object.traverse(node => {
+    if (!node.isMesh || registered >= COLLISION_MESH_LIMIT) return;
+    box.setFromObject(node);
+    if (box.isEmpty() || box.max.y - box.min.y < COLLISION_MIN_HEIGHT) return;
+    addBox3(collision, box);
+    registered++;
+  });
+}
+
+/**
+ * Enregistre un modele importe en le rasterisant en colonnes verticales.
+ *
+ * Indispensable pour les modeles de quartier : `chicago.stl` est un maillage
+ * unique contenant une ville entiere, et le decouper par maillage ne donnerait
+ * qu'une seule boite geante — un mur invisible de plusieurs centaines de
+ * metres. En projetant les triangles sur une grille horizontale, chaque
+ * colonne batie devient un obstacle et les rues restent traversables.
+ */
+function registerHeightfieldColliders(collision, object) {
+  if (!collision) return 0;
+  object.updateMatrixWorld(true);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+
+  // La grille elle-meme vit dans world-collision.js : ici on ne fait que
+  // livrer les triangles en coordonnees monde.
+  return addHeightfield(collision, emit => {
+    object.traverse(node => {
+      if (!node.isMesh) return;
+      const position = node.geometry?.attributes?.position;
+      if (!position) return;
+      const index = node.geometry.index;
+      const count = index ? index.count : position.count;
+      const matrix = node.matrixWorld;
+      for (let i = 0; i + 2 < count; i += 3) {
+        a.fromBufferAttribute(position, index ? index.getX(i) : i).applyMatrix4(matrix);
+        b.fromBufferAttribute(position, index ? index.getX(i + 1) : i + 1).applyMatrix4(matrix);
+        c.fromBufferAttribute(position, index ? index.getX(i + 2) : i + 2).applyMatrix4(matrix);
+        emit(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+      }
+    });
+  }, { cellSize: COLLISION_COLUMN_SIZE, minHeight: COLLISION_MIN_HEIGHT });
+}
 
 const NOVA_BUILDINGS = [
   { id: 'building-a', url: './assets/nova-city/building-a.glb', height: 72, unique: true },
@@ -66,6 +127,9 @@ function fbm(x, z, seed) {
 
 export function getWorldHeight(world, x, z) {
   const t = world.terrain;
+  // L'espace n'a pas de sol. Un plancher unique et tres bas laisse toute la
+  // hauteur du circuit libre, sans relief ni relevement des bords.
+  if (t.kind === 'space') return t.base;
   if (t.kind === 'voxel') {
     const blockSize = t.blockSize || 20;
     x = Math.floor((x + world.size * .5) / blockSize) * blockSize + blockSize * .5 - world.size * .5;
@@ -395,6 +459,7 @@ function buildRocks(world, root, random) {
     dummy.rotation.set(voxel ? 0 : random() * .4, voxel ? Math.round(random() * 3) * Math.PI * .5 : random() * Math.PI * 2, voxel ? 0 : random() * .3);
     dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
   }
+  mesh.name = 'field-rocks';
   mesh.castShadow = true; mesh.receiveShadow = true; root.add(mesh);
 }
 
@@ -480,7 +545,7 @@ function loadNovaBuilding(spec) {
   return promise;
 }
 
-async function buildNovaCityBuildings(world, root, random, onProgress) {
+async function buildNovaCityBuildings(world, root, random, onProgress, collision) {
   if (world.id !== 'nova-city') return [];
   onProgress?.(`Nova City : chargement de ${NOVA_BUILDINGS.length} modèles d'immeubles…`);
   const loaded = await Promise.allSettled(NOVA_BUILDINGS.map(async spec => ({ spec, model: await loadNovaBuilding(spec) })));
@@ -528,6 +593,9 @@ async function buildNovaCityBuildings(world, root, random, onProgress) {
     wrapper.userData.novaBuilding = true;
     wrapper.userData.sourceModel = item.spec.id;
     root.add(wrapper);
+    // Rasterisation en colonnes : `chicago.stl` est une ville entiere dans un
+    // maillage unique, une boite globale en ferait un bloc plein.
+    registerHeightfieldColliders(collision, wrapper);
   });
   root.userData.novaBuildings = placements.reduce((summary, item) => {
     summary[item.spec.id] = (summary[item.spec.id] || 0) + 1;
@@ -538,7 +606,7 @@ async function buildNovaCityBuildings(world, root, random, onProgress) {
   return placements;
 }
 
-function buildBuildings(world, root, random) {
+function buildBuildings(world, root, random, collision) {
   const count = world.population.buildings || 0;
   if (!count) return;
   const night = world.id === 'neon-vegas' || world.id === 'nova-city';
@@ -558,15 +626,24 @@ function buildBuildings(world, root, random) {
     const width = voxel ? 10 + Math.floor(random() * 3) * 5 : 7 + random() * 19;
     const depth = voxel ? 10 + Math.floor(random() * 3) * 5 : 7 + random() * 18;
     const height = voxel ? 8 + Math.floor(random() * 4) * 5 : world.layout === 'grid' || world.layout === 'strip' ? 16 + random() * 85 : 6 + random() * 22;
+    const quarterTurns = Math.round(random() * 3);
     dummy.position.set(point.x, point.y + height * .5, point.z);
     dummy.scale.set(width, height, depth);
-    dummy.rotation.y = Math.round(random() * 3) * Math.PI * .5;
+    dummy.rotation.y = quarterTurns * Math.PI * .5;
     dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
+    // Les rotations sont des multiples de 90 degres : un quart de tour impair
+    // echange simplement largeur et profondeur, la boite reste donc exacte.
+    const swapped = quarterTurns % 2 === 1;
+    addBoxFromCenter(
+      collision, point.x, point.y + height * .5, point.z,
+      (swapped ? depth : width) * .5, height * .5, (swapped ? width : depth) * .5
+    );
   }
+  mesh.name = 'field-buildings';
   mesh.castShadow = true; mesh.receiveShadow = true; root.add(mesh);
 }
 
-function buildTowers(world, root, random) {
+function buildTowers(world, root, random, collision) {
   const count = world.population.towers || 0;
   if (!count) return;
   const material = new THREE.MeshStandardMaterial({ color: 0x65717a, roughness: .45, metalness: .45, emissive: world.id === 'neon-vegas' ? 0x321080 : 0x000000, emissiveIntensity: .8 });
@@ -575,11 +652,17 @@ function buildTowers(world, root, random) {
   for (let i = 0; i < count; i++) {
     const point = randomGroundPoint(world, random, 100);
     const height = 18 + random() * 48;
+    const radiusX = 1 + random() * 1.8;
+    const radiusZ = 1 + random() * 1.8;
     dummy.position.set(point.x, point.y + height * .5, point.z);
-    dummy.scale.set(1 + random() * 1.8, height, 1 + random() * 1.8);
+    dummy.scale.set(radiusX, height, radiusZ);
     dummy.rotation.y = random() * Math.PI;
     dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
+    // Cylindre : la rotation n'a pas d'effet sur l'emprise. 1.7 est le rayon
+    // du bas de la CylinderGeometry, la partie la plus large du pylone.
+    addBoxFromCenter(collision, point.x, point.y + height * .5, point.z, radiusX * 1.7, height * .5, radiusZ * 1.7);
   }
+  mesh.name = 'field-towers';
   mesh.castShadow = true; root.add(mesh);
 }
 
@@ -598,6 +681,7 @@ function buildCrystals(world, root, random) {
     dummy.rotation.y = random() * Math.PI;
     dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
   }
+  mesh.name = 'field-crystals';
   root.add(mesh);
 }
 
@@ -772,7 +856,7 @@ async function getAssetTemplate(key) {
   return promise;
 }
 
-async function placeExistingAssets(world, root, onProgress) {
+async function placeExistingAssets(world, root, onProgress, collision) {
   const placements = world.assets || [];
   let loaded = 0;
   onProgress?.(`Objets 3D : 0 / ${placements.length}`);
@@ -784,8 +868,12 @@ async function placeExistingAssets(world, root, onProgress) {
     wrapper.position.set(placement.x, y + (placement.y || 0), placement.z);
     wrapper.rotation.y = placement.rotation || 0;
     wrapper.scale.setScalar(placement.scale || 1);
+    wrapper.name = `asset-${placements.indexOf(placement)}-${placement.key}`;
     wrapper.userData.assetKey = placement.key;
     root.add(wrapper);
+    // Quartier parisien, stade, forteresses : modeles importes dont la
+    // geometrie interne est inconnue, la rasterisation est la seule voie sure.
+    registerHeightfieldColliders(collision, wrapper);
     loaded++;
     onProgress?.(`Objets 3D : ${loaded} / ${placements.length}`);
   }));
@@ -811,10 +899,17 @@ function addLighting(world, root) {
 
 function buildPortal(world, route, root) {
   if (!route?.destination) return null;
-  const groundY = Math.max(getWorldHeight(world, route.x, route.z), (world.waterLevel ?? -999) + .5);
+  // Sans sol, le placement automatique enverrait le portail a -900. Le monde
+  // peut donc imposer son ancrage exact, aligne sur la planete d'arrivee.
+  const anchor = world.portalAnchor;
+  const baseX = anchor ? anchor.x : route.x;
+  const baseZ = anchor ? anchor.z : route.z;
+  const groundY = anchor ? anchor.y : Math.max(getWorldHeight(world, baseX, baseZ), (world.waterLevel ?? -999) + .5);
   const portal = new THREE.Group();
   portal.name = `portal-to-${route.destination.id}`;
-  portal.position.set(route.x, groundY, route.z);
+  portal.position.set(baseX, groundY, baseZ);
+  // Le portail regarde le pilote qui arrive : sinon on le traverse de biais.
+  if (anchor?.facing) portal.rotation.y = anchor.facing;
 
   const energy = new THREE.MeshBasicMaterial({
     color: 0x77e8ff, transparent: true, opacity: .2,
@@ -856,12 +951,16 @@ function buildPortal(world, route, root) {
     portal.add(object);
   });
 
-  const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x182a3b, emissive: 0x071b32, emissiveIntensity: .8, roughness: .52, metalness: .62 });
-  const platform = new THREE.Mesh(new THREE.CylinderGeometry(17, 19, 1.1, 32), baseMaterial);
-  platform.scale.set(1.28, 1.08, .44);
-  platform.position.y = .35;
-  platform.receiveShadow = true;
-  portal.add(platform);
+  // La plateforme suppose un sol sous le portail : en orbite elle n'a pas lieu
+  // d'etre, l'arche flotte.
+  if (!anchor) {
+    const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x182a3b, emissive: 0x071b32, emissiveIntensity: .8, roughness: .52, metalness: .62 });
+    const platform = new THREE.Mesh(new THREE.CylinderGeometry(17, 19, 1.1, 32), baseMaterial);
+    platform.scale.set(1.28, 1.08, .44);
+    platform.position.y = .35;
+    platform.receiveShadow = true;
+    portal.add(platform);
+  }
 
   for (let i = 0; i < 24; i++) {
     const particle = new THREE.Mesh(
@@ -885,10 +984,758 @@ function buildPortal(world, route, root) {
     destinationId: route.destination.id,
     destinationName: route.destination.name,
     centerY: groundY + centerY,
-    activationRadius: 24
+    // A la vitesse lumiere le pilote franchit plus de dix unites par image :
+    // un rayon de 24 se laisserait traverser sans etre detecte.
+    activationRadius: world.portalActivationRadius ?? 24
   };
   root.add(portal);
   return portal;
+}
+
+// Le plan lointain de la camera est a 4200 : tout ce qui est place au-dela est
+// purement et simplement ecrete. Le decor lointain doit donc tenir dessous,
+// et c'est `fog: false` qui lui garde sa nettete plutot que la distance.
+const SPACE_STAR_SHELL = 3600;
+const SPACE_PLANET_SHELL = 2900;
+
+let softSpaceTexture = null;
+function getSoftSpaceTexture() {
+  if (softSpaceTexture) return softSpaceTexture;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const context = canvas.getContext('2d');
+  const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(.3, 'rgba(255,255,255,.55)');
+  gradient.addColorStop(.7, 'rgba(255,255,255,.14)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+  softSpaceTexture = new THREE.CanvasTexture(canvas);
+  return softSpaceTexture;
+}
+
+/**
+ * Champ d'etoiles colore.
+ *
+ * Les etoiles portent une couleur par sommet plutot qu'une teinte unique par
+ * couche : un ciel monochrome est ce qui fait « plat ». Rendu en `Points`,
+ * donc un seul appel de dessin par couche.
+ */
+function buildStarfield(world, root, random) {
+  // Teintes stellaires reelles : bleutees pour les chaudes, ambrees pour les
+  // froides, blanches pour la majorite.
+  const palette = [
+    [1, 1, 1], [.86, .92, 1], [.72, .84, 1],
+    [1, .95, .84], [1, .84, .68], [1, .72, .62],
+    [.82, 1, .96], [.94, .82, 1]
+  ];
+  // Trois couches au lieu de deux, dont une de grosses etoiles vives. Chacune
+  // scintille a son propre rythme : c'est le dephasage entre couches qui donne
+  // l'impression que les etoiles clignotent individuellement, sans le cout d'un
+  // shader dedie.
+  const layers = [
+    { count: 4200, size: 3.6, opacity: 1, twinkle: { speed: 1.7, depth: .16, phase: 0 } },
+    { count: 2100, size: 8, opacity: .8, twinkle: { speed: 1.1, depth: .3, phase: 2.1 } },
+    { count: 420, size: 20, opacity: .95, twinkle: { speed: .7, depth: .42, phase: 4.2 } }
+  ];
+  layers.forEach(layer => {
+    const positions = new Float32Array(layer.count * 3);
+    const colors = new Float32Array(layer.count * 3);
+    for (let i = 0; i < layer.count; i++) {
+      // Repartition uniforme sur une sphere : sans le arccos, les etoiles
+      // s'agglutineraient aux poles.
+      const theta = random() * Math.PI * 2;
+      const phi = Math.acos(2 * random() - 1);
+      const radius = SPACE_STAR_SHELL * (.88 + random() * .12);
+      positions[i * 3] = Math.sin(phi) * Math.cos(theta) * radius;
+      positions[i * 3 + 1] = Math.cos(phi) * radius;
+      positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius;
+      const tint = palette[Math.floor(random() * palette.length)];
+      // Plancher de luminosite releve : des etoiles a 55 % donnaient un ciel
+      // terne, c'est ce qui rendait la scene sombre.
+      const brightness = .78 + random() * .22;
+      colors[i * 3] = tint[0] * brightness;
+      colors[i * 3 + 1] = tint[1] * brightness;
+      colors[i * 3 + 2] = tint[2] * brightness;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const stars = new THREE.Points(geometry, new THREE.PointsMaterial({
+      vertexColors: true, map: getSoftSpaceTexture(), size: layer.size,
+      transparent: true, opacity: layer.opacity, blending: THREE.AdditiveBlending,
+      depthWrite: false, sizeAttenuation: true, toneMapped: false, fog: false
+    }));
+    stars.name = 'starfield';
+    stars.frustumCulled = false;
+    stars.userData.twinkle = { ...layer.twinkle, base: layer.opacity };
+    root.add(stars);
+  });
+}
+
+/**
+ * Nebuleuses : grands voiles additifs orientes vers le centre du circuit.
+ *
+ * Ce sont des plans et non des volumes : a cette distance la difference est
+ * invisible, et le cout reste celui de quelques quads.
+ */
+function buildNebulae(world, root, random) {
+  const hues = world.nebulaColors || [0x3b2f8f, 0x8f2f6b, 0x1f6f8f, 0x6b2f8f];
+  hues.forEach((color, index) => {
+    const theta = (index / hues.length) * Math.PI * 2 + random() * .8;
+    const phi = Math.acos(2 * random() - 1);
+    const radius = SPACE_STAR_SHELL * .82;
+    const veil = new THREE.Mesh(
+      new THREE.PlaneGeometry(2600 + random() * 1800, 1700 + random() * 1200),
+      new THREE.MeshBasicMaterial({
+        map: getSoftSpaceTexture(), color, transparent: true, opacity: .3 + random() * .18,
+        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false,
+        side: THREE.DoubleSide
+      })
+    );
+    veil.position.set(
+      Math.sin(phi) * Math.cos(theta) * radius,
+      Math.cos(phi) * radius * .55,
+      Math.sin(phi) * Math.sin(theta) * radius
+    );
+    veil.lookAt(0, 0, 0);
+    veil.rotation.z = random() * Math.PI;
+    veil.name = 'nebula';
+    root.add(veil);
+  });
+}
+
+// ── PLANETE DE TYPE TERRE ───────────────────────────────────────────────────
+// Planisphere genere a la volee : oceans, continents, reliefs et calottes.
+// Aucun fichier externe, donc rien a telecharger et rien a versionner.
+//
+// Une planete generee reste une planete *plausible*, pas la Terre reconnaissable :
+// les vrais littoraux ne s'inventent pas. Le champ `textureUrl` du catalogue
+// permet donc de brancher une vraie carte equirectangulaire quand on en a une,
+// sans toucher a ce code.
+
+const earthTextures = new Map();
+function getEarthTexture(seed) {
+  if (earthTextures.has(seed)) return earthTextures.get(seed);
+  const width = 768, height = 384;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  const image = context.createImageData(width, height);
+  const data = image.data;
+
+  for (let py = 0; py < height; py++) {
+    const lat = (py / height - .5) * Math.PI;
+    const cosLat = Math.cos(lat), sinLat = Math.sin(lat);
+    for (let px = 0; px < width; px++) {
+      const lon = (px / width) * Math.PI * 2;
+      // Le bruit est echantillonne sur la position spherique et non sur le
+      // planisphere : c'est ce qui evite une couture visible au meridien.
+      const sx = cosLat * Math.cos(lon);
+      const sy = sinLat;
+      const sz = cosLat * Math.sin(lon);
+      const elevation = fbm(sx * 2.1, sz * 2.1, seed) * .62
+        + fbm(sy * 2.7, sx * 2.7, seed + 41) * .38;
+
+      let r, g, b;
+      if (elevation < -.02) {
+        // Ocean : plus sombre au large, plus clair sur les plateaux.
+        const depth = Math.min(1, (-.02 - elevation) * 3.2);
+        r = 12 + (1 - depth) * 30;
+        g = 52 + (1 - depth) * 70;
+        b = 104 + (1 - depth) * 70;
+      } else if (elevation < .03) {
+        r = 196; g = 182; b = 132;                       // littoral
+      } else if (elevation < .17) {
+        const t = (elevation - .03) / .14;
+        r = 62 + t * 34; g = 116 - t * 22; b = 52 + t * 10;   // plaines
+      } else {
+        const t = Math.min(1, (elevation - .17) / .22);
+        r = 108 + t * 62; g = 96 + t * 66; b = 78 + t * 72;   // reliefs
+      }
+
+      // Calottes polaires : transition douce pour eviter un bord net.
+      const polar = Math.max(0, (Math.abs(lat) - 1.16) / .41);
+      if (polar > 0) {
+        const blend = Math.min(1, polar);
+        r += (246 - r) * blend;
+        g += (250 - g) * blend;
+        b += (255 - b) * blend;
+      }
+
+      const index = (py * width + px) * 4;
+      data[index] = r; data[index + 1] = g; data[index + 2] = b; data[index + 3] = 255;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  earthTextures.set(seed, texture);
+  return texture;
+}
+
+const cloudTextures = new Map();
+function getCloudTexture(seed) {
+  if (cloudTextures.has(seed)) return cloudTextures.get(seed);
+  const width = 512, height = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  const image = context.createImageData(width, height);
+  const data = image.data;
+  for (let py = 0; py < height; py++) {
+    const lat = (py / height - .5) * Math.PI;
+    const cosLat = Math.cos(lat), sinLat = Math.sin(lat);
+    for (let px = 0; px < width; px++) {
+      const lon = (px / width) * Math.PI * 2;
+      const sx = cosLat * Math.cos(lon), sy = sinLat, sz = cosLat * Math.sin(lon);
+      const density = fbm(sx * 3.4, sz * 3.4, seed) * .6 + fbm(sy * 4.2, sx * 4.2, seed + 17) * .4;
+      // Seuil haut : sans lui la planete disparait sous une couche uniforme.
+      const alpha = Math.max(0, Math.min(1, (density - .04) * 4.2));
+      const index = (py * width + px) * 4;
+      data[index] = data[index + 1] = data[index + 2] = 255;
+      data[index + 3] = alpha * 235;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  cloudTextures.set(seed, texture);
+  return texture;
+}
+
+/**
+ * Planetes lointaines, decrites dans le catalogue pour garder la main sur
+ * l'esthetique. Chacune peut porter une atmosphere, un anneau, des nuages, et
+ * soit une texture generee (`earthLike`) soit une vraie carte (`textureUrl`).
+ */
+function buildPlanets(world, root) {
+  const planets = world.planets || [];
+  const built = [];
+  planets.forEach((spec, index) => {
+    const group = new THREE.Group();
+    group.name = `planet-${spec.id || index + 1}`;
+    const direction = new THREE.Vector3(spec.x, spec.y, spec.z);
+    if (direction.lengthSq() < 1) direction.set(0, 0, -1);
+    direction.normalize().multiplyScalar(spec.distance || SPACE_PLANET_SHELL);
+    group.position.copy(direction);
+
+    const globeMaterial = new THREE.MeshStandardMaterial({
+      color: spec.color, roughness: .82, metalness: .05,
+      emissive: spec.emissive ?? spec.color, emissiveIntensity: spec.emissiveIntensity ?? .28,
+      fog: false, toneMapped: false
+    });
+    // Une vraie carte prime toujours sur la generation procedurale.
+    if (spec.textureUrl) {
+      portalTextureLoader.load(spec.textureUrl, texture => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        globeMaterial.map = texture;
+        globeMaterial.color.setHex(0xffffff);
+        globeMaterial.emissiveIntensity = spec.emissiveIntensity ?? .12;
+        globeMaterial.needsUpdate = true;
+      }, undefined, error => console.warn('[planete] carte indisponible, rendu procedural conserve', error));
+    }
+    if (spec.earthLike) {
+      globeMaterial.map = getEarthTexture(spec.seed ?? 7);
+      globeMaterial.color.setHex(0xffffff);
+      globeMaterial.emissiveIntensity = spec.emissiveIntensity ?? .12;
+      globeMaterial.roughness = .92;
+    }
+    const globe = new THREE.Mesh(new THREE.SphereGeometry(spec.radius, 64, 44), globeMaterial);
+    globe.name = 'planet-globe';
+    group.add(globe);
+
+    // Couche nuageuse : sphere legerement plus grande, en rotation propre pour
+    // que la planete ne paraisse pas figee.
+    if (spec.clouds) {
+      const clouds = new THREE.Mesh(
+        new THREE.SphereGeometry(spec.radius * 1.022, 48, 32),
+        new THREE.MeshStandardMaterial({
+          map: getCloudTexture(spec.seed ?? 7), transparent: true, opacity: .82,
+          depthWrite: false, roughness: 1, metalness: 0, fog: false, toneMapped: false
+        })
+      );
+      clouds.name = 'planet-clouds';
+      clouds.userData.planetSpin = { speed: (spec.spin ?? .012) * 1.45 };
+      group.add(clouds);
+    }
+
+    // Halo atmospherique : une sphere legerement plus grande vue de l'interieur,
+    // ce qui donne un liseré lumineux sur le limbe.
+    if (spec.atmosphere) {
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(spec.radius * 1.09, 40, 26),
+        new THREE.MeshBasicMaterial({
+          color: spec.atmosphere, transparent: true, opacity: .3,
+          blending: THREE.AdditiveBlending, side: THREE.BackSide,
+          depthWrite: false, fog: false, toneMapped: false
+        })
+      );
+      group.add(halo);
+    }
+    if (spec.ring) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(spec.radius * spec.ring.inner, spec.radius * spec.ring.outer, 96),
+        new THREE.MeshBasicMaterial({
+          color: spec.ring.color, transparent: true, opacity: .55,
+          side: THREE.DoubleSide, depthWrite: false, fog: false, toneMapped: false
+        })
+      );
+      ring.rotation.x = spec.ring.tilt ?? -1.1;
+      ring.rotation.y = spec.ring.yaw ?? .3;
+      group.add(ring);
+    }
+    group.userData.planetSpin = { speed: spec.spin ?? .012 };
+    root.add(group);
+    built.push({ id: spec.id || `planet-${index + 1}`, group, spec });
+  });
+  return built;
+}
+
+/**
+ * Soleil lointain : sphere vive, halo additif, et une lumiere directionnelle
+ * alignee sur lui pour que l'eclairage du circuit vienne bien de la.
+ */
+function buildSpaceSun(world, root) {
+  const spec = world.sun;
+  if (!spec) return;
+  const direction = new THREE.Vector3(spec.x, spec.y, spec.z).normalize();
+  const position = direction.clone().multiplyScalar(spec.distance || 3200);
+
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(spec.radius || 120, 36, 24),
+    new THREE.MeshBasicMaterial({ color: spec.color || 0xfff3d0, fog: false, toneMapped: false })
+  );
+  core.position.copy(position);
+  root.add(core);
+
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: getSoftSpaceTexture(), color: spec.glowColor || 0xffd68a,
+    transparent: true, opacity: .85, blending: THREE.AdditiveBlending,
+    depthWrite: false, fog: false, toneMapped: false
+  }));
+  glow.position.copy(position);
+  const glowSize = (spec.radius || 120) * 9;
+  glow.scale.set(glowSize, glowSize, 1);
+  root.add(glow);
+
+  const light = new THREE.DirectionalLight(spec.color || 0xfff3d0, spec.intensity ?? 2.4);
+  light.position.copy(direction.multiplyScalar(900));
+  root.add(light);
+}
+
+/**
+ * Asteroides du circuit : obstacles reels, enregistres dans le champ de
+ * collision. Ils sont repartis en volume et non sur un sol, et evites autour
+ * de la trajectoire de course pour que le circuit reste franchissable.
+ */
+function buildAsteroids(world, root, random, collision) {
+  const count = world.population.asteroids || 0;
+  if (!count) return;
+  const clearRadius = world.asteroidClearance || 150;
+  // Zones a preserver : les portes, mais aussi l'interieur des massifs. Un
+  // asteroide tombe au milieu d'un couloir de roche le rendrait infranchissable,
+  // et le controle par porte seule laisse passer le milieu des segments.
+  const keepClear = (world.raceCourse || []).map(point => ({
+    x: point.x, y: Number.isFinite(point.y) ? point.y : 0, z: point.z, radius: clearRadius
+  }));
+  (world.rockMassifs || []).forEach(massif => {
+    const corridor = (massif.corridorRadius || 240) * 1.25;
+    (massif.path || []).forEach(p => keepClear.push({ x: p[0], y: p[1], z: p[2], radius: corridor }));
+  });
+  const material = new THREE.MeshStandardMaterial({ color: 0x6b6a76, roughness: .95, metalness: .08 });
+  const mesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), material, count);
+  const dummy = new THREE.Object3D();
+  const span = world.size * .48;
+  let placed = 0;
+
+  for (let attempt = 0; attempt < count * 12 && placed < count; attempt++) {
+    const x = (random() * 2 - 1) * span;
+    const z = (random() * 2 - 1) * span;
+    const y = (random() * 2 - 1) * (world.verticalSpan || 320);
+    const tooClose = keepClear.some(zone =>
+      Math.hypot(x - zone.x, y - zone.y, z - zone.z) < zone.radius);
+    if (tooClose) continue;
+    const size = 12 + random() * 46;
+    dummy.position.set(x, y, z);
+    dummy.scale.set(size, size * (.7 + random() * .6), size * (.75 + random() * .5));
+    dummy.rotation.set(random() * Math.PI, random() * Math.PI, random() * Math.PI);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(placed, dummy.matrix);
+    // Boite englobante : le dodecaedre de rayon 1 tient dans un cube unitaire.
+    addBoxFromCenter(collision, x, y, z, dummy.scale.x, dummy.scale.y, dummy.scale.z);
+    placed++;
+  }
+  mesh.count = placed;
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.castShadow = true;
+  mesh.name = 'field-asteroids';
+  root.add(mesh);
+}
+
+/**
+ * Point d'un trace, en coordonnees absolues ou relatives au sol.
+ *
+ * Sur un relief, l'altitude du terrain n'est pas connue au moment d'ecrire le
+ * catalogue. Un trace `groundRelative` s'ecrit donc `[x, z, hauteur]` et suit
+ * automatiquement la montagne — c'est ce qui permet de tracer un couloir de
+ * parois qui grimpe.
+ */
+function resolvePathPoint(world, owner, point) {
+  if (owner.groundRelative) {
+    const [x, z, clearance = 60] = point;
+    return new THREE.Vector3(x, getWorldHeight(world, x, z) + clearance, z);
+  }
+  return new THREE.Vector3(point[0], point[1], point[2]);
+}
+
+/**
+ * Massif rocheux perce d'un couloir.
+ *
+ * Le piege serait de modeler une roche pleine puis d'y creuser un tunnel :
+ * Three.js n'a pas de soustraction booleenne, et le resultat serait truffe de
+ * trous invisibles. On procede donc a l'inverse — le couloir est defini
+ * d'abord, la roche est empilee **autour** de lui. Le vide est alors libre par
+ * construction, et les collisions ne portent que sur les blocs.
+ *
+ * Le couloir suit une courbe : on en echantillonne le trace, puis chaque bloc
+ * est place a une distance de l'axe superieure au rayon du couloir.
+ */
+function buildRockMassif(world, root, random, collision) {
+  const massifs = world.rockMassifs || [];
+  if (!massifs.length) return;
+
+  massifs.forEach((massif, massifIndex) => {
+    const controls = (massif.path || []).map(p => resolvePathPoint(world, massif, p));
+    if (controls.length < 2) return;
+    const curve = new THREE.CatmullRomCurve3(controls, false, 'catmullrom', .4);
+    const corridor = massif.corridorRadius || 240;
+    const thickness = massif.shellThickness || 420;
+    const chunkCount = massif.chunks || 320;
+
+    // Roche claire : dans le noir de l'espace, une roche sombre est invisible.
+    const material = new THREE.MeshStandardMaterial({
+      color: massif.color ?? 0xb9b2a4,
+      roughness: .88,
+      metalness: .06,
+      emissive: massif.emissive ?? 0x2a2620,
+      emissiveIntensity: .35
+    });
+    const mesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), material, chunkCount);
+    mesh.name = `rock-massif-${massifIndex + 1}`;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const dummy = new THREE.Object3D();
+    const axis = new THREE.Vector3();
+    const tangent = new THREE.Vector3();
+    const sideways = new THREE.Vector3();
+    const upward = new THREE.Vector3();
+    const offset = new THREE.Vector3();
+    const worldUp = new THREE.Vector3(0, 1, 0);
+
+    for (let i = 0; i < chunkCount; i++) {
+      const t = random();
+      curve.getPointAt(t, axis);
+      curve.getTangentAt(t, tangent);
+      // Repere local perpendiculaire a la trajectoire : c'est lui qui garantit
+      // que le decalage s'eloigne bien de l'axe du couloir.
+      sideways.crossVectors(tangent, worldUp);
+      if (sideways.lengthSq() < .001) sideways.set(1, 0, 0);
+      sideways.normalize();
+      upward.crossVectors(sideways, tangent).normalize();
+
+      const size = massif.chunkSize ? massif.chunkSize[0] + random() * (massif.chunkSize[1] - massif.chunkSize[0]) : 45 + random() * 130;
+      // Dans le vide, la roche entoure le couloir sur tout le pourtour. Sur un
+      // relief ce serait absurde : des blocs flotteraient en plein ciel. On
+      // regroupe alors les blocs en deux amas lateraux — de vraies parois.
+      const lateral = massif.walls ?? massif.groundRelative;
+      const angle = lateral
+        ? (random() < .5 ? 0 : Math.PI) + (random() - .5) * (massif.wallSpread ?? 2.3)
+        : random() * Math.PI * 2;
+      // La marge du rayon inclut la taille du bloc : sans elle, un gros bloc
+      // centre juste au-dela du couloir mordrait dedans.
+      const distance = corridor + size * 1.1 + random() * thickness;
+      offset.copy(sideways).multiplyScalar(Math.cos(angle) * distance)
+        .addScaledVector(upward, Math.sin(angle) * distance);
+
+      dummy.position.copy(axis).add(offset);
+      dummy.scale.set(size, size * (.65 + random() * .7), size * (.7 + random() * .6));
+      dummy.rotation.set(random() * Math.PI, random() * Math.PI, random() * Math.PI);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      addBoxFromCenter(
+        collision,
+        dummy.position.x, dummy.position.y, dummy.position.z,
+        dummy.scale.x, dummy.scale.y, dummy.scale.z
+      );
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    root.add(mesh);
+
+    // Balisage lumineux du couloir : sans lui, l'interieur du massif est une
+    // caverne noire et le trace devient illisible.
+    const lampCount = massif.lamps || 14;
+    const lampColor = massif.lampColor ?? 0xffb552;
+    for (let i = 0; i <= lampCount; i++) {
+      const t = i / lampCount;
+      curve.getPointAt(t, axis);
+      curve.getTangentAt(t, tangent);
+      sideways.crossVectors(tangent, worldUp);
+      if (sideways.lengthSq() < .001) sideways.set(1, 0, 0);
+      sideways.normalize();
+      upward.crossVectors(sideways, tangent).normalize();
+
+      // Quatre feux par station, plaques contre la paroi.
+      for (let k = 0; k < 4; k++) {
+        const angle = k * Math.PI * .5 + (i % 2) * .4;
+        offset.copy(sideways).multiplyScalar(Math.cos(angle) * corridor * .92)
+          .addScaledVector(upward, Math.sin(angle) * corridor * .92);
+        const lamp = new THREE.Mesh(
+          new THREE.SphereGeometry(5.5, 10, 8),
+          new THREE.MeshBasicMaterial({ color: lampColor, toneMapped: false })
+        );
+        lamp.position.copy(axis).add(offset);
+        root.add(lamp);
+      }
+      // Une vraie source lumineuse une station sur deux : suffisant pour
+      // eclairer la paroi sans saturer le nombre de lumieres de la scene.
+      if (i % 2 === 0) {
+        const light = new THREE.PointLight(lampColor, 70, corridor * 3.4, 2);
+        light.position.copy(axis);
+        root.add(light);
+      }
+    }
+  });
+}
+
+/**
+ * Tunnels d'acceleration : une enfilade d'anneaux lumineux marquant un volume
+ * ou le pilote passe en vitesse lumiere. Les anneaux ne sont que le reperage
+ * visuel, l'effet est declenche par la distance au centre (voir world-game.js).
+ */
+function buildSpeedZones(world, root) {
+  const zones = world.speedZones || [];
+  if (!zones.length) return [];
+  const built = [];
+
+  zones.forEach((zone, index) => {
+    const group = new THREE.Group();
+    group.name = `speed-tunnel-${index + 1}`;
+    const color = zone.color ?? 0x54f6ff;
+    const radius = zone.radius || 130;
+
+    // Le trace est une courbe et non un segment : un tunnel qui vire donne
+    // envie de le suivre, alors qu'un tube droit se traverse sans y penser.
+    const controls = (zone.path || []).map(point => resolvePathPoint(world, zone, point));
+    if (controls.length < 2) return;
+    const curve = new THREE.CatmullRomCurve3(controls, false, 'catmullrom', .4);
+
+    // Echantillonnage unique, conserve pour la detection en jeu : la boucle
+    // d'animation n'aura qu'a comparer des distances a ces points.
+    const sampleCount = zone.samples || 48;
+    const samples = new Float32Array((sampleCount + 1) * 3);
+    const point = new THREE.Vector3();
+    for (let i = 0; i <= sampleCount; i++) {
+      curve.getPointAt(i / sampleCount, point);
+      samples[i * 3] = point.x;
+      samples[i * 3 + 1] = point.y;
+      samples[i * 3 + 2] = point.z;
+    }
+
+    // Paroi du tunnel : un tube ouvert, vu de l'interieur, en grille lumineuse.
+    const shell = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, sampleCount, radius, 26, false),
+      new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: .17, side: THREE.BackSide,
+        blending: THREE.AdditiveBlending, depthWrite: false, wireframe: true,
+        toneMapped: false, fog: false
+      })
+    );
+    shell.name = 'speed-tunnel-shell';
+    group.add(shell);
+
+    // Arceaux repartis le long de la courbe, orientes selon la tangente.
+    const arcCount = zone.arcs || 16;
+    const tangent = new THREE.Vector3();
+    const lookTarget = new THREE.Vector3();
+    for (let i = 0; i <= arcCount; i++) {
+      const t = i / arcCount;
+      curve.getPointAt(t, point);
+      curve.getTangentAt(t, tangent);
+      const arc = new THREE.Mesh(
+        new THREE.TorusGeometry(radius * .96, radius * .035, 8, 40),
+        new THREE.MeshBasicMaterial({
+          color, transparent: true, opacity: .8,
+          blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false
+        })
+      );
+      arc.position.copy(point);
+      lookTarget.copy(point).add(tangent);
+      arc.lookAt(lookTarget);
+      arc.userData.speedRing = { index: i, phase: i * .42 };
+      group.add(arc);
+    }
+
+    // Quelques feux le long du parcours, sinon l'interieur reste plat.
+    for (let i = 0; i < 3; i++) {
+      curve.getPointAt((i + .5) / 3, point);
+      const light = new THREE.PointLight(color, 60, radius * 6, 2);
+      light.position.copy(point);
+      group.add(light);
+    }
+
+    root.add(group);
+    const midpoint = curve.getPointAt(.5, new THREE.Vector3());
+    built.push({
+      samples,
+      sampleCount: sampleCount + 1,
+      radius,
+      multiplier: zone.multiplier || 2.4,
+      bonus: zone.bonus ?? 150,
+      bonusHold: zone.bonusHold ?? 5,
+      centerX: midpoint.x, centerY: midpoint.y, centerZ: midpoint.z,
+      group
+    });
+  });
+  return built;
+}
+
+// ── HABILLAGE DE COURSE ─────────────────────────────────────────────────────
+// Vocabulaire visuel des circuits d'aujourd'hui, transpose dans le vide :
+// chevrons de guidage sur la trajectoire, numeros de porte lisibles de loin,
+// damier de depart. Les chevrons remplacent aussi le radar retire du HUD.
+
+const numberTextures = new Map();
+function getNumberTexture(value) {
+  if (numberTextures.has(value)) return numberTextures.get(value);
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const context = canvas.getContext('2d');
+  context.font = '900 170px Consolas, monospace';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  // Contour epais puis remplissage : le chiffre reste lisible sur un fond
+  // clair comme sur le noir de l'espace.
+  context.lineWidth = 18;
+  context.strokeStyle = 'rgba(4,14,24,.95)';
+  context.strokeText(String(value), size / 2, size / 2 + 8);
+  context.fillStyle = '#ffffff';
+  context.fillText(String(value), size / 2, size / 2 + 8);
+  const texture = new THREE.CanvasTexture(canvas);
+  numberTextures.set(value, texture);
+  return texture;
+}
+
+let checkerTexture = null;
+function getCheckerTexture() {
+  if (checkerTexture) return checkerTexture;
+  const cells = 8;
+  const cell = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = cells * cell;
+  const context = canvas.getContext('2d');
+  for (let x = 0; x < cells; x++) {
+    for (let y = 0; y < cells; y++) {
+      context.fillStyle = (x + y) % 2 ? '#ffffff' : '#0b0f18';
+      context.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }
+  checkerTexture = new THREE.CanvasTexture(canvas);
+  checkerTexture.wrapS = checkerTexture.wrapT = THREE.RepeatWrapping;
+  return checkerTexture;
+}
+
+/**
+ * Chevrons de guidage, numeros et damier de depart.
+ *
+ * Un `InstancedMesh` par segment : le cout de dessin reste negligeable, et le
+ * jeu peut allumer le seul segment courant pour guider le pilote — ce qui rend
+ * le radar central inutile.
+ */
+function buildRaceDressing(world, root, gates) {
+  if (gates.length < 2) return null;
+  const group = new THREE.Group();
+  group.name = 'race-dressing';
+  root.add(group);
+
+  const chevronGeometry = new THREE.ConeGeometry(7.5, 17, 4);
+  // La pointe du cone regarde +Y : on la couche vers +Z pour qu'elle indique
+  // le sens de la marche.
+  chevronGeometry.rotateX(Math.PI / 2);
+  chevronGeometry.scale(1, .28, 1);
+
+  const dummy = new THREE.Object3D();
+  const from = new THREE.Vector3();
+  const to = new THREE.Vector3();
+  const segments = [];
+
+  gates.forEach((gate, index) => {
+    const next = gates[(index + 1) % gates.length];
+    from.copy(gate.position);
+    to.copy(next.position);
+    const span = from.distanceTo(to);
+    // Les chevrons commencent apres la porte et s'arretent avant la suivante,
+    // pour ne pas encombrer l'anneau lui-meme.
+    const count = Math.max(3, Math.min(14, Math.round(span / 55)));
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x2b5f7a, transparent: true, opacity: .5,
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false
+    });
+    const mesh = new THREE.InstancedMesh(chevronGeometry, material, count);
+    mesh.frustumCulled = false;
+    for (let i = 0; i < count; i++) {
+      const t = (i + 1) / (count + 1);
+      dummy.position.lerpVectors(from, to, t);
+      dummy.lookAt(to);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    group.add(mesh);
+    segments.push({ mesh, material });
+
+    // Numero de porte : un sprite reste lisible sous tous les angles, ce qui
+    // n'est pas le cas d'un plan oriente.
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: getNumberTexture(index + 1), transparent: true,
+      depthWrite: false, depthTest: false, toneMapped: false, fog: false
+    }));
+    label.scale.set(30, 30, 1);
+    label.position.set(0, 44, 0);
+    label.renderOrder = 6;
+    gate.add(label);
+  });
+
+  // Damier de depart : deux panneaux encadrant la premiere porte.
+  const checker = getCheckerTexture().clone();
+  checker.needsUpdate = true;
+  checker.repeat.set(3, 1);
+  [-1, 1].forEach(side => {
+    const panel = new THREE.Mesh(
+      new THREE.PlaneGeometry(46, 15),
+      new THREE.MeshBasicMaterial({ map: checker, side: THREE.DoubleSide, toneMapped: false, fog: false })
+    );
+    panel.position.set(side * 58, 0, 0);
+    panel.rotation.y = side * -.35;
+    gates[0].add(panel);
+  });
+
+  return {
+    segments,
+    /** Allume le segment a parcourir et eteint les autres. */
+    setActiveSegment(activeIndex) {
+      for (let i = 0; i < segments.length; i++) {
+        const isActive = i === activeIndex;
+        segments[i].material.color.setHex(isActive ? 0x7bf3ff : 0x2b5f7a);
+        segments[i].material.opacity = isActive ? .95 : .28;
+      }
+    }
+  };
 }
 
 function buildRaceCourse(world, root) {
@@ -904,23 +1751,29 @@ function buildRaceCourse(world, root) {
       color, emissive: color, emissiveIntensity: .35,
       roughness: .22, metalness: .42
     });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(27, 2.15, 12, 52), material);
+    // Taille reglable par monde : un anneau de 27 se perd dans un couloir de
+    // roche large de plusieurs centaines d'unites.
+    const gateRadius = world.gateRadius || 27;
+    const scaleFactor = gateRadius / 27;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(gateRadius, 2.15 * scaleFactor, 12, 52), material);
     ring.castShadow = true;
     ring.userData.raceGateRing = { index, baseIntensity: .35 };
     gate.add(ring);
     const markerMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .62, blending: THREE.AdditiveBlending });
     [-1, 1].forEach(side => {
-      const marker = new THREE.Mesh(new THREE.ConeGeometry(2.8, 10, 10), markerMaterial);
-      marker.position.set(side * 33, 0, 0);
+      const marker = new THREE.Mesh(new THREE.ConeGeometry(2.8 * scaleFactor, 10 * scaleFactor, 10), markerMaterial);
+      marker.position.set(side * gateRadius * 1.22, 0, 0);
       marker.rotation.z = side > 0 ? Math.PI / 2 : -Math.PI / 2;
       gate.add(marker);
     });
-    const beacon = new THREE.PointLight(color, 28, 105, 2);
+    const beacon = new THREE.PointLight(color, 28 * scaleFactor, 105 * scaleFactor, 2);
     gate.add(beacon);
-    const ground = getWorldHeight(world, point.x, point.z);
+    // Une porte peut fixer son altitude absolue (`y`), indispensable dans
+    // l'espace ou il n'y a pas de sol de reference.
+    const ground = Number.isFinite(point.y) ? point.y - (point.clearance || 66) : getWorldHeight(world, point.x, point.z);
     gate.position.set(point.x, ground + (point.clearance || 66), point.z);
     gate.rotation.y = Math.atan2(next.x - point.x, next.z - point.z);
-    gate.userData.raceGate = { index, radius: 31, passed: false, missed: false, material, markerMaterial, beacon };
+    gate.userData.raceGate = { index, radius: gateRadius * 1.15, passed: false, missed: false, material, markerMaterial, beacon };
     root.add(gate);
     gates.push(gate);
   });
@@ -933,30 +1786,59 @@ export function buildWorld(scene, world, onProgress, portalRoute) {
   const root = new THREE.Group();
   root.name = `world-${world.id}`;
   scene.add(root);
-  addLighting(world, root);
-  buildTerrain(world, root);
-  buildRoads(world, root);
   const random = seededRandom(world.seed);
-  buildTrees(world, root, random);
-  buildRocks(world, root, random);
-  if (world.id !== 'nova-city') {
-    buildBuildings(world, root, random);
-    buildTowers(world, root, random);
+  // Le portail et les portes de course restent volontairement traversables :
+  // seuls les volumes construits alimentent le champ de collision.
+  const collision = createCollisionField(PILOT_COLLISION_RADIUS);
+  const inSpace = world.terrain.kind === 'space';
+
+  if (inSpace) {
+    // Aucun sol, aucune route, aucune vegetation. L'eclairage terrestre
+    // (hemisphere + soleil ombrant) est remplace par une lueur ambiante tres
+    // faible plus le soleil du systeme : dans le vide, l'ombre est franche.
+    root.add(new THREE.AmbientLight(world.ambientColor ?? 0x2b3a5c, world.ambientIntensity ?? .5));
+    buildStarfield(world, root, random);
+    buildNebulae(world, root, random);
+    buildPlanets(world, root);
+    buildSpaceSun(world, root);
+    buildAsteroids(world, root, random, collision);
+  } else {
+    addLighting(world, root);
+    buildTerrain(world, root);
+    buildRoads(world, root);
+    buildTrees(world, root, random);
+    buildRocks(world, root, random);
+    if (world.id !== 'nova-city') {
+      buildBuildings(world, root, random, collision);
+      buildTowers(world, root, random, collision);
+    }
+    buildCrystals(world, root, random);
+    buildWorldSupplies(world, root, random);
+    (world.landmarks || []).forEach(landmark => {
+      const group = buildLandmark(world, landmark);
+      root.add(group);
+      registerMeshColliders(collision, group);
+    });
   }
-  buildCrystals(world, root, random);
-  buildWorldSupplies(world, root, random);
-  (world.landmarks || []).forEach(landmark => root.add(buildLandmark(world, landmark)));
+  // Les massifs valent pour tous les mondes : dans le vide ils forment un
+  // couloir isole, sur un relief ils dressent des parois au-dessus du sol.
+  buildRockMassif(world, root, random, collision);
+  const speedZones = buildSpeedZones(world, root);
   const raceGates = buildRaceCourse(world, root);
+  const raceDressing = buildRaceDressing(world, root, raceGates);
   const portal = buildPortal(world, portalRoute, root);
   const assetsPromise = Promise.all([
-    placeExistingAssets(world, root, onProgress),
-    buildNovaCityBuildings(world, root, random, onProgress)
+    placeExistingAssets(world, root, onProgress, collision),
+    buildNovaCityBuildings(world, root, random, onProgress, collision)
   ]);
   return {
     root,
     portal,
     raceGates,
+    raceDressing,
+    speedZones,
     assetsPromise,
+    collision,
     getHeight: (x, z) => getWorldHeight(world, x, z),
     bounds: world.size * .48
   };
@@ -973,6 +1855,18 @@ export function animateWorld(root, elapsed) {
     if (node.userData.portalCore && node.material) {
       node.material.opacity = .22 + Math.sin(elapsed * 3.2) * .08;
       node.scale.setScalar(.98 + Math.sin(elapsed * 2.1) * .025);
+    }
+    // Anneaux du tunnel d'acceleration : pulsation decalee qui donne
+    // l'impression que l'energie file vers la sortie.
+    const twinkle = node.userData.twinkle;
+    if (twinkle && node.material) {
+      node.material.opacity = twinkle.base * (1 - twinkle.depth + Math.sin(elapsed * twinkle.speed + twinkle.phase) * twinkle.depth);
+    }
+    if (node.userData.planetSpin) node.rotation.y = elapsed * node.userData.planetSpin.speed;
+    const speedRing = node.userData.speedRing;
+    if (speedRing && node.material) {
+      node.material.opacity = .45 + Math.abs(Math.sin(elapsed * 3.4 - speedRing.phase)) * .5;
+      node.rotation.z = elapsed * (speedRing.index % 2 ? .7 : -.7);
     }
     if (node.userData.raceGateRing && node.material) {
       const gate = node.userData.raceGateRing;

@@ -1,9 +1,18 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
-import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=titan-race-score-20260722';
-import { buildWorld, animateWorld } from './world-builder.js?v=titan-race-score-20260722';
-import { createWorldCombat } from './world-combat.js?v=white-halo-20260722';
+import { GAMEPAD_PROFILE_KEY, loadMergedProfile, readLocalProfile } from '../gamepad-profile.js';
+import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey } from '../input-shaping.js?v=cockpit-cibles-20260730';
+import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=cockpit-cibles-20260730';
+import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=cockpit-cibles-20260730';
+import { buildWorld, animateWorld } from './world-builder.js?v=cockpit-cibles-20260730';
+import { createWorldCombat } from './world-combat.js?v=cockpit-cibles-20260730';
+import { createTargetRange } from './world-targets.js?v=cockpit-cibles-20260730';
+import { createExplosionSystem } from './world-explosion.js?v=cockpit-cibles-20260730';
+import { queryHit, collisionStats } from './world-collision.js?v=cockpit-cibles-20260730';
+import { addBoxFromCenter } from './world-collision.js?v=cockpit-cibles-20260730';
+import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=cockpit-cibles-20260730';
+import { loadCustomMap } from '../custom-maps.js?v=cockpit-cibles-20260730';
 import { createTwoPlayerMultiplayer } from './world-multiplayer.js?v=duel-2p-20260724';
 
 const params = new URLSearchParams(location.search);
@@ -251,7 +260,7 @@ async function loadOriginalChasseurInto(player) {
   mesh.rotation.set(0, -Math.PI / 2, 0);
   const wrapper = new THREE.Group();
   wrapper.add(mesh);
-  fitOriginalChasseur(wrapper, 19.5);
+  fitOriginalChasseur(wrapper);
   wrapper.updateMatrixWorld(true);
 
   const box = new THREE.Box3().setFromObject(wrapper);
@@ -305,12 +314,52 @@ async function loadGroundCharacter(modeId, player, mixers) {
   }
 }
 
-function deadZone(value, zone = .13) {
-  if (Math.abs(value || 0) < zone) return 0;
-  return Math.sign(value) * (Math.abs(value) - zone) / (1 - zone);
-}
+// ── REGLAGE DES COMMANDES ───────────────────────────────────────────────────
+// Cible : precis et direct. La zone morte est radiale et serree, la courbe
+// exponentielle donne de la finesse au centre sans amputer l'autorite a fond
+// de course. Voir input-shaping.js pour le detail.
+// Valeurs volontairement prudentes : l'expo forte a ete jugee trop molle a la
+// manette. On garde les corrections de fond (zone morte circulaire, derive
+// annulee) et on laisse le toucher se regler en jeu via RaphaelWorldInput.
+const STICK_DEAD_ZONE = .10;
+const STICK_EXPO = .2;
+const TRIGGER_DEAD_ZONE = .04;
 
-const WORLD_GAMEPAD_PROFILE_KEY = 'raphael.flightGamepadBindings.v1';
+// Le stick de vol est traite comme un tout : zone morte circulaire, direction
+// preservee, et recentrage automatique contre la derive materielle.
+const flightStick = createStickShaper({ deadZone: STICK_DEAD_ZONE, expo: STICK_EXPO });
+// Gaz et frein apprennent leur position de repos : sans cela un axe non
+// actionne est lu comme une commande permanente.
+const throttleShaper = createTriggerShaper({ deadZone: .07 });
+const brakeShaper = createTriggerShaper({ deadZone: .07 });
+// Relance du recentrage a la volee : utile apres un changement de manette, ou
+// si le stick etait tenu au moment du chargement de la page.
+window.RaphaelWorldInput = {
+  recalibrate: () => { flightStick.reset(); return 'Recentrage relancé : lâche le stick une seconde.'; },
+  diagnostics: () => flightStick.diagnostics(),
+  /**
+   * Réglage à chaud du toucher, effet immédiat sans recharger la page.
+   *   set({ expo: 0, deadZone: .13 })  → toucher d'origine, réponse linéaire
+   *   set({ expo: .2 })                → réglage actuel
+   *   set({ expo: .45 })               → très progressif au centre
+   */
+  set: options => flightStick.configure(options),
+  /** Affiche en continu ce que la manette envoie vraiment. Renvoie un stop. */
+  watch: (intervalMs = 250) => {
+    const timer = setInterval(() => {
+      const info = flightStick.diagnostics();
+      console.log(
+        `brut ${info.raw.x.toFixed(3)} / ${info.raw.y.toFixed(3)}`,
+        `→ sortie ${info.shaped.x.toFixed(3)} / ${info.shaped.y.toFixed(3)}`,
+        `· centre appris ${info.center.x.toFixed(3)} / ${info.center.y.toFixed(3)}`,
+        `· zone morte ${info.deadZone} · expo ${info.expo}`
+      );
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }
+};
+
+const WORLD_GAMEPAD_PROFILE_KEY = GAMEPAD_PROFILE_KEY;
 const WORLD_GAMEPAD_DEFAULTS = {
   yaw: { type: 'axis', index: 0, scale: -1 },
   pitch: { type: 'axis', index: 1, scale: 1 },
@@ -325,28 +374,55 @@ const WORLD_GAMEPAD_DEFAULTS = {
   exit: { type: 'button', index: 9, scale: 1 }
 };
 let worldGamepadProfile = {};
+// Lecture immediate du cache local : readConfiguredControl() doit disposer
+// d'un profil des la premiere frame, sans attendre le reseau.
 function reloadWorldGamepadProfile() {
-  try {
-    worldGamepadProfile = JSON.parse(localStorage.getItem(WORLD_GAMEPAD_PROFILE_KEY) || '{}') || {};
-  } catch (error) {
-    worldGamepadProfile = {};
-  }
+  worldGamepadProfile = readLocalProfile() || {};
   return worldGamepadProfile;
 }
+// Synchronisation serveur : rafraichit le profil regle depuis un autre
+// appareil. Volontairement limitee dans le temps, et jamais appelee depuis la
+// boucle d'animation — readGamepad() ne lit que l'objet deja en memoire.
+const GAMEPAD_SYNC_INTERVAL_MS = 30_000;
+let lastGamepadSyncAt = 0;
+let gamepadSyncPending = false;
+async function syncWorldGamepadProfile() {
+  const now = performance.now();
+  if (gamepadSyncPending || now - lastGamepadSyncAt < GAMEPAD_SYNC_INTERVAL_MS) return;
+  gamepadSyncPending = true;
+  try {
+    const profile = await loadMergedProfile();
+    if (profile) worldGamepadProfile = profile;
+    lastGamepadSyncAt = performance.now();
+  } finally {
+    gamepadSyncPending = false;
+  }
+}
 reloadWorldGamepadProfile();
+syncWorldGamepadProfile();
 window.addEventListener('storage', event => {
   if (event.key === WORLD_GAMEPAD_PROFILE_KEY) reloadWorldGamepadProfile();
 });
-window.addEventListener('focus', reloadWorldGamepadProfile);
+window.addEventListener('focus', () => { reloadWorldGamepadProfile(); syncWorldGamepadProfile(); });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) reloadWorldGamepadProfile();
+  if (!document.hidden) { reloadWorldGamepadProfile(); syncWorldGamepadProfile(); }
 });
 
-function readConfiguredControl(pad, action, zone = .13) {
+function readConfiguredControl(pad, action, zone = TRIGGER_DEAD_ZONE, expo = .35) {
   const binding = worldGamepadProfile[action] || WORLD_GAMEPAD_DEFAULTS[action];
   if (!binding || !pad) return 0;
   const scale = Number.isFinite(binding.scale) ? binding.scale : 1;
-  if (binding.type === 'axis') return THREE.MathUtils.clamp(deadZone(pad.axes[binding.index], zone) * scale, -1, 1);
+  if (binding.type === 'axis') return THREE.MathUtils.clamp(shapeAxis(pad.axes[binding.index], zone, expo) * scale, -1, 1);
+  return THREE.MathUtils.clamp((pad.buttons[binding.index]?.value || 0) * scale, -1, 1);
+}
+
+// Lecture brute d'un axe, sans zone morte : le stick de vol doit etre mis en
+// forme radialement, donc ses deux axes doivent arriver intacts au shaper.
+function readRawControl(pad, action) {
+  const binding = worldGamepadProfile[action] || WORLD_GAMEPAD_DEFAULTS[action];
+  if (!binding || !pad) return 0;
+  const scale = Number.isFinite(binding.scale) ? binding.scale : 1;
+  if (binding.type === 'axis') return THREE.MathUtils.clamp((pad.axes[binding.index] || 0) * scale, -1, 1);
   return THREE.MathUtils.clamp((pad.buttons[binding.index]?.value || 0) * scale, -1, 1);
 }
 
@@ -356,15 +432,18 @@ function readGamepad() {
   const configuredId = String(worldGamepadProfile.gamepadId || '');
   const pad = usablePads.find(item => configuredId && item.id === configuredId) || usablePads[0] || null;
   if (!pad) return { x: 0, y: 0, throttle: 0, brake: 0, climb: 0, boost: false, acro: false, jump: false, view: false, portal: false, fire: false, missile: false, name: 'Aucune manette' };
-  const yaw = readConfiguredControl(pad, 'yaw');
-  const pitch = readConfiguredControl(pad, 'pitch');
-  const throttleBinding = worldGamepadProfile.throttle || WORLD_GAMEPAD_DEFAULTS.throttle;
-  const throttleValue = readConfiguredControl(pad, 'throttle', .05);
-  const throttle = throttleBinding.type === 'axis' ? (throttleValue + 1) * .5 : Math.max(0, throttleValue);
+  // Les deux axes du stick de vol passent ensemble dans la mise en forme :
+  // zone morte circulaire, courbe expo, derive materielle annulee.
+  const stick = flightStick.shape(readRawControl(pad, 'yaw'), readRawControl(pad, 'pitch'));
+  const yaw = stick.x, pitch = stick.y;
+  // Gaz et frein passent par un apprentissage du repos, quel que soit le type
+  // de liaison : c'est la seule facon de traiter les manettes dont les axes
+  // reposent a -1, a 0 ou a +1 sans les distinguer a la main.
+  const throttle = throttleShaper.shape(readRawControl(pad, 'throttle'));
   return {
     x: -yaw, y: pitch, throttle,
-    brake: Math.max(0, readConfiguredControl(pad, 'brake', .05)),
-    climb: readConfiguredControl(pad, 'climb', .18),
+    brake: brakeShaper.shape(readRawControl(pad, 'brake')),
+    climb: readConfiguredControl(pad, 'climb', .08, STICK_EXPO),
     boost: readConfiguredControl(pad, 'boost', .08) > .55,
     acro: readConfiguredControl(pad, 'loop', .08) > .55,
     jump: !!pad.buttons[0]?.pressed,
@@ -393,6 +472,7 @@ async function startWorld() {
   const status = document.getElementById('asset-status');
   const mode = getMode(selectedMode);
   document.body.classList.toggle('world-flight-active', mode.type === 'flight');
+  document.body.classList.toggle('world-combat-off', world.combat === false);
   let assetMessage = 'Préparation des objets 3D…';
   let pilotMessage = mode.type === 'flight' ? 'chargement du chasseur original…' : 'chargement du personnage…';
   const renderLoadStatus = () => { status.textContent = `${assetMessage} · ${pilotMessage}`; };
@@ -454,6 +534,41 @@ async function startWorld() {
   let yaw = 0, pitch = mode.type === 'flight' ? .12 : 0, flightVisualPitch = pitch, speed = mode.type === 'flight' ? 72 : 0, verticalVelocity = 0, cameraWide = mode.type === 'flight', cockpitView = false, lastView = false;
   let launchSequence = mode.type === 'flight' ? 4.2 : 0;
   let aerobatic = null, aerobaticArmed = true;
+  // Ordres clavier lisses : une touche est binaire, la rampe rend possible un
+  // ajustement fin sans rendre la commande molle.
+  let keyYaw = 0, keyPitch = 0;
+
+  // ── ENVELOPPE DE VOL ──────────────────────────────────────────────────────
+  // Le tangage etait bride a -27/+30 degres, ce qui bloquait le nez au bout
+  // d'une demi-seconde et plafonnait le taux de montee comme de chute.
+  //
+  // L'enveloppe large s'applique a TOUTES les cartes, pas seulement au vide :
+  // le chasseur doit se piloter pareil partout. Au-dessus d'un relief, la
+  // securite ne vient pas d'un bridage du manche mais du plancher lui-meme —
+  // `player.position.y` est borne a `getHeight + 9`, et au contact le tangage
+  // est force positif, donc l'appareil se remet a plat au lieu de s'enfoncer.
+  const PITCH_LIMIT = 1.38;        // ~79 degres, a la montee comme au pique
+  const pitchUpLimit = PITCH_LIMIT;
+  const pitchDownLimit = PITCH_LIMIT;
+  const pitchRate = 1.15;          // adouci : 1.5 etait trop vif
+  const climbRate = 95;            // poussee verticale directe
+  const visualPitchLimit = 1.4;
+  // Reste specifique au vide : l'absence de sol change la mise en scene, pas
+  // le pilotage.
+  const freeFlight = world.terrain.kind === 'space';
+
+  // — Integrite de la coque —
+  // Sept chocs contre le decor sont encaisses ; le huitieme detruit l'appareil.
+  const MAX_COLLISIONS = 7;
+  const COLLISION_GRACE = 1.15;   // invulnerabilite apres un choc, en secondes
+  const WRECK_DURATION = 2.4;     // duree de la sequence de destruction
+  let collisionsTaken = 0;
+  let collisionGrace = 0;
+  let wreckTimer = 0;             // > 0 : appareil detruit, commandes coupees
+  // Vecteurs reutilises : la boucle de vol ne doit rien allouer.
+  const impactPoint = new THREE.Vector3();
+  const shakeOffset = new THREE.Vector3();
+
   const clock = new THREE.Clock();
   const cycleCameraView = () => {
     if (mode.type !== 'flight') {
@@ -475,11 +590,29 @@ async function startWorld() {
     const cp = Math.cos(pitch);
     return new THREE.Vector3(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp);
   };
+  // Pool d'explosions partage : impacts du pilote et destructions ennemies
+  // puisent dans les memes emplacements pre-construits.
+  const explosions = createExplosionSystem({
+    scene, camera,
+    onSound: () => {
+      if (combat.playExplosionSound) combat.playExplosionSound();
+      else window.RaphaelMissileAudio?.playDestruction();
+    }
+  });
   const combat = createWorldCombat({
     scene, camera, player, world, mode,
     getHeight: built.getHeight,
     getForward: getFlightForward,
-    getSpeed: () => speed
+    getSpeed: () => speed,
+    explosionSystem: explosions
+  });
+  // Cibles fixes : elles fonctionnent meme quand le combat est desactive,
+  // c'est tout l'interet d'un module separe.
+  const targetRange = createTargetRange({
+    scene, world, player, camera,
+    getForward: getFlightForward,
+    getHeight: built.getHeight,
+    explosions
   });
   const multiplayer = createTwoPlayerMultiplayer({
     scene,
@@ -504,6 +637,39 @@ async function startWorld() {
   const flightHeading = document.getElementById('flight-heading');
   const flightLock = document.getElementById('flight-lock');
   const flightTargetRange = document.getElementById('flight-target-range');
+
+  // ── TEMOIN DE COQUE ───────────────────────────────────────────────────────
+  // Les sept pastilles sont creees une seule fois ; la mise a jour ne fait que
+  // basculer une classe, jamais de reconstruction du DOM.
+  const hullStatus = document.getElementById('hull-status');
+  const hullGauge = document.getElementById('hull-gauge');
+  const hullPips = document.getElementById('hull-pips');
+  const hullPipElements = [];
+  if (mode.type === 'flight' && hullPips) {
+    for (let index = 0; index < MAX_COLLISIONS; index++) {
+      const pip = document.createElement('i');
+      hullPips.appendChild(pip);
+      hullPipElements.push(pip);
+    }
+  } else {
+    if (hullGauge) hullGauge.hidden = true;
+    if (hullStatus) hullStatus.hidden = true;
+  }
+
+  function updateHullHud() {
+    const remaining = Math.max(0, MAX_COLLISIONS - collisionsTaken);
+    if (hullStatus) {
+      hullStatus.textContent = wreckTimer > 0
+        ? 'Coque : appareil détruit'
+        : `Coque ${remaining} / ${MAX_COLLISIONS}`;
+    }
+    for (let index = 0; index < hullPipElements.length; index++) {
+      hullPipElements[index].className = index < remaining ? '' : 'lost';
+    }
+    document.body.classList.toggle('hull-critical', remaining > 0 && remaining <= 2 && wreckTimer <= 0);
+  }
+  updateHullHud();
+
   const makeTapeMarks = element => {
     if (!element) return [];
     return Array.from({ length: 9 }, (_, index) => {
@@ -586,8 +752,11 @@ async function startWorld() {
   const raceTimeText = document.getElementById('race-time');
   const raceBestText = document.getElementById('race-best');
   const raceScoreText = document.getElementById('race-score');
-  const raceRadarArrow = document.getElementById('race-radar-arrow');
-  const raceRadarDistance = document.getElementById('race-radar-distance');
+  const tunnelHoldText = document.getElementById('tunnel-hold');
+  const targetCountText = document.getElementById('target-count');
+  const raceBoard = document.getElementById('race-board');
+  const raceHeadingArrow = document.getElementById('race-heading-arrow');
+  const raceDistanceText = document.getElementById('race-distance-text');
   const raceAward = document.getElementById('race-award');
   const raceStorageKey = `raphael.race.best.${world.id}`;
   const raceTimeLimit = 210;
@@ -619,17 +788,143 @@ async function startWorld() {
     raceAward.classList.add('show');
   }
 
+  /**
+   * Ecarte les portes de course prises dans un immeuble.
+   *
+   * Les immeubles 3D sont places par tirage aleatoire et charges en asynchrone :
+   * une porte ecrite dans le catalogue peut donc se retrouver a l'interieur
+   * d'une tour, et depuis l'ajout des collisions elle serait infranchissable.
+   * Le champ de collision fournit deja le vecteur de degagement minimal : on
+   * le suit jusqu'a ce que la porte respire, en montant en dernier recours.
+   */
+  function clearRaceGatesFromBuildings() {
+    const field = built.collision;
+    if (!field || !raceGates.length) return;
+    const margin = 34;          // rayon de l'anneau, pour degager tout le cercle
+    const maxAttempts = 14;
+    let moved = 0;
+
+    raceGates.forEach(gate => {
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const hit = queryHit(field, gate.position.x, gate.position.y, gate.position.z);
+        if (!hit.active) break;
+        const pushX = hit.pushX, pushY = hit.pushY, pushZ = hit.pushZ, roofY = hit.boxMaxY;
+        if (attempt === 0) moved++;
+        // Les dernieres tentatives passent par le toit : dans un quartier dense
+        // un degagement lateral peut n'aboutir a rien.
+        if (attempt >= maxAttempts - 4) {
+          gate.position.y = roofY + margin;
+        } else {
+          gate.position.x += pushX + Math.sign(pushX) * margin;
+          gate.position.y += pushY + (pushY > 0 ? margin : 0);
+          gate.position.z += pushZ + Math.sign(pushZ) * margin;
+        }
+        gate.position.x = THREE.MathUtils.clamp(gate.position.x, -built.bounds, built.bounds);
+        gate.position.z = THREE.MathUtils.clamp(gate.position.z, -built.bounds, built.bounds);
+      }
+    });
+    if (moved) console.info(`[course] ${moved} porte(s) écartée(s) des immeubles`);
+  }
+
+  // ── TUNNELS DE VITESSE LUMIERE ────────────────────────────────────────────
+  // Test de distance pur : quelques zones par carte, aucune allocation. La
+  // poussee s'etablit et retombe progressivement pour que l'entree et la
+  // sortie du tunnel restent pilotables.
+  const speedZones = built.speedZones || [];
+  let lightSpeedBlend = 0;
+  let tunnelIndex = -1;      // tunnel actuellement traverse
+  let tunnelHold = 0;        // duree ininterrompue a l'interieur, en secondes
+  let tunnelAwarded = false; // le bonus n'est accorde qu'une fois par passage
+
+  /**
+   * Le tunnel etant une courbe, l'appartenance se mesure a la distance au
+   * point echantillonne le plus proche. Les echantillons sont calcules au
+   * chargement et stockes en Float32Array : la boucle ne lit que des nombres.
+   */
+  function updateSpeedZones(dt) {
+    if (!speedZones.length) return 1;
+    let insideIndex = -1;
+    let strongest = 0;
+    let multiplier = 1;
+
+    for (let z = 0; z < speedZones.length; z++) {
+      const zone = speedZones[z];
+      const samples = zone.samples;
+      let nearest = Infinity;
+      for (let i = 0; i < zone.sampleCount; i++) {
+        const dx = player.position.x - samples[i * 3];
+        const dy = player.position.y - samples[i * 3 + 1];
+        const dz = player.position.z - samples[i * 3 + 2];
+        const squared = dx * dx + dy * dy + dz * dz;
+        if (squared < nearest) nearest = squared;
+      }
+      const distance = Math.sqrt(nearest);
+      if (distance > zone.radius) continue;
+      // Plein effet dans l'axe, degressif vers la paroi.
+      const strength = 1 - distance / zone.radius;
+      if (strength > strongest) { strongest = strength; multiplier = zone.multiplier; insideIndex = z; }
+    }
+
+    // Prime de maintien : rester dans le tunnel demande de suivre sa courbe a
+    // grande vitesse, c'est la l'exercice.
+    if (insideIndex >= 0) {
+      if (insideIndex !== tunnelIndex) { tunnelIndex = insideIndex; tunnelHold = 0; tunnelAwarded = false; }
+      tunnelHold += dt;
+      const zone = speedZones[insideIndex];
+      if (!tunnelAwarded && tunnelHold >= zone.bonusHold) {
+        tunnelAwarded = true;
+        raceScore += zone.bonus;
+        showTunnelBonus(zone.bonus);
+      }
+      if (tunnelHoldText) {
+        tunnelHoldText.hidden = false;
+        tunnelHoldText.textContent = tunnelAwarded
+          ? `TUNNEL · +${zone.bonus} ACQUIS`
+          : `TUNNEL · ${Math.max(0, zone.bonusHold - tunnelHold).toFixed(1)} s POUR +${zone.bonus}`;
+      }
+    } else {
+      tunnelIndex = -1;
+      tunnelHold = 0;
+      tunnelAwarded = false;
+      if (tunnelHoldText) tunnelHoldText.hidden = true;
+    }
+
+    const target = strongest > .04 ? 1 : 0;
+    lightSpeedBlend += (target - lightSpeedBlend) * smoothing(target ? 7 : 2.4, dt);
+    document.body.classList.toggle('lightspeed', lightSpeedBlend > .35);
+    return 1 + (multiplier - 1) * lightSpeedBlend;
+  }
+
+  function showTunnelBonus(bonus) {
+    if (!raceAward) return;
+    raceAward.textContent = `+${bonus} TUNNEL`;
+    raceAward.classList.remove('show', 'missed');
+    void raceAward.offsetWidth;
+    raceAward.classList.add('show');
+  }
+
   function updateRaceRadar(gate) {
-    if (!gate || !raceRadarArrow || !raceRadarDistance) return;
+    if (!gate) return;
     const dx = gate.position.x - player.position.x;
     const dz = gate.position.z - player.position.z;
     const targetYaw = Math.atan2(-dx, -dz);
     const relativeAngle = THREE.MathUtils.radToDeg(targetYaw - yaw);
-    raceRadarArrow.style.transform = `translate(-50%,-88%) rotate(${relativeAngle}deg)`;
-    raceRadarDistance.textContent = `PROCHAIN POINT · ${Math.round(Math.hypot(dx, dz))} m`;
+    // La fleche et la distance sont independantes : l'absence de l'une ne doit
+    // pas priver le pilote de l'autre.
+    if (raceHeadingArrow) raceHeadingArrow.style.transform = `rotate(${relativeAngle}deg)`;
+    if (!raceDistanceText) return;
+    // Ecart d'altitude : sur un circuit tridimensionnel, savoir qu'une porte
+    // est a 400 m ne sert a rien si on ignore qu'elle est 150 m plus haut.
+    const rise = gate.position.y - player.position.y;
+    const arrow = rise > 12 ? '▲' : rise < -12 ? '▼' : '•';
+    raceDistanceText.textContent = `${Math.round(Math.hypot(dx, dz))} m  ${arrow} ${Math.abs(Math.round(rise))} m`;
+    raceDistanceText.style.color = rise > 12 ? '#8ff5c0' : rise < -12 ? '#ffc46a' : '#dca9ff';
   }
 
   function refreshRaceGates() {
+    // Les chevrons du segment a parcourir s'allument : c'est ce guidage qui
+    // remplace le radar circulaire retire du HUD.
+    built.raceDressing?.setActiveSegment(raceFinished ? -1 : raceIndex === 0 ? 0 : raceIndex - 1);
     raceGates.forEach((gate, index) => {
       const data = gate.userData.raceGate;
       const isCurrent = !raceFinished && index === raceIndex;
@@ -651,6 +946,43 @@ async function startWorld() {
     if (raceScoreText) raceScoreText.textContent = raceFinished ? `TOTAL : ${raceScore} POINTS` : `SCORE : ${raceScore} POINTS`;
   }
 
+  // ── CLASSEMENT ────────────────────────────────────────────────────────────
+  // Le reseau ne doit jamais bloquer la fin de course : l'envoi et l'affichage
+  // sont asynchrones et toute panne se traduit par un simple message.
+  function renderLeaderboard(entries, headline) {
+    if (!raceBoard) return;
+    raceBoard.hidden = false;
+    if (!entries.length) {
+      raceBoard.innerHTML = `<div class="race-board-title">CLASSEMENT</div><div class="race-board-empty">${headline}</div>`;
+      return;
+    }
+    const rows = entries.slice(0, 8).map(entry => `
+      <div class="race-board-row${entry.me ? ' me' : ''}">
+        <span>${entry.rank}</span>
+        <span>${entry.prenom}</span>
+        <span>${formatRaceTime(entry.timeMs / 1000)}</span>
+      </div>`).join('');
+    raceBoard.innerHTML = `<div class="race-board-title">CLASSEMENT</div>${rows}`;
+  }
+
+  async function publishRaceResult() {
+    if (!raceBoard) return;
+    renderLeaderboard([], 'Envoi du résultat…');
+    const result = await submitRaceResult(world.id, {
+      timeMs: raceElapsed * 1000,
+      score: raceScore,
+      gates: raceGates.length
+    });
+    const entries = await fetchLeaderboard(world.id);
+    if (entries.length) {
+      renderLeaderboard(entries, '');
+      if (result.ok && result.rank) raceGateText.textContent = `ARRIVÉE · ${result.rank}ᵉ AU CLASSEMENT`;
+      return;
+    }
+    // Pas de serveur : la course reste valable, seul le partage manque.
+    renderLeaderboard([], 'Classement indisponible hors ligne. Choisis un profil dans Réglages manette pour y figurer.');
+  }
+
   function completeRaceGate(elapsed, passed) {
     const gate = raceGates[raceIndex];
     if (!gate) return;
@@ -666,6 +998,7 @@ async function startWorld() {
       raceElapsed = elapsed - raceStartElapsed;
       raceFinished = true;
       raceGateText.textContent = 'ARRIVÉE · COURSE TERMINÉE';
+      if (raceDistanceText) raceDistanceText.textContent = freeFlight ? 'CAP SUR LA TERRE' : 'PORTAIL';
       raceTimeLabel.textContent = 'TEMPS FINAL';
       raceTimeText.textContent = formatRaceTime(raceElapsed);
       if (!raceBest || raceElapsed < raceBest) {
@@ -673,13 +1006,19 @@ async function startWorld() {
         try { localStorage.setItem(raceStorageKey, String(raceBest)); } catch {}
         raceBestText.textContent = 'NOUVEAU RECORD';
       }
+      publishRaceResult();
     }
     refreshRaceGates();
   }
 
   function updateRace(elapsed) {
     if (!raceEnabled) return;
-    if (raceFinished) return;
+    if (raceFinished) {
+      // La course est bouclee : la fleche guide desormais vers le portail de
+      // sortie, qui est la vraie derniere etape.
+      if (built.portal) updateRaceRadar(built.portal);
+      return;
+    }
     if (raceStartElapsed !== null) raceElapsed = elapsed - raceStartElapsed;
     const remaining = Math.max(0, raceTimeLimit - raceElapsed);
     raceTimeText.textContent = formatRaceTime(remaining);
@@ -693,11 +1032,16 @@ async function startWorld() {
       raceGateText.textContent = 'TEMPS ÉCOULÉ · COURSE TERMINÉE';
       raceTimeLabel.textContent = 'TEMPS RESTANT';
       raceTimeText.textContent = '00:00.000';
-      raceRadarDistance.textContent = 'COURSE TERMINÉE';
+      if (raceDistanceText) raceDistanceText.textContent = 'COURSE TERMINÉE';
       refreshRaceGates();
       return;
     }
-    raceGateText.textContent = `${raceStartElapsed === null ? 'DÉPART' : 'PORTE'} ${raceIndex + 1} / ${raceGates.length}`;
+    // Secteur facon chronometrage de circuit : les portes sont reparties en
+    // trois tiers, comme sur une piste.
+    const sector = Math.min(3, Math.floor(raceIndex / (raceGates.length / 3)) + 1);
+    raceGateText.textContent = raceStartElapsed === null
+      ? `DÉPART · PORTE 1 / ${raceGates.length}`
+      : `S${sector} · PORTE ${raceIndex + 1} / ${raceGates.length}`;
     const localPosition = gate.worldToLocal(player.position.clone());
     const distance = player.position.distanceTo(gate.position);
     if (distance <= gate.userData.raceGate.radius) {
@@ -718,13 +1062,29 @@ async function startWorld() {
     refreshRaceGates();
   }
 
+  // `event.code` designe une position physique, pas une etiquette : sur un
+  // clavier AZERTY la touche marquee Q renvoie le code `KeyA`. Les commandes
+  // decrites par leur lettre sont donc indexees en plus par leur libelle, ce
+  // qui les rend independantes de la disposition du clavier.
+  const labelKey = event => (event.key && event.key.length === 1 ? `@${event.key.toUpperCase()}` : null);
+  const held = label => !!keys[`@${label}`];
+
   window.addEventListener('keydown', event => {
     keys[event.code] = true;
+    const label = labelKey(event);
+    if (label) keys[label] = true;
     if (event.code === 'Escape') location.href = `mondes.html?mode=${mode.id}`;
     if (event.code === 'KeyV') cycleCameraView();
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
   });
-  window.addEventListener('keyup', event => { keys[event.code] = false; });
+  window.addEventListener('keyup', event => {
+    keys[event.code] = false;
+    const label = labelKey(event);
+    if (label) keys[label] = false;
+  });
+  // Le navigateur cesse d'envoyer les keyup quand la page perd le focus : sans
+  // ce nettoyage, une touche relachee hors de la fenetre resterait enfoncee.
+  window.addEventListener('blur', () => { for (const code in keys) keys[code] = false; });
 
   const stick = document.getElementById('world-stick');
   const knob = document.getElementById('world-knob');
@@ -861,16 +1221,20 @@ async function startWorld() {
   });
 
   function updateFlight(dt, pad) {
-    const yawInput = (keys.ArrowLeft || keys.KeyA || keys.KeyQ ? 1 : 0) + (keys.ArrowRight || keys.KeyD ? -1 : 0) - touch.x - motion.x - pad.x;
+    // Q, S, D et C sont passes aux gaz et a l'acrobatie : la direction reste
+    // aux fleches et a I/K, main droite.
+    keyYaw = rampKey(keyYaw, (keys.ArrowLeft ? 1 : 0) + (keys.ArrowRight ? -1 : 0), dt);
+    keyPitch = rampKey(keyPitch, (keys.ArrowUp || keys.KeyI ? 1 : 0) + (keys.ArrowDown || keys.KeyK ? -1 : 0), dt);
+    const yawInput = keyYaw - touch.x - motion.x - pad.x;
     const mobilePitchDirection = touchControlsInverted ? 1 : -1;
-    const pitchInput = (keys.ArrowUp || keys.KeyI ? 1 : 0) + (keys.ArrowDown || keys.KeyK ? -1 : 0)
-      + (touch.y + motion.y) * mobilePitchDirection + pad.y;
+    const pitchInput = keyPitch + (touch.y + motion.y) * mobilePitchDirection + pad.y;
     const climbInput = THREE.MathUtils.clamp(
+      // C est passe a l'acrobatie : la descente garde Ctrl et Page bas.
       (keys.KeyE || keys.PageUp ? 1 : 0)
-      + (keys.ControlLeft || keys.ControlRight || keys.KeyC || keys.PageDown ? -1 : 0)
+      + (keys.ControlLeft || keys.ControlRight || keys.PageDown ? -1 : 0)
       + (pad.climb || 0), -1, 1
     );
-    const acroHeld = !!(keys.KeyX || touch.acro || pad.acro);
+    const acroHeld = !!(held('C') || touch.acro || pad.acro);
     const acroAxis = Math.max(Math.abs(yawInput), Math.abs(pitchInput));
     if ((!acroHeld || acroAxis < .28) && !aerobatic) aerobaticArmed = true;
     if (acroHeld && aerobaticArmed && !aerobatic && acroAxis > .55) {
@@ -883,23 +1247,34 @@ async function startWorld() {
     const cruiseSpeed = raceTuning ? 68 : 38;
     const fullSpeed = raceTuning ? 128 : 72;
     const boostSpeed = raceTuning ? 168 : 92;
+    // L'intention clavier est etablie d'abord et fait foi. La manette ne peut
+    // qu'ajouter par-dessus : un axe mal calibre ou une gachette au repos ne
+    // doit jamais pouvoir couper les gaz, c'est ce qui donnait l'impression que
+    // le bouton d'acceleration ne repondait plus.
     let targetSpeed = cruiseSpeed;
-    if (keys.KeyW || keys.KeyZ || touch.boost) targetSpeed = fullSpeed;
-    if (keys.KeyS) targetSpeed = 0;
-    if (pad.throttle > .05) targetSpeed = Math.max(8, pad.throttle * fullSpeed);
-    if (pad.brake > .05) targetSpeed = Math.max(0, targetSpeed * (1 - pad.brake * .9));
-    if (keys.ShiftLeft || keys.ShiftRight || pad.boost) targetSpeed = boostSpeed;
-    speed += (targetSpeed - speed) * Math.min(1, dt * 2.7);
+    const boosting = held('D') || keys.ShiftLeft || keys.ShiftRight || pad.boost;
+    if (held('S') || touch.boost) targetSpeed = fullSpeed;
+    if (pad.throttle > .07) targetSpeed = Math.max(targetSpeed, pad.throttle * fullSpeed);
+    if (boosting) targetSpeed = boostSpeed;
+    // Le frein est une commande explicite : il vient donc en dernier, mais il
+    // exige une deflexion franche pour agir.
+    if (held('Q')) targetSpeed = 0;
+    else if (pad.brake > .12) targetSpeed = Math.max(0, targetSpeed * (1 - pad.brake * .9));
+    // Tunnel d'acceleration : le multiplicateur s'applique par-dessus tout le
+    // reste, y compris le boost. C'est la vitesse lumiere.
+    const lightSpeed = updateSpeedZones(dt);
+    if (lightSpeed > 1) targetSpeed = Math.max(targetSpeed, boostSpeed) * lightSpeed;
+    speed += (targetSpeed - speed) * smoothing(4.4, dt);
     window.RaphaelFighterEngine?.update(speed / boostSpeed, targetSpeed >= boostSpeed * .9);
     yaw += THREE.MathUtils.clamp(yawInput, -1, 1) * 1.55 * dt;
-    pitch = THREE.MathUtils.clamp(pitch + THREE.MathUtils.clamp(pitchInput, -1, 1) * .95 * dt, -.48, .52);
+    pitch = THREE.MathUtils.clamp(pitch + THREE.MathUtils.clamp(pitchInput, -1, 1) * pitchRate * dt, -pitchDownLimit, pitchUpLimit);
     if (launchSequence > 0) {
       launchSequence = Math.max(0, launchSequence - dt);
-      pitch += (.14 - pitch) * Math.min(1, dt * 2.6);
+      pitch += (.14 - pitch) * smoothing(3.4, dt);
       targetSpeed = Math.max(targetSpeed, 78);
     }
     const forward = getFlightForward();
-    const verticalSpeed = forward.y * speed + climbInput * 30;
+    const verticalSpeed = forward.y * speed + climbInput * climbRate;
     player.position.x += forward.x * speed * dt;
     player.position.y += verticalSpeed * dt;
     player.position.z += forward.z * speed * dt;
@@ -908,6 +1283,9 @@ async function startWorld() {
     const minimum = built.getHeight(player.position.x, player.position.z) + 9;
     player.position.y = THREE.MathUtils.clamp(player.position.y, minimum, 2000);
     if (player.position.y <= minimum + .1) pitch = Math.max(0, pitch);
+    // Le decor est teste apres le relief : le degagement ne peut plus enfoncer
+    // l'appareil dans le sol.
+    updateCollisions(dt);
     let acroRoll = 0, acroPitch = 0;
     if (aerobatic) {
       aerobatic.elapsed += dt;
@@ -918,29 +1296,105 @@ async function startWorld() {
       if (progress >= 1) aerobatic = null;
     }
     const horizontalSpeed = Math.max(.001, Math.hypot(forward.x * speed, forward.z * speed));
-    const trajectoryPitch = THREE.MathUtils.clamp(Math.atan2(verticalSpeed, horizontalSpeed), -.62, .62);
-    flightVisualPitch += (trajectoryPitch - flightVisualPitch) * Math.min(1, dt * 6.5);
+    const trajectoryPitch = THREE.MathUtils.clamp(Math.atan2(verticalSpeed, horizontalSpeed), -visualPitchLimit, visualPitchLimit);
+    flightVisualPitch += (trajectoryPitch - flightVisualPitch) * smoothing(11, dt);
     // Le modèle OBJ a son axe de tangage visuel inverse : une trajectoire
     // montante lève le nez, une trajectoire descendante le fait piquer.
     player.rotation.set(-flightVisualPitch + acroPitch, yaw, THREE.MathUtils.clamp(yawInput, -1, 1) * .45 + acroRoll);
     (player.userData.flames || []).forEach((flame, index) => flame.scale.setScalar(.75 + speed / 80 + Math.sin(performance.now() * .04 + index) * .08));
-    cameraForward.lerp(forward, Math.min(1, dt * 4)).normalize();
+    // La caméra de poursuite était la vraie source de latence ressentie : elle
+    // mettait un quart de seconde à s'aligner alors que l'appareil, lui,
+    // répondait à l'image près.
+    cameraForward.lerp(forward, smoothing(10, dt)).normalize();
     const speedRatio = raceTuning ? THREE.MathUtils.clamp(speed / boostSpeed, 0, 1) : 0;
-    const targetFov = cockpitView ? 72 : raceTuning ? 64 + speedRatio * 18 : 64;
-    camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3.5);
+    // Le champ de vision s'ouvre en vitesse lumiere : c'est ce qui donne la
+    // sensation d'arrachement, bien plus que le chiffre de vitesse.
+    const targetFov = (cockpitView ? 72 : raceTuning ? 64 + speedRatio * 18 : 64) + lightSpeedBlend * 26;
+    camera.fov += (targetFov - camera.fov) * smoothing(4.5, dt);
     camera.updateProjectionMatrix();
     player.visible = !cockpitView;
     if (cockpitView) {
       const desired = player.position.clone().addScaledVector(forward, 3.2).add(new THREE.Vector3(0, 2.7, 0));
-      camera.position.lerp(desired, Math.min(1, dt * 12));
+      camera.position.lerp(desired, smoothing(20, dt));
       camera.up.set(0, 1, 0);
       camera.lookAt(player.position.clone().addScaledVector(forward, 90).add(new THREE.Vector3(0, 2.2, 0)));
     } else {
       const distance = cameraWide ? 112 : 61 + speedRatio * 21, height = cameraWide ? 32 : 15 + speedRatio * 4;
       const desired = player.position.clone().addScaledVector(cameraForward, -distance).add(new THREE.Vector3(0, height, 0));
-      camera.position.lerp(desired, Math.min(1, dt * 5.5));
+      camera.position.lerp(desired, smoothing(11, dt));
       camera.lookAt(player.position.clone().addScaledVector(forward, 43));
     }
+  }
+
+  // ── COLLISIONS AVEC LE DECOR ──────────────────────────────────────────────
+  // Le pilote est traite comme une sphere. Le champ de collision renvoie la
+  // translation minimale qui le degage : l'appareil ne traverse jamais un mur,
+  // meme a pleine vitesse.
+  function updateCollisions(dt) {
+    const field = built.collision;
+    if (!field) return;
+    if (collisionGrace > 0) collisionGrace -= dt;
+
+    const hit = queryHit(field, player.position.x, player.position.y, player.position.z);
+    if (!hit.active) return;
+    // L'objet resultat est partage et reutilise : ses valeurs doivent etre
+    // copiees avant toute seconde interrogation du champ.
+    const pushX = hit.pushX, pushY = hit.pushY, pushZ = hit.pushZ, roofY = hit.boxMaxY;
+    impactPoint.set(hit.contactX, hit.contactY, hit.contactZ);
+
+    player.position.x += pushX;
+    player.position.y += pushY;
+    player.position.z += pushZ;
+
+    // Encastrement profond : un degagement lateral ferait seulement passer
+    // d'une colonne a la suivante. Le cas se produit quand un immeuble charge
+    // en asynchrone apparait autour d'un appareil deja en vol — on le remonte
+    // alors au-dessus du toit.
+    if (queryHit(field, player.position.x, player.position.y, player.position.z).active) {
+      player.position.y = roofY + field.playerRadius + 1.5;
+    }
+
+    // Un long mur longe en rasant ne doit pas vider la coque en une seconde.
+    if (collisionGrace > 0) return;
+    collisionGrace = COLLISION_GRACE;
+    collisionsTaken++;
+
+    if (collisionsTaken > MAX_COLLISIONS) {
+      destroyFighter();
+      return;
+    }
+
+    // Choc encaisse : gerbe a l'impact, appareil freine et desaxe.
+    explosions.spawn(impactPoint, .5 + collisionsTaken * .09, built.getHeight(impactPoint.x, impactPoint.z));
+    speed *= .45;
+    pitch *= .5;
+    updateHullHud();
+  }
+
+  function destroyFighter() {
+    if (wreckTimer > 0) return;
+    wreckTimer = WRECK_DURATION;
+    explosions.spawn(player.position, 3.4, built.getHeight(player.position.x, player.position.z));
+    player.visible = false;
+    speed = 0;
+    aerobatic = null;
+    window.RaphaelFighterEngine?.update(0, false);
+    updateHullHud();
+  }
+
+  function respawnFighter() {
+    collisionsTaken = 0;
+    collisionGrace = COLLISION_GRACE * 2;
+    player.position.set(spawnX, spawn[1], spawnZ);
+    yaw = 0;
+    pitch = .12;
+    flightVisualPitch = pitch;
+    speed = 72;
+    launchSequence = 2.4;
+    player.visible = true;
+    cameraForward.set(0, 0, -1);
+    camera.position.set(spawnX, spawn[1] + 15, spawnZ + 61);
+    updateHullHud();
   }
 
   function updateGround(dt, pad) {
@@ -948,7 +1402,7 @@ async function startWorld() {
     const forwardInput = (keys.ArrowUp || keys.KeyW || keys.KeyZ ? 1 : 0) + (keys.ArrowDown || keys.KeyS ? -1 : 0) - touch.y - motion.y - pad.y;
     const boost = keys.ShiftLeft || keys.ShiftRight || touch.boost || pad.boost;
     const maxSpeed = mode.id === 'robot' ? (boost ? 30 : 18) : (boost ? 22 : 12);
-    speed += (THREE.MathUtils.clamp(forwardInput, -1, 1) * maxSpeed - speed) * Math.min(1, dt * 6);
+    speed += (THREE.MathUtils.clamp(forwardInput, -1, 1) * maxSpeed - speed) * smoothing(9, dt);
     yaw += THREE.MathUtils.clamp(turn, -1, 1) * (1.7 + Math.abs(speed) * .025) * dt;
     const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
     player.position.addScaledVector(forward, speed * dt);
@@ -967,7 +1421,7 @@ async function startWorld() {
     const distance = cameraWide ? 28 : mode.id === 'robot' ? 18 : 12;
     const height = cameraWide ? 14 : mode.id === 'robot' ? 9 : 6;
     const desired = player.position.clone().addScaledVector(forward, -distance).add(new THREE.Vector3(0, height, 0));
-    camera.position.lerp(desired, Math.min(1, dt * 7));
+    camera.position.lerp(desired, smoothing(12, dt));
     camera.lookAt(player.position.clone().add(new THREE.Vector3(0, mode.id === 'robot' ? 4 : 2.5, 0)));
   }
 
@@ -1050,9 +1504,33 @@ async function startWorld() {
     const viewPressed = pad.view;
     if (viewPressed && !lastView) cycleCameraView();
     lastView = viewPressed;
-    if (mode.type === 'flight') updateFlight(dt, pad); else updateGround(dt, pad);
+    if (wreckTimer > 0) {
+      // Appareil detruit : commandes coupees, la camera reste sur l'epave le
+      // temps de l'explosion, puis le pilote repart du point de depart.
+      wreckTimer -= dt;
+      if (wreckTimer <= 0) respawnFighter();
+    } else if (mode.type === 'flight') updateFlight(dt, pad);
+    else updateGround(dt, pad);
     updateRace(elapsed);
     combat.update(dt, elapsed, pad, keys, touch);
+    if (targetRange.active && mode.type === 'flight') {
+      targetRange.update(dt, elapsed, !!(keys.Space || keys.KeyF || touch.fire || pad.fire));
+      if (targetCountText) {
+        const left = targetRange.remaining();
+        targetCountText.hidden = false;
+        targetCountText.textContent = left
+          ? `CIBLES ${targetRange.total - left} / ${targetRange.total}`
+          : `TOUTES LES CIBLES ABATTUES · +${targetRange.score()}`;
+      }
+    }
+    explosions.update(dt);
+    // Secousse d'ecran appliquee apres le placement de la camera : le lissage
+    // du cadrage absorbe l'offset a la frame suivante.
+    const shake = explosions.getShake();
+    if (shake > .002) {
+      shakeOffset.set(Math.random() - .5, Math.random() - .5, Math.random() - .5).multiplyScalar(shake * 2.4);
+      camera.position.add(shakeOffset);
+    }
     multiplayer.update(dt, {
       fire: !!(keys.Space || keys.KeyF || touch.fire || pad.fire),
       missile: !!(keys.KeyG || keys.KeyM || touch.missile || pad.missile)
@@ -1080,6 +1558,20 @@ async function startWorld() {
     novaBuildings: () => ({ ...(built.root.userData.novaBuildings || {}) }),
     novaBuildingMinimumSpacing: () => built.root.userData.novaBuildingMinimumSpacing || 0,
     playerPosition: () => player.position.toArray(),
+    collision: () => ({
+      ...collisionStats(built.collision),
+      collisionsTaken,
+      remaining: Math.max(0, MAX_COLLISIONS - collisionsTaken),
+      maxCollisions: MAX_COLLISIONS,
+      wrecked: wreckTimer > 0,
+      activeExplosions: explosions.activeCount()
+    }),
+    crash: () => { destroyFighter(); return true; },
+    input: () => ({
+      stick: flightStick.diagnostics(),
+      keyboard: { yaw: keyYaw, pitch: keyPitch },
+      recalibrate: 'RaphaelWorldInput.recalibrate()'
+    }),
     flight: () => ({ pitch, visualPitch: flightVisualPitch, yaw, speed, rotation: player.rotation.toArray().slice(0, 3) }),
     aerobatic: () => ({ active: aerobatic?.type || null, rotation: player.rotation.toArray().slice(0, 3) }),
     portalDestination: portalRoute.destination.id,
@@ -1129,6 +1621,26 @@ async function startWorld() {
   try {
     loadingText.textContent = 'Chargement complet de la ville et des appareilsâ€¦';
     await Promise.all([built.assetsPromise, pilotPromise, combat.ready || Promise.resolve()]);
+
+    // Carte perso : le monde de base est deja construit, on n'applique que le
+    // patch. L'ordre compte — apres les objets 3D, avant le degagement des
+    // portes, pour que celui-ci tienne compte des blocs deplaces.
+    const customId = params.get('custom');
+    if (customId) {
+      const saved = await loadCustomMap(customId);
+      if (saved?.patch && saved.baseWorldId === world.id) {
+        const report = applyEdits(built.root, saved.patch);
+        const added = registerAddedCollisions(built.root, addBoxFromCenter, built.collision);
+        console.info(`[carte perso] ${saved.name} · ${report.moved} déplacés · ${report.added} ajoutés · ${added} collisions`);
+        document.getElementById('world-title').textContent = `✎ ${saved.name}`;
+      } else {
+        console.warn('[carte perso] introuvable ou base incompatible', customId);
+      }
+    }
+
+    // Les immeubles n'existent qu'ici : c'est le seul moment ou l'on peut
+    // verifier que le circuit reste franchissable.
+    clearRaceGatesFromBuildings();
     assetMessage = 'Tous les objets 3D sont prÃªts';
   } catch (error) {
     console.warn('[mondes] chargement partiel', error);

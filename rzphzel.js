@@ -2443,7 +2443,11 @@ function getEditorThumbRenderer() {
   const sun = new THREE.DirectionalLight(0xfff4e0, 1.5);
   sun.position.set(1, 2, 1.5);
   editorThumbScene.add(sun);
-  editorThumbScene.add(Object.assign(new THREE.DirectionalLight(0x8ab4ff, 0.4), { position: new THREE.Vector3(-1, 0.5, -1) }));
+  // Object3D.position est defini non inscriptible : l'affecter par
+  // Object.assign echouait en silence et laissait cette lumiere a l'origine.
+  const fill = new THREE.DirectionalLight(0x8ab4ff, 0.4);
+  fill.position.set(-1, 0.5, -1);
+  editorThumbScene.add(fill);
   editorThumbCam = new THREE.PerspectiveCamera(40, 1, 0.01, 10000);
   return editorThumbRenderer;
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=white-halo-20260722';
+import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=hologram-20260730';
+import { createExplosionSystem } from './world-explosion.js?v=cockpit-cibles-20260730';
 
 preloadEnemyFighterModel().catch(() => {});
 
@@ -184,7 +185,7 @@ function createAudioSystem(audioStateElement) {
   return { ensure, updateEngine, gun, missile, explosion, lock, acquire, setLockContinuous, isActive: () => !!context };
 }
 
-export function createWorldCombat({ scene, camera, player, world, mode, getHeight, getForward, getSpeed }) {
+export function createWorldCombat({ scene, camera, player, world, mode, getHeight, getForward, getSpeed, explosionSystem: sharedExplosions }) {
   const ui = document.getElementById('combat-ui');
   const combatButtons = Array.from(document.querySelectorAll('[data-world-touch="fire"],[data-world-touch="missile"]'));
   if (mode.type !== 'flight' || world.combat === false) {
@@ -237,7 +238,10 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   const bullets = [];
   const missiles = [];
   const missileSmoke = [];
-  const explosions = [];
+  // Le pilote et les ennemis partagent le meme pool d'explosions lorsqu'il est
+  // fourni par le monde ; sinon le module en cree un pour lui seul.
+  const explosionSystem = sharedExplosions || createExplosionSystem({ scene, camera, onSound: () => audio.explosion() });
+  const ownsExplosions = !sharedExplosions;
   let locked = false;
   let lockProgress = 0;
   let lockSearchHold = 0;
@@ -272,38 +276,10 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     return aimPoint.sub(player.position).normalize();
   }
 
+  // La mise en scene complete vit desormais dans world-explosion.js, partagee
+  // avec le crash du pilote contre un batiment.
   function spawnExplosion(position, scale = 1) {
-    audio.explosion();
-    const parts = [];
-    // Boule de feu multi-couches : flash blanc -> jaune -> orange -> rouge -> fumee.
-    const layers = [
-      { color: 0xffffff, r: 2.4 },
-      { color: 0xfff2a0, r: 3.0 },
-      { color: 0xff9f24, r: 3.7 },
-      { color: 0xff3b16, r: 4.4 },
-      { color: 0x551a0a, r: 5.2 }
-    ];
-    layers.forEach((layer, index) => {
-      const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(layer.r * scale, 14, 10),
-        new THREE.MeshBasicMaterial({ color: layer.color, transparent: true, opacity: .92, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false })
-      );
-      mesh.position.copy(position).add(new THREE.Vector3((index - 2) * 2.2 * scale, (index - 1) * 1.4 * scale, (2 - index) * 1.9 * scale));
-      mesh.renderOrder = 5;
-      scene.add(mesh);
-      parts.push(mesh);
-    });
-    // Onde de choc en anneau.
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(3.6 * scale, .55 * scale, 10, 32),
-      new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: .85, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false })
-    );
-    ring.position.copy(position);
-    ring.lookAt(camera.position);
-    ring.renderOrder = 5;
-    scene.add(ring);
-    parts.push(ring);
-    explosions.push({ parts, life: 1.2, maxLife: 1.2 });
+    explosionSystem.spawn(position, scale, getHeight(position.x, position.z));
   }
 
   function destroyEnemy() {
@@ -614,19 +590,8 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
         missileSmoke.splice(index, 1);
       }
     }
-    for (let index = explosions.length - 1; index >= 0; index--) {
-      const explosion = explosions[index];
-      explosion.life -= dt;
-      const progress = 1 - explosion.life / explosion.maxLife;
-      explosion.parts.forEach((part, partIndex) => {
-        part.scale.setScalar(1 + progress * (2.6 + partIndex * .55));
-        part.material.opacity = Math.max(0, .92 * (1 - progress * progress));
-      });
-      if (explosion.life <= 0) {
-        explosion.parts.forEach(part => scene.remove(part));
-        explosions.splice(index, 1);
-      }
-    }
+    // Un pool partage est mis a jour une seule fois, par le monde lui-meme.
+    if (ownsExplosions) explosionSystem.update(dt);
   }
 
   function update(dt, elapsed, pad, keys, touch) {
@@ -668,6 +633,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     active: true,
     ready,
     update,
+    playExplosionSound: () => audio.explosion(),
     diagnostics: {
       active: true,
       state: () => ({ hp: enemy.hp, alive: enemy.alive, locked, lockProgress, missileQueued: false, missilesLeft, kills, targetKillCount, mountedMissiles: (player.userData.missileRacks || []).filter(item => item.visible).length, activeMissiles: missiles.length, guidedMissiles: missiles.filter(item => item.guided).length, score, targetPosition: enemy.mesh.position.toArray(), targetDistance: enemy.mesh.position.distanceTo(player.position), bulletSpeed: BULLET_SPEED, aimVerticalRatio: aimVerticalRatio() }),
