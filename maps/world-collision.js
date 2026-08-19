@@ -29,6 +29,10 @@ export function createCollisionField(playerRadius = 7) {
     playerRadius,
     cells: new Map(),
     boxes: [],
+    // Les tubes creux vivent dans leur propre index. Un monde qui n'en compte
+    // aucun ne paie donc rien : la boucle correspondante ne tourne jamais.
+    tubeCells: new Map(),
+    tubes: [],
     hit: {
       active: false,
       boxIndex: -1,
@@ -93,15 +97,17 @@ export function queryHit(field, x, y, z) {
   hit.active = false;
   hit.boxIndex = -1;
   hit.depth = 0;
-  if (!field || field.boxes.length === 0) return hit;
+  if (!field) return hit;
 
-  const bucket = field.cells.get(cellKey(Math.floor(x / CELL_SIZE), Math.floor(z / CELL_SIZE)));
-  if (!bucket) return hit;
+  const key = cellKey(Math.floor(x / CELL_SIZE), Math.floor(z / CELL_SIZE));
+  const bucket = field.cells.get(key);
+  const tubeBucket = field.tubeCells?.get(key);
+  if (!bucket && !tubeBucket) return hit;
 
   const radius = field.playerRadius;
   let deepest = 0;
 
-  for (let i = 0; i < bucket.length; i++) {
+  for (let i = 0; bucket && i < bucket.length; i++) {
     const box = field.boxes[bucket[i]];
 
     // Distance a parcourir sur chaque axe pour sortir de la boite gonflee.
@@ -141,6 +147,60 @@ export function queryHit(field, x, y, z) {
     hit.contactX = x < box.minX ? box.minX : x > box.maxX ? box.maxX : x;
     hit.contactY = y < box.minY ? box.minY : y > box.maxY ? box.maxY : y;
     hit.contactZ = z < box.minZ ? box.minZ : z > box.maxZ ? box.maxZ : z;
+  }
+
+  // ── PAROIS DE TUBE ────────────────────────────────────────────────────────
+  // Meme arbitrage que les boites : on retient le degagement le moins couteux,
+  // pour qu'un pilote coince entre une paroi de tunnel et un rocher sorte du
+  // cote qui lui demande le moins de correction.
+  for (let i = 0; tubeBucket && i < tubeBucket.length; i++) {
+    const tube = field.tubes[tubeBucket[i]];
+
+    // Position le long de l'axe. Elle n'est volontairement PAS bornee au
+    // troncon : au-dela d'une extremite le tube ne repond plus, ce qui laisse
+    // les deux bouts ouverts. La borner y poserait une calotte solide, et le
+    // tunnel deviendrait une impasse fermee a ses deux entrees.
+    const apX = x - tube.ax, apY = y - tube.ay, apZ = z - tube.az;
+    const along = apX * tube.dirX + apY * tube.dirY + apZ * tube.dirZ;
+    if (along < 0 || along > tube.length) continue;
+
+    // Ecart a l'axe, mesure perpendiculairement.
+    const offX = apX - tube.dirX * along;
+    const offY = apY - tube.dirY * along;
+    const offZ = apZ - tube.dirZ * along;
+    const distance = Math.sqrt(offX * offX + offY * offY + offZ * offZ);
+    // Pile sur l'axe : aucune direction de degagement ne se distingue. Le cas
+    // ne survient que si le tube est plus etroit que le pilote, ou l'appareil
+    // n'aurait de toute facon pas pu entrer.
+    if (distance < 1e-4) continue;
+
+    // La paroi a une epaisseur finie. Le coeur reste libre — c'est par la
+    // qu'on vole — et l'exterieur aussi : sans cette seconde limite, un pilote
+    // passant au large du tunnel serait happe vers son axe.
+    const inward = distance + radius - tube.innerRadius;
+    if (inward <= 0) continue;                       // bien au centre du tube
+    const outward = tube.outerRadius + radius - distance;
+    if (outward <= 0) continue;                      // bien en dehors du tube
+
+    const towardCenter = inward < outward;
+    const depth = towardCenter ? inward : outward;
+    if (depth <= deepest) continue;
+    deepest = depth;
+
+    const scale = (towardCenter ? -depth : depth) / distance;
+    hit.active = true;
+    hit.boxIndex = -1;
+    hit.depth = depth;
+    hit.pushX = offX * scale;
+    hit.pushY = offY * scale;
+    hit.pushZ = offZ * scale;
+    // Point d'impact sur la paroi interieure, pour les etincelles et l'ecran.
+    const wallScale = tube.innerRadius / distance;
+    hit.contactX = tube.ax + tube.dirX * along + offX * wallScale;
+    hit.contactY = tube.ay + tube.dirY * along + offY * wallScale;
+    hit.contactZ = tube.az + tube.dirZ * along + offZ * wallScale;
+    // Sortie de secours par le haut, comme pour une boite epaisse.
+    hit.boxMaxY = tube.ay + tube.dirY * along + tube.outerRadius;
   }
 
   return hit;
@@ -243,11 +303,87 @@ export function addHeightfield(field, iterateTriangles, options = {}) {
   return registered;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  TUBES CREUX
+// --------------------------------------------------------------------------
+//  Une boite est pleine, et rien ne permet d'y creuser un vide : un tunnel
+//  n'est donc pas un assemblage de boites, c'est une primitive a part.
+//
+//  Un tube est un troncon DROIT — axe A vers B, rayon interieur, epaisseur de
+//  paroi. Les courbes se font en enchainant des troncons courts le long d'une
+//  spline ; c'est le role du generateur de geometrie, qui produit les memes
+//  points pour le visuel et pour la collision afin que les deux ne puissent
+//  jamais diverger.
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Enregistre un troncon de tunnel creux.
+ *
+ * @param {number} innerRadius rayon du vide central, en unites monde.
+ * @param {number} wallThickness epaisseur de la paroi. Une paroi trop fine se
+ *   traverse a grande vitesse : le pilote saute d'un cote a l'autre entre deux
+ *   images sans jamais etre teste dedans.
+ */
+export function addTube(field, ax, ay, az, bx, by, bz, innerRadius, wallThickness = 12) {
+  if (!field) return;
+  if (!(innerRadius > 0) || !(wallThickness > 0)) return;
+
+  const dirX = bx - ax, dirY = by - ay, dirZ = bz - az;
+  const length = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+  if (!(length > 1e-3)) return;
+  if (!Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(az)) return;
+  if (!Number.isFinite(length)) return;
+
+  const outerRadius = innerRadius + wallThickness;
+  const index = field.tubes.length;
+  field.tubes.push({
+    ax, ay, az,
+    dirX: dirX / length, dirY: dirY / length, dirZ: dirZ / length,
+    length, innerRadius, outerRadius
+  });
+
+  // Meme regle d'inscription que les boites : l'emprise horizontale du troncon
+  // est elargie du rayon exterieur et du rayon du pilote, si bien qu'une
+  // requete n'a toujours qu'une seule cellule a interroger.
+  const margin = outerRadius + field.playerRadius;
+  const cellX0 = Math.floor((Math.min(ax, bx) - margin) / CELL_SIZE);
+  const cellX1 = Math.floor((Math.max(ax, bx) + margin) / CELL_SIZE);
+  const cellZ0 = Math.floor((Math.min(az, bz) - margin) / CELL_SIZE);
+  const cellZ1 = Math.floor((Math.max(az, bz) + margin) / CELL_SIZE);
+  for (let cellX = cellX0; cellX <= cellX1; cellX++) {
+    for (let cellZ = cellZ0; cellZ <= cellZ1; cellZ++) {
+      const key = cellKey(cellX, cellZ);
+      let bucket = field.tubeCells.get(key);
+      if (!bucket) { bucket = []; field.tubeCells.set(key, bucket); }
+      bucket.push(index);
+    }
+  }
+}
+
+/**
+ * Enregistre une suite de troncons le long d'une ligne polygonale.
+ * @param {ArrayLike<number>} points coordonnees a plat : x0,y0,z0,x1,y1,z1...
+ */
+export function addTubePath(field, points, innerRadius, wallThickness = 12) {
+  if (!field || !points || points.length < 6) return 0;
+  let registered = 0;
+  for (let i = 0; i + 5 < points.length; i += 3) {
+    addTube(field,
+      points[i], points[i + 1], points[i + 2],
+      points[i + 3], points[i + 4], points[i + 5],
+      innerRadius, wallThickness);
+    registered++;
+  }
+  return registered;
+}
+
 /** Nombre d'obstacles enregistres — utile pour les diagnostics. */
 export function collisionStats(field) {
   return {
     boxes: field?.boxes.length || 0,
     cells: field?.cells.size || 0,
+    tubes: field?.tubes?.length || 0,
+    tubeCells: field?.tubeCells?.size || 0,
     playerRadius: field?.playerRadius || 0
   };
 }
