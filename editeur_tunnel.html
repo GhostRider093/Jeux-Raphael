@@ -48,11 +48,19 @@
   /* Un fond colore fait une boite : le texte y est centre. */
   #etat { margin-top:11px; padding:6px; text-align:center; font-weight:700; letter-spacing:1.2px;
           font-size:12px; background:#0d2430; color:#7be5a0; }
-  textarea {
-    width:100%; height:150px; margin-top:8px; padding:9px; resize:vertical;
-    font-family:Consolas,monospace; font-size:11.5px; line-height:1.5;
-    color:#cfe9f5; background:rgba(2,8,13,.9); border:1px solid rgba(150,205,230,.25);
+  input[type=text] {
+    flex:1 1 auto; min-width:0; padding:6px 9px; font:inherit; font-size:13px;
+    color:#eaf8ff; background:rgba(2,8,13,.9); border:1px solid rgba(150,205,230,.3);
   }
+  .liste { display:flex; flex-direction:column; gap:5px; max-height:190px; overflow:auto; }
+  .carte { display:flex; align-items:center; gap:7px; }
+  .carte b { flex:1 1 auto; font-weight:600; font-size:12.5px; color:#cfe9f5;
+             overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .carte button { flex:0 0 auto; padding:4px 9px; font-size:11.5px; }
+  .vide { font-size:12px; color:#8fb6c8; font-style:italic; }
+  /* Un fond colore fait une boite : le texte y est centre. */
+  #message { margin-top:10px; padding:6px; text-align:center; font-size:12px; font-weight:700;
+             letter-spacing:1px; background:#0d2430; color:#7be5a0; display:none; }
   kbd { padding:1px 6px; border:1px solid rgba(150,205,230,.4); background:rgba(120,223,246,.1);
         font-family:inherit; font-size:.94em; }
   .note { margin-top:9px; font-size:12px; color:#8fb6c8; line-height:1.6; }
@@ -94,13 +102,19 @@
 </div>
 
 <div id="sortie" class="panel">
-  <h1>Définition</h1>
-  <div class="note">Le tunnel tient en quelques nombres : c'est ce bloc qui sera
-    enregistré dans la carte, pas la géométrie.</div>
-  <textarea id="json" readonly></textarea>
-  <div class="boutons" style="margin-top:8px">
-    <button id="copier">Copier</button>
+  <h1>La carte</h1>
+  <div class="ligne">
+    <span>Nom</span>
+    <input type="text" id="nom" value="Ma carte" spellcheck="false">
   </div>
+  <div class="boutons" style="margin-top:10px">
+    <button id="enregistrer">Enregistrer</button>
+    <button id="voler">Voler dedans</button>
+  </div>
+
+  <h2>Cartes enregistrées</h2>
+  <div id="liste" class="liste"></div>
+  <div id="message"></div>
 </div>
 
 <div id="aide" class="panel">
@@ -129,7 +143,12 @@ addEventListener('error', e => {
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createTunnelTool } from './maps/tunnel-tool.js?v=tunnels-20260819d';
+import { createTunnelTool } from './maps/tunnel-tool.js?v=tunnels-20260819e';
+import { getTunnelMap, listerCartes, enregistrerCarte, slug } from './maps/tunnel-maps.js?v=tunnels-20260819e';
+
+// L'editeur s'ouvre sur une carte existante : on entre avec quelque chose a
+// manipuler plutot qu'avec une grille vide.
+const CARTE_DEPART = getTunnelMap(new URLSearchParams(location.search).get('map'));
 
 const GROUND_Y = 0;
 
@@ -146,8 +165,26 @@ camera.position.set(420, 330, 520);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = .09;
-controls.maxDistance = 4200;
+controls.maxDistance = 14000;
 controls.target.set(0, 40, 0);
+
+/**
+ * Amene la vue sur l'ensemble du trace. Un tunnel de plusieurs milliers
+ * d'unites ouvert sur une camera rapprochee ne montre qu'un mur gris, et on
+ * ne sait meme pas dans quelle direction chercher le reste.
+ */
+function cadrer(points) {
+  if (!points?.length) return;
+  const boite = new THREE.Box3();
+  const sommet = new THREE.Vector3();
+  points.forEach(p => boite.expandByPoint(sommet.set(p[0], p[1], p[2])));
+  const centre = boite.getCenter(new THREE.Vector3());
+  const taille = boite.getSize(new THREE.Vector3());
+  const portee = Math.max(taille.x, taille.y, taille.z, 400);
+  controls.target.copy(centre);
+  camera.position.set(centre.x + portee * .55, centre.y + portee * .5, centre.z + portee * .95);
+  controls.update();
+}
 // Meme convention que l'editeur de cartes : le clic gauche appartient a
 // l'edition, la vue tourne au clic droit.
 controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
@@ -162,12 +199,12 @@ scene.add(sun);
 // Volontairement legers : ils servent a situer, pas a decorer. La grille fine
 // donne l'echelle, la grille large les grandes distances, et le sol sombre
 // recoit les marques de rappel des points.
-const grille = new THREE.GridHelper(4000, 80, 0x2f6d85, 0x16323f);
+const grille = new THREE.GridHelper(14000, 140, 0x2f6d85, 0x16323f);
 grille.position.y = GROUND_Y;
 scene.add(grille);
 
 const sol = new THREE.Mesh(
-  new THREE.PlaneGeometry(4000, 4000),
+  new THREE.PlaneGeometry(14000, 14000),
   new THREE.MeshStandardMaterial({ color: 0x0c151d, roughness: 1 })
 );
 sol.rotation.x = -Math.PI / 2;
@@ -176,13 +213,13 @@ sol.position.y = GROUND_Y - .6;
 scene.add(sol);
 
 // ── OUTIL ───────────────────────────────────────────────────────────────────
-const champJson = document.getElementById('json');
 const etat = document.getElementById('etat');
+let traceCourant = null;
 
 const outil = createTunnelTool({
   scene, camera, renderer, controls, groundY: GROUND_Y,
   onChange(spec) {
-    champJson.value = JSON.stringify(spec, null, 2);
+    traceCourant = spec;
     const n = spec.points.length;
     etat.textContent = n === 0 ? 'AUCUN POINT'
       : n === 1 ? '1 POINT · IL EN FAUT UN SECOND'
@@ -232,17 +269,87 @@ document.getElementById('supprimer').addEventListener('click', () => outil.remov
 document.getElementById('vider').addEventListener('click', () => {
   outil.load({ profile: 'round', radius: Number(rayon.value), wall: Number(paroi.value), points: [] });
 });
-document.getElementById('copier').addEventListener('click', () => {
-  champJson.select();
-  navigator.clipboard?.writeText(champJson.value);
+// ── ENREGISTREMENT ──────────────────────────────────────────────────────────
+const champNom = document.getElementById('nom');
+const liste = document.getElementById('liste');
+const message = document.getElementById('message');
+
+function annoncer(texte) {
+  message.textContent = texte;
+  message.style.display = 'block';
+  clearTimeout(annoncer.minuteur);
+  annoncer.minuteur = setTimeout(() => { message.style.display = 'none'; }, 2600);
+}
+
+/**
+ * Une carte garde le decor de celle dont elle est issue : on ne perd pas les
+ * montagnes en retouchant un trace.
+ */
+function enregistrer() {
+  if (!traceCourant || traceCourant.points.length < 2) {
+    annoncer('IL FAUT AU MOINS DEUX POINTS');
+    return null;
+  }
+  const id = slug(champNom.value);
+  const existante = listerCartes()[id];
+  enregistrerCarte(id, {
+    label: champNom.value || 'Ma carte',
+    tunnel: traceCourant,
+    montagnes: existante?.montagnes || CARTE_DEPART.montagnes,
+    maisons: existante?.maisons || CARTE_DEPART.maisons
+  });
+  rafraichirListe();
+  annoncer('CARTE ENREGISTRÉE');
+  return id;
+}
+
+document.getElementById('enregistrer').addEventListener('click', enregistrer);
+document.getElementById('voler').addEventListener('click', () => {
+  const id = enregistrer();
+  if (id) open(`./vol_tunnel.html?map=${encodeURIComponent(id)}`, '_blank');
 });
 
-// Un trace de depart : on entre dans l'outil avec quelque chose a manipuler
-// plutot qu'avec une grille vide.
-outil.load({
-  profile: 'round', radius: 44, wall: 14,
-  points: [[-420, 30, -120], [-120, 70, 40], [220, 90, -60], [520, 40, 60]]
-});
+function rafraichirListe() {
+  const cartes = listerCartes();
+  liste.textContent = '';
+  const entrees = Object.entries(cartes);
+  if (!entrees.length) {
+    liste.innerHTML = '<div class="vide">aucune carte pour l\'instant</div>';
+    return;
+  }
+  entrees.forEach(([id, carte]) => {
+    const ligne = document.createElement('div');
+    ligne.className = 'carte';
+    const nom = document.createElement('b');
+    nom.textContent = carte.label || id;
+    nom.title = `${carte.tunnel?.points?.length || 0} points`;
+    const ouvrir = document.createElement('button');
+    ouvrir.textContent = 'Ouvrir';
+    ouvrir.addEventListener('click', () => {
+      champNom.value = carte.label || id;
+      outil.load(carte.tunnel);
+      rayon.value = carte.tunnel.radius; rayonVal.textContent = carte.tunnel.radius;
+      paroi.value = carte.tunnel.wall; paroiVal.textContent = carte.tunnel.wall;
+      annoncer('CARTE CHARGÉE');
+    });
+    const voler = document.createElement('button');
+    voler.textContent = 'Voler';
+    voler.addEventListener('click', () => open(`./vol_tunnel.html?map=${encodeURIComponent(id)}`, '_blank'));
+    ligne.append(nom, ouvrir, voler);
+    liste.appendChild(ligne);
+  });
+}
+rafraichirListe();
+
+outil.load(CARTE_DEPART.tunnel);
+cadrer(CARTE_DEPART.tunnel.points);
+champNom.value = CARTE_DEPART.label || 'Ma carte';
+rayon.value = CARTE_DEPART.tunnel.radius;
+rayonVal.textContent = CARTE_DEPART.tunnel.radius;
+paroi.value = CARTE_DEPART.tunnel.wall;
+paroiVal.textContent = CARTE_DEPART.tunnel.wall;
+[...boutonsProfil.children].forEach((b, i) => b.setAttribute('aria-pressed',
+  String(Object.keys(outil.profiles)[i] === CARTE_DEPART.tunnel.profile)));
 choisirMode('move');
 
 // ── BOUCLE ──────────────────────────────────────────────────────────────────
