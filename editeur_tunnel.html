@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Éditeur de tunnels — Nova Flight</title>
+<!--
+  Editeur de trace des tunnels.
+
+  On pose des points dans l'espace, le tunnel les suit en gardant la
+  circonference demandee. Deux gestes separes pour placer un point : a plat
+  pour choisir l'endroit, poignee verticale pour la hauteur. Voir l'en-tete de
+  `maps/tunnel-tool.js` pour le pourquoi de cette separation.
+-->
+<style>
+  :root {
+    --bevel: polygon(0 9px, 9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+    --bevel-sm: polygon(0 5px, 5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#04080d; color:#bdefff; overflow:hidden;
+         font-family:"Bahnschrift SemiCondensed","Segoe UI Variable Display",sans-serif; }
+  canvas { display:block; position:fixed; inset:0; width:100vw; height:100vh; }
+  .panel {
+    position:absolute; z-index:10; padding:13px 15px;
+    background:rgba(4,12,20,.9); border:1px solid rgba(150,205,230,.34);
+    clip-path:var(--bevel);
+    box-shadow:inset 0 0 0 1px rgba(4,12,20,.85), inset 0 16px 30px rgba(0,0,0,.45);
+  }
+  #outils { top:14px; left:14px; width:260px; }
+  #aide { bottom:14px; left:14px; font-size:12.5px; line-height:1.75; max-width:330px; }
+  #sortie { top:14px; right:14px; width:290px; }
+  h1 { margin:0 0 11px; font-size:14px; letter-spacing:2.4px; text-transform:uppercase; color:#78dff6; }
+  h2 { margin:14px 0 7px; font-size:11px; letter-spacing:1.8px; text-transform:uppercase;
+       color:#8fb6c8; font-weight:700; }
+  .ligne { display:flex; justify-content:space-between; align-items:center; gap:12px;
+           font-size:13px; letter-spacing:.5px; padding:3px 0; }
+  .ligne output { color:#eaf8ff; font-variant-numeric:tabular-nums; font-weight:700; }
+  input[type=range] { width:118px; accent-color:#54f6ff; }
+  .boutons { display:flex; gap:7px; flex-wrap:wrap; }
+  button {
+    flex:1 1 auto; padding:8px 11px; font:inherit; font-size:12.5px; letter-spacing:1px;
+    color:#bdefff; background:rgba(120,223,246,.09); border:1px solid rgba(150,205,230,.36);
+    clip-path:var(--bevel-sm); cursor:pointer;
+  }
+  button:hover { background:rgba(120,223,246,.2); }
+  button[aria-pressed="true"] { background:#1d4d5e; color:#eaf8ff; border-color:#54f6ff; }
+  /* Un fond colore fait une boite : le texte y est centre. */
+  #etat { margin-top:11px; padding:6px; text-align:center; font-weight:700; letter-spacing:1.2px;
+          font-size:12px; background:#0d2430; color:#7be5a0; }
+  textarea {
+    width:100%; height:150px; margin-top:8px; padding:9px; resize:vertical;
+    font-family:Consolas,monospace; font-size:11.5px; line-height:1.5;
+    color:#cfe9f5; background:rgba(2,8,13,.9); border:1px solid rgba(150,205,230,.25);
+  }
+  kbd { padding:1px 6px; border:1px solid rgba(150,205,230,.4); background:rgba(120,223,246,.1);
+        font-family:inherit; font-size:.94em; }
+  .note { margin-top:9px; font-size:12px; color:#8fb6c8; line-height:1.6; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./libs/three.module.js", "three/addons/": "./libs/" } }
+</script>
+</head>
+<body>
+
+<div id="outils" class="panel">
+  <h1>Tracé du tunnel</h1>
+  <div class="boutons">
+    <button id="mode-trace" aria-pressed="true">Poser</button>
+    <button id="mode-move" aria-pressed="false">Déplacer</button>
+  </div>
+
+  <h2>Section</h2>
+  <div class="boutons" id="profils"></div>
+
+  <h2>Dimensions</h2>
+  <div class="ligne">
+    <span>Rayon</span>
+    <input type="range" id="rayon" min="12" max="140" step="2" value="44">
+    <output id="rayon-val">44</output>
+  </div>
+  <div class="ligne">
+    <span>Paroi</span>
+    <input type="range" id="paroi" min="4" max="60" step="2" value="14">
+    <output id="paroi-val">14</output>
+  </div>
+
+  <h2>Points</h2>
+  <div class="boutons">
+    <button id="supprimer">Supprimer</button>
+    <button id="vider">Tout effacer</button>
+  </div>
+  <div id="etat">AUCUN POINT</div>
+</div>
+
+<div id="sortie" class="panel">
+  <h1>Définition</h1>
+  <div class="note">Le tunnel tient en quelques nombres : c'est ce bloc qui sera
+    enregistré dans la carte, pas la géométrie.</div>
+  <textarea id="json" readonly></textarea>
+  <div class="boutons" style="margin-top:8px">
+    <button id="copier">Copier</button>
+  </div>
+</div>
+
+<div id="aide" class="panel">
+  <strong style="color:#78dff6">Se déplacer</strong> —
+  <kbd>clic droit</kbd> tourner autour · <kbd>molette</kbd> zoomer ·
+  <kbd>clic milieu</kbd> déplacer la vue<br>
+  <strong style="color:#78dff6">Tracer</strong> —
+  <kbd>clic gauche</kbd> au sol pose un point · <kbd>clic gauche</kbd> sur un point le saisit<br>
+  <strong style="color:#78dff6">Régler</strong> —
+  glisser un point le déplace <em>à plat</em> · glisser la <span style="color:#7be5a0">flèche verte</span>
+  règle sa <em>hauteur</em> · <kbd>Suppr</kbd> retire le point
+</div>
+
+<script>
+// Une exception dans un module ES ne laisse qu'une page noire et un message
+// dans une console que personne n'ouvre. Tout est donc affiche a l'ecran.
+addEventListener('error', e => {
+  const box = document.createElement('pre');
+  box.style.cssText = 'position:absolute;z-index:99;left:14px;right:14px;bottom:150px;padding:14px;'
+    + 'background:#4a1220;color:#ffd7de;border:1px solid #ff6a86;white-space:pre-wrap;font-size:13px';
+  box.textContent = `${e.message}\n${e.error?.stack || ''}`;
+  document.body.appendChild(box);
+});
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createTunnelTool } from './maps/tunnel-tool.js?v=tunnels-20260819d';
+
+const GROUND_Y = 0;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x061019);
+const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, .5, 12000);
+camera.position.set(420, 330, 520);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = .09;
+controls.maxDistance = 4200;
+controls.target.set(0, 40, 0);
+// Meme convention que l'editeur de cartes : le clic gauche appartient a
+// l'edition, la vue tourne au clic droit.
+controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+controls.update();
+
+scene.add(new THREE.HemisphereLight(0x9fd7ff, 0x101820, 1.7));
+const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+sun.position.set(340, 700, 260);
+scene.add(sun);
+
+// ── REPERES ─────────────────────────────────────────────────────────────────
+// Volontairement legers : ils servent a situer, pas a decorer. La grille fine
+// donne l'echelle, la grille large les grandes distances, et le sol sombre
+// recoit les marques de rappel des points.
+const grille = new THREE.GridHelper(4000, 80, 0x2f6d85, 0x16323f);
+grille.position.y = GROUND_Y;
+scene.add(grille);
+
+const sol = new THREE.Mesh(
+  new THREE.PlaneGeometry(4000, 4000),
+  new THREE.MeshStandardMaterial({ color: 0x0c151d, roughness: 1 })
+);
+sol.rotation.x = -Math.PI / 2;
+// Legerement sous la grille, sinon les deux surfaces se disputent le meme plan.
+sol.position.y = GROUND_Y - .6;
+scene.add(sol);
+
+// ── OUTIL ───────────────────────────────────────────────────────────────────
+const champJson = document.getElementById('json');
+const etat = document.getElementById('etat');
+
+const outil = createTunnelTool({
+  scene, camera, renderer, controls, groundY: GROUND_Y,
+  onChange(spec) {
+    champJson.value = JSON.stringify(spec, null, 2);
+    const n = spec.points.length;
+    etat.textContent = n === 0 ? 'AUCUN POINT'
+      : n === 1 ? '1 POINT · IL EN FAUT UN SECOND'
+      : `${n} POINTS · TUNNEL TRACÉ`;
+  }
+});
+
+// ── PANNEAU ─────────────────────────────────────────────────────────────────
+const boutonsProfil = document.getElementById('profils');
+Object.entries(outil.profiles).forEach(([cle, profil], index) => {
+  const bouton = document.createElement('button');
+  bouton.textContent = profil.label;
+  bouton.setAttribute('aria-pressed', index === 0 ? 'true' : 'false');
+  bouton.addEventListener('click', () => {
+    [...boutonsProfil.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
+    bouton.setAttribute('aria-pressed', 'true');
+    outil.setProfile(cle);
+  });
+  boutonsProfil.appendChild(bouton);
+});
+
+const modeTrace = document.getElementById('mode-trace');
+const modeMove = document.getElementById('mode-move');
+function choisirMode(mode) {
+  outil.setMode(mode);
+  modeTrace.setAttribute('aria-pressed', String(mode === 'trace'));
+  modeMove.setAttribute('aria-pressed', String(mode === 'move'));
+}
+modeTrace.addEventListener('click', () => choisirMode('trace'));
+modeMove.addEventListener('click', () => choisirMode('move'));
+
+const rayon = document.getElementById('rayon');
+const rayonVal = document.getElementById('rayon-val');
+rayon.addEventListener('input', () => {
+  rayonVal.textContent = rayon.value;
+  outil.setRadius(Number(rayon.value));
+});
+
+const paroi = document.getElementById('paroi');
+const paroiVal = document.getElementById('paroi-val');
+paroi.addEventListener('input', () => {
+  paroiVal.textContent = paroi.value;
+  outil.setWall(Number(paroi.value));
+});
+
+document.getElementById('supprimer').addEventListener('click', () => outil.removeSelected());
+document.getElementById('vider').addEventListener('click', () => {
+  outil.load({ profile: 'round', radius: Number(rayon.value), wall: Number(paroi.value), points: [] });
+});
+document.getElementById('copier').addEventListener('click', () => {
+  champJson.select();
+  navigator.clipboard?.writeText(champJson.value);
+});
+
+// Un trace de depart : on entre dans l'outil avec quelque chose a manipuler
+// plutot qu'avec une grille vide.
+outil.load({
+  profile: 'round', radius: 44, wall: 14,
+  points: [[-420, 30, -120], [-120, 70, 40], [220, 90, -60], [520, 40, 60]]
+});
+choisirMode('move');
+
+// ── BOUCLE ──────────────────────────────────────────────────────────────────
+function boucle() {
+  // Le format est verifie a chaque image : selon le moment ou la page est
+  // mesuree, `innerWidth` peut encore valoir zero, et un canvas de zero pixel
+  // ne rend rien — sans la moindre erreur pour le dire.
+  const largeur = renderer.domElement.clientWidth || innerWidth;
+  const hauteur = renderer.domElement.clientHeight || innerHeight;
+  const densite = renderer.getPixelRatio();
+  if (renderer.domElement.width !== Math.round(largeur * densite)
+      || renderer.domElement.height !== Math.round(hauteur * densite)) {
+    renderer.setSize(largeur, hauteur, false);
+    camera.aspect = largeur / Math.max(1, hauteur);
+    camera.updateProjectionMatrix();
+  }
+
+  controls.update();
+  outil.updateScale();
+  renderer.render(scene, camera);
+  requestAnimationFrame(boucle);
+}
+boucle();
+</script>
+</body>
+</html>
