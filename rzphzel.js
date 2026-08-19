@@ -49,6 +49,7 @@ const TURN_SPD    = 0.048;
 let flightPitch = 0;
 let flightVisualPitch = 0;
 let flightSpeed = 0;
+let boostAudioOn = false;      // evite de relancer le coup de poussee a chaque image
 let flightAerobatic = null;
 let flightAerobaticArmed = true;
 let flightGamepadIndex = null;
@@ -3406,6 +3407,19 @@ function updateFlyoverMode(delta) {
   if (Math.abs(flightSpeed) < 0.05) flightSpeed = 0;
   if (playerMode === "chasseur") {
     window.RaphaelFighterEngine?.update(Math.abs(flightSpeed) / FLIGHT_MAX_SPEED, isBoost);
+    // ── SUR-REGIME ──────────────────────────────────────────────────────────
+    // Meme mesure et meme seuil que dans les mondes : l'intensite part de la
+    // vitesse de croisiere et non de zero, sinon le souffle tourne en fond
+    // permanent. Le chasseur doit sonner pareil dans toutes les zones.
+    const surge = clampValue((Math.abs(flightSpeed) - FLIGHT_CRUISE_SPEED)
+      / (FLIGHT_MAX_SPEED - FLIGHT_CRUISE_SPEED), 0, 1);
+    if (surge > 0.12) {
+      if (!boostAudioOn) { boostAudioOn = true; window.RaphaelBoostAudio?.punch(); }
+      window.RaphaelBoostAudio?.update(surge);
+    } else if (boostAudioOn) {
+      boostAudioOn = false;
+      window.RaphaelBoostAudio?.stop();
+    }
   }
 
   playerYaw += yawInput * FLIGHT_YAW_RATE * combatFlightMods.yaw * delta;

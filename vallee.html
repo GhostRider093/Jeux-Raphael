@@ -559,6 +559,7 @@ const FLIGHT_MAX_ALT     = 520;   // plus haut que les montagnes (230u)
 // État de vol
 let flightSpeed=0, flightPitch=0, flightVisualPitch=0, playerYaw=0;
 let flightAerobatic=null, flightAerobaticArmed=true;
+let boostAudioOn=false;   // evite de relancer le coup de poussee a chaque image
 window.flightSpeed=flightSpeed;
 window.velocity={x:0,y:0,z:0};
 window.ISLAND_RADIUS=150;
@@ -820,6 +821,16 @@ function updateFlight(delta){
     flightSpeed+=(targetSpeed-flightSpeed)*Math.min(1,delta*FLIGHT_ACCEL_RATE);
     if(Math.abs(flightSpeed)<.05)flightSpeed=0;
     window.RaphaelFighterEngine?.update(Math.abs(flightSpeed)/FLIGHT_MAX_SPEED,kBoost);
+    // Sur-regime : meme mesure et meme seuil que dans les mondes et la ville,
+    // pour que la poussee sonne pareil dans toutes les zones.
+    const surge=clamp((Math.abs(flightSpeed)-FLIGHT_CRUISE_SPEED)/(FLIGHT_MAX_SPEED-FLIGHT_CRUISE_SPEED),0,1);
+    if(surge>.12){
+      if(!boostAudioOn){ boostAudioOn=true; window.RaphaelBoostAudio?.punch(); }
+      window.RaphaelBoostAudio?.update(surge);
+    } else if(boostAudioOn){
+      boostAudioOn=false;
+      window.RaphaelBoostAudio?.stop();
+    }
     window.flightSpeed=flightSpeed;
     playerYaw  +=yawIn  *FLIGHT_YAW_RATE*combatFlightMods.yaw*delta;
     flightPitch =clamp(flightPitch+pitchIn*FLIGHT_PITCH_RATE*delta, -.48, .52);
@@ -1220,6 +1231,7 @@ let tick=0, lastTime=performance.now();
 </script>
 <script src="chasseur.js?v=shared-fighter-20260718"></script>
 <script src="fighter-engine-audio.js?v=fighter-engine-20260719"></script>
+<script src="boost-audio.js?v=biseau-net-20260730"></script>
 <script src="background-ambience.js?v=background-20260719"></script>
 <script src="fighter-cannon-audio.js?v=single-shot-20260719"></script>
 <script src="fighter-missile-audio.js?v=impact-sync-20260719"></script>

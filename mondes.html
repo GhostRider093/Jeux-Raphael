@@ -54,15 +54,30 @@
     /* ── IDENTITÉ GRAPHIQUE ────────────────────────────────────────────────
        Registre « planche d'architecte » : aucun arrondi, angles coupés en
        biseau plutôt qu'adoucis, filets d'un pixel, titres espacés. Le biseau
-       est fait au clip-path — un vrai angle taillé, pas un rayon déguisé. */
-    .panel, #game-hud, #mission-panel, #race-panel, .game-button, #status,
-    #toolbar, #palette, #inspector, #hint {
-      clip-path: polygon(0 9px, 9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+       est fait au clip-path — un vrai angle taillé, pas un rayon déguisé.
+
+       Deux tailles : 9 px pour les panneaux, 5 px pour les petits encarts
+       internes, où un biseau de 9 px mangerait le contenu. */
+    :root {
+      --bevel: polygon(0 9px, 9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+      --bevel-sm: polygon(0 5px, 5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
     }
+    #game-hud, #mission-panel, #race-panel, #combat-panel, #portal-prompt,
+    #multiplayer-panel, #mobile-info-drawer, .world-ident, .game-button {
+      clip-path: var(--bevel);
+    }
+    #target-count, #race-score { clip-path: var(--bevel-sm); }
+
+    /* Une ombre PORTÉE serait invisible ici : le clip-path découpe le rendu au
+       polygone, et tout ce qui déborde de la boîte — ombre externe comprise —
+       n'est jamais peint. La profondeur passe donc par des ombres internes,
+       qui elles survivent au découpage. */
     #game-hud, #mission-panel, #race-panel {
       border:1px solid rgba(150,205,230,.34) !important;
-      box-shadow:0 0 0 1px rgba(4,12,20,.9), 0 22px 46px rgba(0,0,0,.5) !important;
+      box-shadow:inset 0 0 0 1px rgba(4,12,20,.85),
+                 inset 0 16px 30px rgba(0,0,0,.45) !important;
     }
+    #multiplayer-panel { box-shadow:inset 0 0 22px rgba(37,176,224,.26); }
     /* Filet de rappel sur l'arête haute : la signature du registre. */
     #game-hud::before, #mission-panel::before, #race-panel::before {
       content:""; position:absolute; left:0; right:0; top:0; height:2px;
@@ -206,9 +221,16 @@
     body.world-combat-off #flight-target-range { display:none; }
     #cockpit-frame { position:absolute; z-index:23; inset:0; display:none; overflow:hidden; pointer-events:none; font-family:"Bahnschrift SemiCondensed","Segoe UI Variable Display",sans-serif; color:#bdefff; text-shadow:0 1px 4px #000; }
     body.world-cockpit-view #cockpit-frame { display:block; }
+    /* Le modele Eurofighter fournit desormais la structure du poste : rails,
+       casquette et planche CSS feraient doublon, en fausse perspective. Ils
+       restent en place tant que le GLB n'est pas charge — panne reseau ou
+       fichier absent laissent donc un cockpit habille. */
+    body.world-cockpit-3d #cockpit-frame { display:none; }
     .cockpit-rail { position:absolute; top:auto; bottom:-2%; width:34%; height:31%; border:1px solid rgba(116,164,184,.2); background:linear-gradient(160deg,rgba(18,31,39,.96),rgba(2,7,11,.99) 48%,#000 100%); box-shadow:inset 0 2px rgba(158,202,222,.12),0 -10px 28px rgba(0,0,0,.7); }
     .cockpit-rail.left { left:-2%; clip-path:polygon(0 82%,68% 14%,100% 0,100% 100%,0 100%); } .cockpit-rail.right { right:-2%; clip-path:polygon(0 0,32% 14%,100% 82%,100% 100%,0 100%); }
-    .cockpit-glare { position:absolute; z-index:2; left:50%; bottom:27%; width:31%; height:5.5%; transform:translateX(-50%); border:3px solid #0a1720; border-bottom:0; border-radius:0; background:linear-gradient(180deg,rgba(23,39,48,.88),rgba(3,9,13,.94)); box-shadow:0 -3px 0 rgba(121,180,205,.17),0 -13px 26px rgba(0,0,0,.38); }
+    /* La casquette anti-reflet est une pièce physique du cockpit, pas du
+       chrome d'interface : elle garde sa courbe, comme le manche tactile. */
+    .cockpit-glare { position:absolute; z-index:2; left:50%; bottom:27%; width:31%; height:5.5%; transform:translateX(-50%); border:3px solid #0a1720; border-bottom:0; border-radius:48% 48% 0 0; background:linear-gradient(180deg,rgba(23,39,48,.88),rgba(3,9,13,.94)); box-shadow:0 -3px 0 rgba(121,180,205,.17),0 -13px 26px rgba(0,0,0,.38); }
     .cockpit-dashboard { position:absolute; z-index:3; left:23%; right:23%; bottom:-2%; height:29%; padding:6.2vh 2.2vw 1.7vh; display:grid; grid-template-columns:.85fr 1.45fr .85fr; gap:.8vw; background:linear-gradient(180deg,rgba(18,31,39,.98),#020609 40%,#000 100%); border-top:3px solid #132733; clip-path:polygon(6% 24%,19% 5%,31% 0,69% 0,81% 5%,94% 24%,100% 100%,0 100%); box-shadow:0 -12px 32px rgba(0,0,0,.82),inset 0 3px rgba(157,209,230,.14); }
     .cockpit-screen { min-height:66px; padding:9px 11px; border:1px solid rgba(89,207,237,.28); border-radius:0; background:radial-gradient(circle at 50% 20%,rgba(32,123,145,.16),transparent 58%),rgba(0,9,13,.92); box-shadow:inset 0 0 18px rgba(0,0,0,.8),0 0 0 3px rgba(0,0,0,.48); font-size:clamp(8px,.85vw,12px); letter-spacing:.7px; }
     .cockpit-screen-title { margin-bottom:7px; color:#78dff6; font-size:.82em; font-weight:800; letter-spacing:1.6px; text-align:center; }
@@ -288,7 +310,7 @@
     @media (max-width:900px) { #world-touch { display:block; } }
     @media (max-width:900px), (pointer:coarse) {
       #mobile-info-toggle { display:inline-flex; }
-      #mobile-info-drawer { position:absolute; z-index:45; top:max(58px,calc(env(safe-area-inset-top) + 48px)); right:max(10px,env(safe-area-inset-right)); bottom:max(10px,env(safe-area-inset-bottom)); width:min(310px,calc(100vw - 20px)); overflow:auto; padding:10px; border:1px solid rgba(99,217,255,.32); border-radius:0; background:rgba(3,10,18,.92); box-shadow:0 18px 55px rgba(0,0,0,.55); backdrop-filter:blur(12px); pointer-events:auto; }
+      #mobile-info-drawer { position:absolute; z-index:45; top:max(58px,calc(env(safe-area-inset-top) + 48px)); right:max(10px,env(safe-area-inset-right)); bottom:max(10px,env(safe-area-inset-bottom)); width:min(310px,calc(100vw - 20px)); overflow:auto; padding:10px; border:1px solid rgba(99,217,255,.32); border-radius:0; background:rgba(3,10,18,.92); box-shadow:inset 0 0 0 1px rgba(4,12,20,.8); backdrop-filter:blur(12px); pointer-events:auto; }
       #game.mobile-info-open #mobile-info-drawer { display:block; }
       #mobile-info-drawer > aside, #mobile-info-drawer #combat-panel { position:relative !important; inset:auto !important; display:block; width:100% !important; margin:0 0 9px !important; transform:none !important; }
       #mobile-info-drawer #race-panel[hidden], #mobile-info-drawer #combat-panel[hidden] { display:none !important; }
@@ -484,10 +506,10 @@
   }
   </script>
   <script src="./fighter-engine-audio.js?v=fighter-engine-20260719"></script>
-  <script src="./boost-audio.js?v=sans-halo-20260730"></script>
+  <script src="./boost-audio.js?v=biseau-net-20260730"></script>
   <script src="./background-ambience.js?v=background-20260719"></script>
   <script src="./fighter-cannon-audio.js?v=single-shot-20260719"></script>
   <script src="./fighter-missile-audio.js?v=impact-sync-20260719"></script>
-  <script type="module" src="./maps/world-game.js?v=sans-halo-20260730"></script>
+  <script type="module" src="./maps/world-game.js?v=cockpit-3d-20260816b"></script>
 </body>
 </html>

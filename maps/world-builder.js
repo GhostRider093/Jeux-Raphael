@@ -3,8 +3,8 @@ import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { OBJLoader } from '../libs/loaders/OBJLoader.js';
 import { STLLoader } from '../libs/loaders/STLLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
-import { ASSET_LIBRARY } from './world-catalog.js?v=public-map-paths-20260722';
-import { createCollisionField, addBox3, addBoxFromCenter, addHeightfield } from './world-collision.js?v=sans-halo-20260730';
+import { ASSET_LIBRARY } from './world-catalog.js?v=biseau-net-20260730';
+import { createCollisionField, addBox3, addBoxFromCenter, addHeightfield } from './world-collision.js?v=biseau-net-20260730';
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const portalObjLoader = new OBJLoader();

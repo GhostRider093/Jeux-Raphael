@@ -47,6 +47,7 @@ Plateforme évolutive : exploration de mondes, pilotage, combat aérien, course,
 | `maps/world-builder.js` | Génération relief, routes, végétation, bâtiments, eau, lave |
 | `maps/world-game.js` | Catalogue, chargement pilote, entrées, caméras, UI de mission |
 | `maps/world-multiplayer.js` | Client multijoueur |
+| `maps/cockpit-view.js` | Cockpit 3D de la vue pilote — modèle Eurofighter, monté sur la caméra |
 
 ## Service Python
 
@@ -129,6 +130,26 @@ Le moteur construit ensuite automatiquement terrain, routes, décor, objectifs, 
 et les trois modes de pilote.
 
 ---
+
+## Vue cockpit
+
+Touche **V** dans `mondes.html` : caméra large → caméra proche → cockpit.
+
+La structure du poste est un vrai objet 3D (`assets/cockpit/eurofighter-cockpit.glb`,
+CC BY-NC-SA 4.0, voir `assets/cockpit/LICENCE.md`), accroché à la caméra par
+`maps/cockpit-view.js`. Trois points à connaître avant d'y toucher :
+
+- La caméra doit rester dans la scène (`scene.add(camera)` dans `world-game.js`) :
+  sans cela ses enfants ne sont jamais rendus.
+- Le modèle est percé de trois découpes d'écran. Une plaque texturée les referme
+  par l'arrière et porte les instruments — sans elle, on voit le paysage à
+  travers la planche de bord.
+- Réglage à vue depuis la console, sans rechargement :
+  `RaphaelCockpit.tune({ y: .02, z: -.05, scale: .0125, pitch: -2 })`,
+  `RaphaelCockpit.settings()`, `RaphaelCockpit.part('ldash', false)`.
+
+Si le GLB ne charge pas, l'habillage CSS d'origine (`#cockpit-frame`) reste
+affiché : la vue cockpit n'est jamais vide.
 
 ## Conventions et interdits
 

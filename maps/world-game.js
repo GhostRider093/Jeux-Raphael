@@ -2,18 +2,19 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 import { GAMEPAD_PROFILE_KEY, loadMergedProfile, readLocalProfile } from '../gamepad-profile.js';
-import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey } from '../input-shaping.js?v=sans-halo-20260730';
-import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=sans-halo-20260730';
-import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=sans-halo-20260730';
-import { buildWorld, animateWorld } from './world-builder.js?v=sans-halo-20260730';
-import { createWorldCombat } from './world-combat.js?v=sans-halo-20260730';
-import { createTargetRange } from './world-targets.js?v=sans-halo-20260730';
-import { createExplosionSystem } from './world-explosion.js?v=sans-halo-20260730';
-import { queryHit, collisionStats } from './world-collision.js?v=sans-halo-20260730';
-import { addBoxFromCenter } from './world-collision.js?v=sans-halo-20260730';
-import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=sans-halo-20260730';
-import { loadCustomMap } from '../custom-maps.js?v=sans-halo-20260730';
-import { createTwoPlayerMultiplayer } from './world-multiplayer.js?v=duel-2p-20260724';
+import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey } from '../input-shaping.js?v=biseau-net-20260730';
+import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=biseau-net-20260730';
+import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=biseau-net-20260730';
+import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
+import { createWorldCombat } from './world-combat.js?v=biseau-net-20260730';
+import { createTargetRange } from './world-targets.js?v=biseau-net-20260730';
+import { createExplosionSystem } from './world-explosion.js?v=biseau-net-20260730';
+import { queryHit, collisionStats } from './world-collision.js?v=biseau-net-20260730';
+import { addBoxFromCenter } from './world-collision.js?v=biseau-net-20260730';
+import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=biseau-net-20260730';
+import { loadCustomMap } from '../custom-maps.js?v=biseau-net-20260730';
+import { createTwoPlayerMultiplayer } from './world-multiplayer.js?v=biseau-net-20260730';
+import { createCockpitView } from './cockpit-view.js?v=cockpit-3d-20260816b';
 
 const params = new URLSearchParams(location.search);
 const requestedMap = params.get('map');
@@ -23,6 +24,13 @@ const isMobileDevice = window.matchMedia('(pointer: coarse)').matches
   || Math.min(window.innerWidth, window.innerHeight) < 700;
 let selectedMode = getMode(params.get('mode')).id;
 const world = requestedMap ? getWorld(requestedMap) : null;
+// Le repli sur un mode supporte etait pose sur le lien de l'atlas seulement :
+// une URL tapee ou un favori lancait encore un mode au sol sur un circuit
+// spatial, qui n'a pas de sol. Le garde-fou doit donc etre ici aussi, au
+// dernier point ou le mode est encore modifiable.
+if (world && Array.isArray(world.modes) && world.modes.length && !world.modes.includes(selectedMode)) {
+  selectedMode = world.modes[0];
+}
 
 const catalog = document.getElementById('catalog');
 const game = document.getElementById('game');
@@ -475,10 +483,22 @@ async function startWorld() {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, .2, 4200);
+  // Le cockpit 3D est accroché à la caméra : sans cette ligne, la caméra reste
+  // hors du graphe de scène et ses enfants ne sont jamais rendus.
+  scene.add(camera);
   const status = document.getElementById('asset-status');
   const mode = getMode(selectedMode);
   document.body.classList.toggle('world-flight-active', mode.type === 'flight');
   document.body.classList.toggle('world-combat-off', world.combat === false);
+
+  // Cockpit 3D : chargé dès l'ouverture du monde, pas au premier basculement.
+  // Le modèle amène une lampe de poste, donc une recompilation des shaders :
+  // autant la payer pendant l'écran de chargement plutôt qu'en plein vol.
+  // Si le GLB manque, l'habillage CSS d'origine reste seul en place.
+  const cockpitRig = mode.type === 'flight' ? createCockpitView(camera) : null;
+  cockpitRig?.ready
+    .then(() => document.body.classList.add('world-cockpit-3d'))
+    .catch(error => console.warn('[mondes] cockpit 3D non chargé, habillage CSS conservé', error));
   let assetMessage = 'Préparation des objets 3D…';
   let pilotMessage = mode.type === 'flight' ? 'chargement du chasseur original…' : 'chargement du personnage…';
   const renderLoadStatus = () => { status.textContent = `${assetMessage} · ${pilotMessage}`; };
@@ -575,6 +595,7 @@ async function startWorld() {
   // Vecteurs reutilises : la boucle de vol ne doit rien allouer.
   const impactPoint = new THREE.Vector3();
   const shakeOffset = new THREE.Vector3();
+  const cockpitUp = new THREE.Vector3();
 
   const clock = new THREE.Clock();
   const cycleCameraView = () => {
@@ -591,7 +612,14 @@ async function startWorld() {
       cockpitView = true;
     }
     document.body.classList.toggle('world-cockpit-view', cockpitView);
+    cockpitRig?.setVisible(cockpitView);
   };
+  // Entree directe dans le poste : mondes.html?map=...&mode=chasseur&vue=cockpit
+  // Evite d'avoir a deviner la touche pour juger le rendu.
+  if (mode.type === 'flight' && params.get('vue') === 'cockpit') {
+    cameraWide = false;
+    cycleCameraView();
+  }
   const cameraForward = new THREE.Vector3(0, 0, -1);
   const getFlightForward = () => {
     const cp = Math.cos(pitch);
@@ -1336,9 +1364,18 @@ async function startWorld() {
     if (cockpitView) {
       const desired = player.position.clone().addScaledVector(forward, 3.2).add(new THREE.Vector3(0, 2.7, 0));
       camera.position.lerp(desired, smoothing(20, dt));
-      camera.up.set(0, 1, 0);
+      // Le poste est boulonne a l'appareil : il doit s'incliner avec lui. Avec
+      // un `up` vertical fige, le cockpit restait a plat et seul le decor
+      // basculait — le virage ne se sentait plus. On reprend donc exactement
+      // le roulis applique au modele juste au-dessus, tonneau compris.
+      const roll = THREE.MathUtils.clamp(yawInput, -1, 1) * .45 + acroRoll;
+      cockpitUp.set(0, 1, 0).applyAxisAngle(forward, -roll);
+      camera.up.copy(cockpitUp);
       camera.lookAt(player.position.clone().addScaledVector(forward, 90).add(new THREE.Vector3(0, 2.2, 0)));
     } else {
+      // Sans cette remise a plat, la camera exterieure garderait le roulis
+      // laisse par le dernier passage en cockpit.
+      camera.up.set(0, 1, 0);
       const distance = cameraWide ? 112 : 61 + speedRatio * 21, height = cameraWide ? 32 : 15 + speedRatio * 4;
       const desired = player.position.clone().addScaledVector(cameraForward, -distance).add(new THREE.Vector3(0, height, 0));
       camera.position.lerp(desired, smoothing(11, dt));
