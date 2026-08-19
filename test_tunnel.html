@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banc d'essai — tunnels</title>
+<!--
+  Banc d'essai des tunnels creux.
+
+  Il ne sert pas a regarder un tunnel mais a le TRAVERSER : la seule facon de
+  juger un rayon, une courbure et une epaisseur de paroi est d'y voler dedans.
+  Les trois sections sont posees cote a cote, avec la collision reelle du jeu.
+-->
+<style>
+  :root {
+    --bevel: polygon(0 9px, 9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#04080d; color:#bdefff; overflow:hidden;
+         font-family:"Bahnschrift SemiCondensed","Segoe UI Variable Display",sans-serif; }
+  /* Le canvas est cale sur la fenetre par le CSS, et c'est le CSS qui fait
+     autorite : le rendu s'aligne ensuite sur la taille reellement affichee. */
+  canvas { display:block; position:fixed; inset:0; width:100vw; height:100vh; }
+  .panel {
+    position:absolute; z-index:10; padding:12px 15px;
+    background:rgba(4,12,20,.86); border:1px solid rgba(150,205,230,.34);
+    clip-path:var(--bevel);
+    box-shadow:inset 0 0 0 1px rgba(4,12,20,.85), inset 0 16px 30px rgba(0,0,0,.45);
+  }
+  #hud { top:14px; left:14px; min-width:246px; }
+  #help { bottom:14px; left:14px; font-size:13px; line-height:1.65; }
+  h1 { margin:0 0 9px; font-size:15px; letter-spacing:2.4px; text-transform:uppercase; color:#78dff6; }
+  .row { display:flex; justify-content:space-between; gap:18px; font-size:13px; letter-spacing:.6px; padding:2px 0; }
+  .row span:last-child { color:#eaf8ff; font-variant-numeric:tabular-nums; }
+  /* Un fond colore fait une boite : le texte y est centre. */
+  #contact { margin-top:9px; padding:6px; text-align:center; font-weight:700; letter-spacing:1.5px;
+             background:#0d2430; color:#7be5a0; }
+  #contact.touche { background:#4a1220; color:#ffd7de; }
+  kbd { padding:1px 6px; border:1px solid rgba(150,205,230,.4); background:rgba(120,223,246,.1);
+        font-family:inherit; font-size:.92em; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./libs/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="hud" class="panel">
+  <h1>Banc d'essai · tunnels</h1>
+  <div class="row"><span>Section</span><span id="section">—</span></div>
+  <div class="row"><span>Vitesse</span><span id="speed">0</span></div>
+  <div class="row"><span>Position</span><span id="pos">0</span></div>
+  <div class="row"><span>Images</span><span id="frames">0</span></div>
+  <div class="row"><span>Troncons</span><span id="tubes">0</span></div>
+  <div class="row"><span>Cellules</span><span id="cells">0</span></div>
+  <div id="contact">LIBRE</div>
+</div>
+<div id="help" class="panel">
+  <kbd>Z</kbd> <kbd>S</kbd> avancer / freiner · <kbd>Q</kbd> <kbd>D</kbd> tourner<br>
+  <kbd>&uarr;</kbd> <kbd>&darr;</kbd> tangage · <kbd>Espace</kbd> <kbd>Maj</kbd> monter / descendre<br>
+  <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> se placer a l'entree d'un tunnel · <kbd>R</kbd> replacer
+</div>
+
+<script>
+// Une exception dans un module ES ne laisse qu'une page noire et un message
+// dans une console que personne n'ouvre. Tout est donc affiche a l'ecran.
+addEventListener('error', e => {
+  const box = document.createElement('pre');
+  box.style.cssText = 'position:absolute;z-index:99;top:230px;left:14px;right:14px;padding:14px;'
+    + 'background:#4a1220;color:#ffd7de;border:1px solid #ff6a86;white-space:pre-wrap;font-size:13px';
+  box.textContent = `${e.message}\n${e.error?.stack || ''}`;
+  document.body.appendChild(box);
+});
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { createTunnel } from './maps/tunnel-geometry.js?v=tunnels-20260819c';
+import { createCollisionField, queryHit, collisionStats } from './maps/world-collision.js?v=tunnels-20260819c';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x061019);
+scene.fog = new THREE.Fog(0x061019, 900, 2600);
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, .3, 5000);
+
+scene.add(new THREE.HemisphereLight(0x9fd7ff, 0x101820, 1.5));
+const sun = new THREE.DirectionalLight(0xffffff, 1.15);
+sun.position.set(300, 620, 220);
+scene.add(sun);
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(6000, 6000),
+  new THREE.MeshStandardMaterial({ color: 0x16202b, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -220;
+scene.add(ground);
+
+// ── LES TROIS TUNNELS ───────────────────────────────────────────────────────
+// Un droit pour juger le rayon, un courbe pour juger la tenue en virage, un
+// plongeant pour verifier que rien ne casse quand l'axe n'est plus horizontal.
+const field = createCollisionField(7);
+const tunnels = [
+  {
+    titre: 'Rond · droit',
+    spec: { name: 'essai-rond', profile: 'round', radius: 44, wall: 14,
+      points: [[-900, 60, -260], [-300, 60, -260], [300, 60, -260], [900, 60, -260]] }
+  },
+  {
+    titre: 'Arche · courbe',
+    spec: { name: 'essai-arche', profile: 'arch', radius: 52, wall: 16,
+      points: [[-900, 60, 120], [-380, 78, 60], [40, 96, 210], [520, 70, 90], [960, 60, 170]] }
+  },
+  {
+    titre: 'Carré · plongeant',
+    spec: { name: 'essai-carre', profile: 'square', radius: 38, wall: 12,
+      points: [[-900, 240, 520], [-320, 160, 520], [260, 40, 520], [900, -60, 520]] }
+  }
+].map(entree => {
+  const tunnel = createTunnel(entree.spec);
+  scene.add(tunnel.mesh);
+  tunnel.registerCollision(field);
+  return { ...entree, tunnel };
+});
+
+const stats = collisionStats(field);
+document.getElementById('tubes').textContent = stats.tubes;
+document.getElementById('cells').textContent = stats.tubeCells;
+
+// Diagnostic de construction, sur `?debug=1`. Une geometrie porteuse d'un NaN
+// sort du champ de la camera sans un mot : la sphere englobante est le seul
+// temoin fiable, et la console n'est pas lisible depuis une capture d'ecran.
+if (new URLSearchParams(location.search).get('debug')) {
+  const bloc = document.createElement('pre');
+  bloc.className = 'panel';
+  bloc.style.cssText = 'top:230px;left:14px;font-size:12px;line-height:1.6;margin:0';
+  const decrire = (nom, mesh) => {
+    if (!mesh) return `  ${nom} : absent`;
+    const g = mesh.geometry;
+    const s = g.boundingSphere;
+    return `  ${nom} ${String(g.attributes.position.count).padStart(5)}`
+      + ` · centre (${s.center.x.toFixed(0)}, ${s.center.y.toFixed(0)}, ${s.center.z.toFixed(0)})`
+      + ` · rayon ${s.radius.toFixed(0)}`;
+  };
+  bloc.textContent = tunnels.map(t => [
+    t.titre,
+    decrire('paroi ', t.tunnel.shell),
+    decrire('lueurs', t.tunnel.mesh.getObjectByName('tunnel-lights'))
+  ].join('\n')).join('\n');
+  bloc.textContent += `\n\ncamera (${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(0)}, ${camera.position.z.toFixed(0)})`;
+  document.body.appendChild(bloc);
+
+  // Temoins de rendu : boite englobante de chaque tunnel et reperes du monde.
+  // Ils repondent a la question qu'un ecran noir laisse ouverte — est-ce que
+  // la scene ne se dessine pas, ou est-ce que ce tunnel-la est invisible ?
+  tunnels.forEach(t => scene.add(new THREE.BoxHelper(t.tunnel.mesh, 0xff3a5e)));
+  scene.add(new THREE.AxesHelper(400));
+}
+
+// ── PILOTAGE ────────────────────────────────────────────────────────────────
+const pilote = new THREE.Object3D();
+scene.add(pilote);
+let vitesse = 0, lacet = 0, tangage = 0;
+const touches = Object.create(null);
+addEventListener('keydown', e => { touches[e.code] = true; });
+addEventListener('keyup', e => { touches[e.code] = false; });
+
+/**
+ * Place le pilote sur l'axe d'un tunnel.
+ * @param {number} progression 0 = en amont de la bouche, 0.5 = au milieu du
+ *   tunnel. Se placer dedans est le seul moyen de juger l'eclairage et la
+ *   section sans avoir a y voler a chaque essai.
+ */
+function placer(index, progression = 0) {
+  const entree = tunnels[index];
+  if (!entree) return;
+  const t = THREE.MathUtils.clamp(progression, 0, .98);
+  const depart = entree.tunnel.curve.getPointAt(t);
+  const suite = entree.tunnel.curve.getPointAt(Math.min(t + .02, 1));
+  pilote.position.copy(depart);
+  // A l'entree seulement, on recule pour voir la bouche avant d'y etre.
+  if (t === 0) pilote.position.addScaledVector(suite.clone().sub(depart).normalize(), -180);
+  lacet = Math.atan2(-(suite.x - depart.x), -(suite.z - depart.z));
+  tangage = 0;
+  vitesse = 0;
+  document.getElementById('section').textContent = entree.titre;
+}
+
+const params = new URLSearchParams(location.search);
+placer(Math.max(0, (parseInt(params.get('tunnel'), 10) || 1) - 1), parseFloat(params.get('t')) || 0);
+
+// Vecteurs reutilises : la boucle d'animation ne doit rien allouer.
+const avant = new THREE.Vector3();
+const deplacement = new THREE.Vector3();
+const regard = new THREE.Vector3();
+const contactBoite = document.getElementById('contact');
+const champSpeed = document.getElementById('speed');
+const champPos = document.getElementById('pos');
+const champFrames = document.getElementById('frames');
+let images = 0;
+const horloge = new THREE.Clock();
+
+function boucle() {
+  const dt = Math.min(horloge.getDelta(), .05);
+
+  if (touches.Digit1) placer(0);
+  if (touches.Digit2) placer(1);
+  if (touches.Digit3) placer(2);
+  if (touches.KeyR) placer(tunnels.findIndex(t => t.titre === document.getElementById('section').textContent));
+
+  // Meme convention que le jeu : les deux codes sont acceptes, car sur un
+  // clavier AZERTY la touche marquee Z renvoie `KeyW` et la touche Q `KeyA`.
+  const pousse = (touches.KeyW || touches.KeyZ ? 1 : 0) - (touches.KeyS ? 1 : 0);
+  vitesse += (pousse * 320 - vitesse) * Math.min(1, dt * 1.6);
+  lacet += ((touches.KeyA || touches.KeyQ ? 1 : 0) - (touches.KeyD ? 1 : 0)) * 1.5 * dt;
+  tangage += ((touches.ArrowUp ? 1 : 0) - (touches.ArrowDown ? 1 : 0)) * 1.1 * dt;
+  tangage = THREE.MathUtils.clamp(tangage, -1.2, 1.2);
+
+  avant.set(-Math.sin(lacet) * Math.cos(tangage), Math.sin(tangage), -Math.cos(lacet) * Math.cos(tangage));
+  deplacement.copy(avant).multiplyScalar(vitesse * dt);
+  if (touches.Space) deplacement.y += 190 * dt;
+  if (touches.ShiftLeft) deplacement.y -= 190 * dt;
+  pilote.position.add(deplacement);
+
+  // Collision : la poussee rendue par le champ degage le pilote de la paroi.
+  const hit = queryHit(field, pilote.position.x, pilote.position.y, pilote.position.z);
+  if (hit.active) {
+    pilote.position.x += hit.pushX;
+    pilote.position.y += hit.pushY;
+    pilote.position.z += hit.pushZ;
+    vitesse *= .82;                    // on freine en raclant, on ne s'arrete pas net
+  }
+  contactBoite.classList.toggle('touche', hit.active);
+  contactBoite.textContent = hit.active ? `PAROI · ${hit.depth.toFixed(1)}` : 'LIBRE';
+
+  camera.position.copy(pilote.position);
+  regard.copy(pilote.position).add(avant);
+  camera.lookAt(regard);
+
+  // Le format est verifie a chaque image, et non une fois au demarrage : selon
+  // le moment ou la page est mesuree, `innerWidth` peut encore valoir zero, et
+  // un canvas de zero pixel ne rend rien — sans la moindre erreur pour le dire.
+  const largeur = renderer.domElement.clientWidth || innerWidth;
+  const hauteur = renderer.domElement.clientHeight || innerHeight;
+  // La comparaison porte sur le tampon de rendu, pas sur la taille CSS : avec
+  // un ecran a densite double les deux different toujours, et la condition
+  // relancerait un redimensionnement a chaque image.
+  const densite = renderer.getPixelRatio();
+  if (renderer.domElement.width !== Math.round(largeur * densite)
+      || renderer.domElement.height !== Math.round(hauteur * densite)) {
+    renderer.setSize(largeur, hauteur, false);
+    camera.aspect = largeur / Math.max(1, hauteur);
+    camera.updateProjectionMatrix();
+  }
+
+  champSpeed.textContent = Math.abs(vitesse).toFixed(0);
+  champPos.textContent = `${pilote.position.x.toFixed(0)}, ${pilote.position.y.toFixed(0)}, ${pilote.position.z.toFixed(0)}`;
+
+  champFrames.textContent = ++images;
+  renderer.render(scene, camera);
+  requestAnimationFrame(boucle);
+}
+boucle();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
