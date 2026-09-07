@@ -299,7 +299,7 @@
   const museauCanon=new THREE.Vector3();
   function updatePlayerGun(dt){
     const firing=typeof keys!=='undefined'&&(keys['Space']||keys[' ']);
-    gunClock-=dt;if(!firing||gunClock>0)return;gunClock=.143;   // 7 coups/s, canon lent
+    gunClock-=dt;if(!firing||gunClock>0)return;gunClock=.119;   // 8,4 coups/s, canon lent
     const f=forwardOf(player);let best=null,bestDist=Infinity;
     if(window.RaphaelFighterCannon)window.RaphaelFighterCannon.fireShot();
     // Les canons sont dans les ailes, a cote des rampes a missiles : deux

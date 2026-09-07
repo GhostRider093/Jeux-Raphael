@@ -614,10 +614,11 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     const fireHeld = !!(keys.Space || keys.KeyF || touch.fire || pad.fire);
     if (fireHeld && gunCooldown <= 0) {
       fireGun();
-      // Canon lent, 7 coups par seconde : a la cadence d'une mitrailleuse on
-      // n'entend plus les coups, seulement un ronflement. Un canon d'avion se
-      // compte, il ne bourdonne pas.
-      gunCooldown = .143;
+      // Canon lent, 8,4 coups par seconde. A la cadence d'une mitrailleuse on
+      // n'entend plus les coups, seulement un ronflement : un canon d'avion se
+      // compte, il ne bourdonne pas. 7 coups/s etait le premier reglage juge
+      // bon, releve de 20 % a l'essai suivant.
+      gunCooldown = .119;
     }
     const missileHeld = !!(keys.KeyG || keys.KeyM || touch.missile || pad.missile);
     if (missileHeld && !previousMissile) {
