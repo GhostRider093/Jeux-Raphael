@@ -34,7 +34,7 @@ const PLANCHE_DUREE = 1.05;             // duree de lecture, en secondes
 // davantage revient a trancher dans la lueur, et un feu coupe net dessine un
 // bord droit — le cadre carre de la video, visible a l'ecran. La marge coute
 // de la place dans la case, on la rattrape en agrandissant le sprite.
-const PLANCHE_TAILLE = 27;   // +50 % le 08/09/2026, a la demande
+const PLANCHE_TAILLE = 36;   // double de la taille d'origine (18), le 08/09/2026
 
 let plancheTexture = null;
 // Chaque emplacement lit sa propre case de la planche, il lui faut donc sa

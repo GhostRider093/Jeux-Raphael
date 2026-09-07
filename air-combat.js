@@ -34,7 +34,7 @@
   // en cinq couches, onde de choc, anneau au sol, debris, etincelles, fumee.
   // Il n'y a aucune raison d'en avoir deux : la ville prend le meme.
   let explosionFactory=null, explosionSystem=null;
-  import('./maps/world-explosion.js?v=souffle-plus-gros-20260908')
+  import('./maps/world-explosion.js?v=souffle-double-20260908')
     .then(module=>{explosionFactory=module.createExplosionSystem;})
     .catch(error=>console.warn('[air-combat] module explosions indisponible, repli sur les particules',error));
 
