@@ -481,6 +481,17 @@ async function startWorld() {
   let yaw = 0, pitch = mode.type === 'flight' ? .12 : 0, flightVisualPitch = pitch, speed = mode.type === 'flight' ? 72 : 0, verticalVelocity = 0, cameraWide = mode.type === 'flight', cockpitView = false, lastView = false;
   // Cran de poursuite : multiplicateur de la vitesse visee, monte et descendu
   // au clavier avec + et -. Meme commande et meme plafond que dans la ville.
+  // Orientation complete de l'appareil en vol. Le `yaw` et le `pitch`
+  // ci-dessus restent au mode terrestre, qui n'a ni roulis ni looping.
+  const orientation = new THREE.Quaternion();
+  const avantAppareil = new THREE.Vector3(0, 0, -1);
+  const hautAppareil = new THREE.Vector3(0, 1, 0);
+  // Objets de travail du redressement au contact du sol. Reutilises a chaque
+  // image : la boucle de vol ne doit rien allouer.
+  const redresser = new THREE.Quaternion();
+  const sansRotation = new THREE.Quaternion();
+  const aPlat = new THREE.Vector3();
+
   let chaseNotch = 1;
   // Verrou de la touche d'essai : sans lui, une pression maintenue poserait
   // une explosion par image.
@@ -550,7 +561,9 @@ async function startWorld() {
     cycleCameraView();
   }
   const cameraForward = new THREE.Vector3(0, 0, -1);
-  const getFlightForward = () => flightModel.setForward(new THREE.Vector3(), yaw, pitch);
+  // En vol, la direction vient de l'orientation complete : c'est elle qui
+  // sait ou pointe le nez, y compris sur le dos.
+  const getFlightForward = () => new THREE.Vector3(0, 0, -1).applyQuaternion(orientation);
   // Pool d'explosions partage : impacts du pilote et destructions ennemies
   // puisent dans les memes emplacements pre-construits.
   // Pas de `onSound` : world-explosion.js joue lui-meme son enregistrement,
@@ -866,7 +879,8 @@ async function startWorld() {
     const dx = gate.position.x - player.position.x;
     const dz = gate.position.z - player.position.z;
     const targetYaw = Math.atan2(-dx, -dz);
-    const relativeAngle = THREE.MathUtils.radToDeg(targetYaw - yaw);
+    const capActuel = mode.type === 'flight' ? Math.atan2(-avantAppareil.x, -avantAppareil.z) : yaw;
+    const relativeAngle = THREE.MathUtils.radToDeg(targetYaw - capActuel);
     // La fleche et la distance sont independantes : l'absence de l'une ne doit
     // pas priver le pilote de l'autre.
     if (raceHeadingArrow) raceHeadingArrow.style.transform = `rotate(${relativeAngle}deg)`;
@@ -1192,13 +1206,10 @@ async function startWorld() {
       + (keys.ControlLeft || keys.ControlRight || keys.PageDown ? -1 : 0)
       + (pad.climb || 0), -1, 1
     );
-    const acroHeld = !!(held('C') || touch.acro || pad.acro);
-    const acroAxis = Math.max(Math.abs(yawInput), Math.abs(pitchInput));
-    if ((!acroHeld || acroAxis < flightModel.TUNING.acroRearm) && !aerobatic) aerobaticArmed = true;
-    if (acroHeld && aerobaticArmed && !aerobatic) {
-      aerobatic = flightModel.startAerobatic(yawInput, pitchInput);
-      if (aerobatic) aerobaticArmed = false;
-    }
+    // Les figures preprogrammees sont retirees : le tonneau et le looping se
+    // font desormais au manche, comme dans un vrai avion. Une animation qui
+    // prend la main sur le pilotage n'a plus lieu d'etre quand le pilotage
+    // sait le faire.
     const raceTuning = world.layout === 'race-circuit';
     const cruiseSpeed = raceTuning ? 68 : 38;
     const fullSpeed = raceTuning ? 128 : 72;
@@ -1241,11 +1252,20 @@ async function startWorld() {
       boostAudioOn = false;
       window.RaphaelBoostAudio?.stop();
     }
-    yaw = flightModel.advanceYaw(yaw, yawInput, dt);
-    pitch = flightModel.advancePitch(pitch, pitchInput, dt);
+    // ── PILOTAGE ──────────────────────────────────────────────────────────
+    // L'axe gauche/droite commande le ROULIS, pas le cap. C'est ainsi qu'on
+    // pilote un avion : on s'incline, et l'appareil vire parce qu'il est
+    // incline. Le virage induit plus bas s'en charge.
+    flightModel.tourner(orientation, -yawInput, pitchInput, 0, dt);
+    avantAppareil.set(0, 0, -1).applyQuaternion(orientation);
+    hautAppareil.set(0, 1, 0).applyQuaternion(orientation);
+    flightModel.virageInduit(orientation, hautAppareil, avantAppareil, dt);
+    // Ailes ramenees a plat quand le pilote ne demande rien : un vrai avion
+    // est stable, et sans cela la moindre inclinaison resterait acquise.
+    flightModel.stabiliser(orientation, hautAppareil, avantAppareil,
+      Math.max(Math.abs(yawInput), Math.abs(pitchInput)), dt);
     if (launchSequence > 0) {
       launchSequence = Math.max(0, launchSequence - dt);
-      pitch += (.14 - pitch) * smoothing(3.4, dt);
       targetSpeed = Math.max(targetSpeed, 78);
     }
     const forward = getFlightForward();
@@ -1272,19 +1292,20 @@ async function startWorld() {
     player.position.z = THREE.MathUtils.clamp(player.position.z, -built.bounds, built.bounds);
     const minimum = built.getHeight(player.position.x, player.position.z) + 9;
     player.position.y = THREE.MathUtils.clamp(player.position.y, minimum, 2000);
-    if (player.position.y <= minimum + .1) pitch = Math.max(0, pitch);
+    // Au contact du relief, l'appareil est redresse vers le vol a plat au lieu
+    // de voir son assiette bornee : il n'y a plus d'assiette a borner.
+    if (player.position.y <= minimum + .1 && forward.y < 0) {
+      redresser.setFromUnitVectors(avantAppareil, aPlat.copy(avantAppareil).setY(0).normalize());
+      orientation.premultiply(redresser.slerp(sansRotation, 1 - smoothing(6, dt)));
+      orientation.normalize();
+    }
     // Le decor est teste apres le relief : le degagement ne peut plus enfoncer
     // l'appareil dans le sol.
     updateCollisions(dt);
-    const acro = flightModel.advanceAerobatic(aerobatic, dt, flightAcroAngles);
-    if (aerobatic && acro.done) aerobatic = null;
-    const acroRoll = acro.roll;
-    const horizontalSpeed = Math.hypot(forward.x * speed, forward.z * speed);
-    flightVisualPitch = flightModel.advanceVisualPitch(flightVisualPitch, verticalSpeed, horizontalSpeed, dt);
-    // Le nez du modèle OBJ pointe vers -Z : une rotation X positive lève le nez.
-    // Une trajectoire montante lève donc le nez et baisse le réacteur, une
-    // trajectoire descendante fait piquer l'appareil.
-    player.rotation.set(flightVisualPitch + acro.pitch, yaw, flightModel.bankAngle(yawInput) + acroRoll);
+    // L'appareil affiche son orientation reelle. Il n'y a plus de tangage
+    // visuel a calculer ni de figure preprogrammee a jouer : le pilote fait
+    // ses loopings et ses tonneaux lui-meme, avec le manche.
+    player.quaternion.copy(orientation);
     (player.userData.flames || []).forEach((flame, index) => flame.scale.setScalar(.75 + speed / 80 + Math.sin(performance.now() * .04 + index) * .08));
     // La caméra de poursuite était la vraie source de latence ressentie : elle
     // mettait un quart de seconde à s'aligner alors que l'appareil, lui,
@@ -1304,16 +1325,24 @@ async function startWorld() {
       // un `up` vertical fige, le cockpit restait a plat et seul le decor
       // basculait — le virage ne se sentait plus. On reprend donc exactement
       // le roulis applique au modele juste au-dessus, tonneau compris.
-      const roll = THREE.MathUtils.clamp(yawInput, -1, 1) * .45 + acroRoll;
-      cockpitUp.set(0, 1, 0).applyAxisAngle(forward, -roll);
-      camera.up.copy(cockpitUp);
+      // Le poste est boulonne a l'appareil : sa verticale est celle de
+      // l'appareil, sans aucun calcul de roulis a part.
+      camera.up.copy(hautAppareil);
       camera.lookAt(player.position.clone().addScaledVector(forward, 90).add(new THREE.Vector3(0, 2.2, 0)));
     } else {
-      // Sans cette remise a plat, la camera exterieure garderait le roulis
-      // laisse par le dernier passage en cockpit.
-      camera.up.set(0, 1, 0);
+      // La camera prend le HAUT DE L'APPAREIL pour verticale, et non celui du
+      // monde. C'est toute la difference : sur le dos, le decor se retrouve
+      // a l'envers a l'ecran, comme il le serait vraiment. Avec une verticale
+      // figee, l'image resterait obstinement droite et le tonneau ne se
+      // verrait pas.
+      camera.up.copy(hautAppareil);
       const distance = cameraWide ? 112 : 61 + speedRatio * 21, height = cameraWide ? 32 : 15 + speedRatio * 4;
-      const desired = player.position.clone().addScaledVector(cameraForward, -distance).add(new THREE.Vector3(0, height, 0));
+      // Le recul et la hauteur se prennent dans le repere de l'appareil : la
+      // camera reste derriere et au-dessus DE LUI, quelle que soit son
+      // inclinaison.
+      const desired = player.position.clone()
+        .addScaledVector(cameraForward, -distance)
+        .addScaledVector(hautAppareil, height);
       camera.position.lerp(desired, smoothing(11, dt));
       camera.lookAt(player.position.clone().addScaledVector(forward, 43));
     }
@@ -1360,7 +1389,8 @@ async function startWorld() {
     // Choc encaisse : gerbe a l'impact, appareil freine et desaxe.
     explosions.spawn(impactPoint, .5 + collisionsTaken * .09, built.getHeight(impactPoint.x, impactPoint.z));
     speed *= .45;
-    pitch *= .5;
+    // Plus d'assiette a reduire : l'orientation complete encaisse le choc
+    // par la vitesse seule.
     updateHullHud();
   }
 
@@ -1382,6 +1412,9 @@ async function startWorld() {
     yaw = 0;
     pitch = .12;
     flightVisualPitch = pitch;
+    // Remise a plat de l'orientation de vol, nez legerement cabre comme au
+    // depart d'un monde.
+    orientation.setFromAxisAngle(new THREE.Vector3(1, 0, 0), .12);
     speed = 72;
     launchSequence = 2.4;
     player.visible = true;
@@ -1438,7 +1471,10 @@ async function startWorld() {
     document.getElementById('world-coordinates').textContent = `X ${Math.round(player.position.x)} · Z ${Math.round(player.position.z)}`;
     document.getElementById('world-gamepad').textContent = pad.name;
     if (mode.type === 'flight') {
-      const heading = Math.round(((THREE.MathUtils.radToDeg(yaw) % 360) + 360) % 360);
+      // Le cap se lit sur la direction du nez et non plus sur un angle stocke :
+      // en vol il n'y a plus d'angle de cap, seulement une orientation.
+      const capRad = mode.type === 'flight' ? Math.atan2(-avantAppareil.x, -avantAppareil.z) : yaw;
+      const heading = Math.round(((THREE.MathUtils.radToDeg(capRad) % 360) + 360) % 360);
       const combatState = combat.diagnostics.state();
       speedValue.textContent = String(speedKmh).padStart(3, '0');
       altitudeValue.textContent = String(altitude).padStart(3, '0');

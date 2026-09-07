@@ -191,7 +191,126 @@
     return result;
   }
 
+  // ══ ATTITUDE COMPLETE ═══════════════════════════════════════════════════
+  //
+  //  Le modele ci-dessus decrit l'appareil par un cap et une assiette : deux
+  //  angles, mesures par rapport au monde. C'est simple et c'est faux des
+  //  qu'on quitte le vol a plat — le roulis n'y est qu'une decoration collee
+  //  a l'image, et l'assiette doit etre bornee sous la verticale, sinon les
+  //  deux angles se croisent et l'appareil part en vrille de calcul. C'est
+  //  pour cela qu'il ne pouvait pas passer sur le dos : c'etait interdit par
+  //  construction, pas par choix.
+  //
+  //  Ici l'orientation est un quaternion, et les commandes tournent l'appareil
+  //  autour de SES PROPRES axes. Toute la difference est la : un avion qui
+  //  cabre alors qu'il est incline sur l'aile ne monte pas, il vire. C'est ce
+  //  qui rend le looping et le tonneau possibles sans aucun cas particulier.
+  //
+  //  Aucune limite d'assiette, aucun angle a surveiller, aucun croisement
+  //  possible. Le quaternion se contente d'accumuler des rotations.
+
+  const TUNING_ATTITUDE = {
+    // Vitesses de rotation propres, en radians par seconde.
+    roulis: 2.6,       // le plus rapide : c'est lui qu'on sollicite en premier
+    tangage: 1.5,
+    lacet: .55,        // la derive, faible : un avion ne vire pas au palonnier
+    // Virage induit par l'inclinaison. Un avion incline transforme une part de
+    // sa portance en virage, sans que le pilote ne demande quoi que ce soit.
+    // Sans cela il faudrait cabrer en meme temps qu'incliner pour tourner, ce
+    // qui est juste mais dur — et le jeu deviendrait injouable au clavier.
+    virageInduit: .9,
+    // Retour au vol a plat quand on lache tout. Un vrai avion est stable ;
+    // sans cette aide, la moindre inclinaison resterait pour toujours.
+    stabilite: .55
+  };
+
+  // Objets de travail reutilises : la boucle de vol ne doit rien allouer.
+  let _q = null, _v = null, _axe = null;
+  function _prepare(orientation) {
+    if (_q) return;
+    const Q = orientation.constructor;
+    _q = new Q();
+    // Le vecteur et l'axe se deduisent du meme espace de noms que le quaternion.
+    _axe = { x: 0, y: 0, z: 0 };
+  }
+
+  /**
+   * Fait tourner l'appareil autour de ses propres axes.
+   *
+   * @param {object} orientation THREE.Quaternion, modifie sur place.
+   * @param {number} roulis   -1 a 1, inclinaison sur l'aile.
+   * @param {number} tangage  -1 a 1, nez qui monte ou descend.
+   * @param {number} lacet    -1 a 1, derive au palonnier.
+   * @param {number} dt       duree de l'image, en secondes.
+   */
+  function tourner(orientation, roulis, tangage, lacet, dt) {
+    _prepare(orientation);
+    const T = TUNING_ATTITUDE;
+    // L'ordre n'a pas d'importance a l'echelle d'une image : les angles sont
+    // petits, les rotations commutent presque. Sur des angles larges il en
+    // aurait, et c'est justement pourquoi on ne les accumule pas en Euler.
+    appliquer(orientation, 0, 0, 1, clamp(roulis, -1, 1) * T.roulis * dt);
+    appliquer(orientation, 1, 0, 0, clamp(tangage, -1, 1) * T.tangage * dt);
+    appliquer(orientation, 0, 1, 0, clamp(lacet, -1, 1) * T.lacet * dt);
+    orientation.normalize();
+  }
+
+  /** Rotation autour d'un axe exprime dans le repere de l'appareil. */
+  function appliquer(orientation, x, y, z, angle) {
+    if (!angle) return;
+    const demi = angle / 2;
+    const s = Math.sin(demi);
+    _q.set(x * s, y * s, z * s, Math.cos(demi));
+    orientation.multiply(_q);
+  }
+
+  /**
+   * Virage induit par l'inclinaison, applique autour de la verticale DU MONDE
+   * et non de l'appareil : c'est la gravite qui fait tourner un avion incline,
+   * pas son gouvernail.
+   *
+   * @param {object} orientation THREE.Quaternion, modifie sur place.
+   * @param {object} haut vecteur haut de l'appareil, deja calcule.
+   * @param {object} avant vecteur avant de l'appareil, deja calcule.
+   */
+  function virageInduit(orientation, haut, avant, dt) {
+    _prepare(orientation);
+    // La composante horizontale du vecteur haut mesure l'inclinaison : elle
+    // est nulle a plat, maximale sur la tranche. Son signe donne le sens.
+    const inclinaison = -haut.x * avant.z + haut.z * avant.x;
+    const angle = inclinaison * TUNING_ATTITUDE.virageInduit * dt;
+    if (!angle) return;
+    const demi = angle / 2, s = Math.sin(demi);
+    _q.set(0, s, 0, Math.cos(demi));
+    // Multiplication a GAUCHE : la rotation s'applique dans le repere du
+    // monde. A droite, elle serait relative a l'appareil et ne ferait pas
+    // tourner un avion sur le dos dans le bon sens.
+    orientation.premultiply(_q);
+    orientation.normalize();
+  }
+
+  /**
+   * Ramene doucement les ailes a l'horizontale quand le pilote ne demande
+   * rien. Sans cette stabilite, la moindre inclinaison resterait acquise et
+   * l'appareil deriverait sans fin.
+   */
+  function stabiliser(orientation, haut, avant, sollicitation, dt) {
+    if (sollicitation > .12) return;
+    _prepare(orientation);
+    const inclinaison = -haut.x * avant.z + haut.z * avant.x;
+    const angle = -inclinaison * TUNING_ATTITUDE.stabilite * dt;
+    if (!angle) return;
+    const demi = angle / 2, s = Math.sin(demi);
+    _q.set(0, 0, s, Math.cos(demi));
+    orientation.multiply(_q);
+    orientation.normalize();
+  }
+
   window.RaphaelFlightModel = {
+    TUNING_ATTITUDE,
+    tourner,
+    virageInduit,
+    stabiliser,
     TUNING,
     CHASE,
     chaseCeiling,
