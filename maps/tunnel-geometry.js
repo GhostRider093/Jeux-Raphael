@@ -83,10 +83,16 @@ export function getProfile(name) {
  * Courbe lissee passant par les points de controle.
  * Le lissage est volontairement doux (`.4`) : au-dela, un trace serre part
  * en boucle entre deux points et le tunnel se recoupe lui-meme.
+ *
+ * `closed` referme le trace sur lui-meme : le dernier point rejoint le premier
+ * sans raccord visible. C'est ce qu'il faut pour un circuit — un tunnel ouvert
+ * a une sortie, un circuit se tourne indefiniment. Dans ce cas il ne faut PAS
+ * repeter le premier point en fin de liste : la courbe y passerait deux fois
+ * et le raccord se verrait.
  */
-export function tunnelCurve(points) {
+export function tunnelCurve(points, closed = false) {
   const vectors = points.map(p => new THREE.Vector3(p[0], p[1], p[2]));
-  return new THREE.CatmullRomCurve3(vectors, false, 'catmullrom', .4);
+  return new THREE.CatmullRomCurve3(vectors, closed, 'catmullrom', .4);
 }
 
 function segmentCount(curve) {
@@ -263,7 +269,7 @@ export function createTunnel(spec = {}) {
   const radius = spec.radius > 0 ? spec.radius : 40;
   const wall = spec.wall > 0 ? spec.wall : Math.max(8, radius * .3);
   const profile = getProfile(spec.profile);
-  const curve = tunnelCurve(points);
+  const curve = tunnelCurve(points, spec.closed === true);
   const segments = segmentCount(curve);
 
   const geometry = buildShell(curve, profile, radius, segments);
@@ -289,7 +295,7 @@ export function createTunnel(spec = {}) {
     : buildLights(curve, profile, radius, spec.lightColor ?? 0x54f6ff);
   if (lights) mesh.add(lights);
 
-  mesh.userData.tunnel = { ...spec, radius, wall, profile: spec.profile || 'round' };
+  mesh.userData.tunnel = { ...spec, radius, wall, profile: spec.profile || 'round', closed: spec.closed === true };
 
   return {
     mesh,

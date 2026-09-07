@@ -9,3 +9,4 @@ data/
 # Profils manette des joueurs (prenom, hash du code) : donnees d'execution,
 # propres a chaque serveur, jamais versionnees.
 config/
+nova-deploy.tgz

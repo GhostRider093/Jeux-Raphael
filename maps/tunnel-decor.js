@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { addBoxFromCenter } from './world-collision.js?v=tunnels-20260819e';
+import { addBoxFromCenter } from './world-collision.js?v=tunnels-20260829a';
 
 // ══════════════════════════════════════════════════════════════════════════
 //  DECOR DES CARTES DE TUNNEL

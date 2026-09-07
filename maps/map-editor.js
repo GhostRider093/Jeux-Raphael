@@ -4,6 +4,7 @@ import { WORLD_MAPS, getPortalRoute } from './world-catalog.js?v=biseau-net-2026
 import { buildWorld } from './world-builder.js?v=biseau-net-20260730';
 import { OBJECT_FAMILIES, OBJECT_LIBRARY, createLibraryObject, libraryKeysByFamily } from './object-library.js?v=biseau-net-20260730';
 import { captureBaseline, serializeEdits, applyEdits } from './custom-map-format.js?v=biseau-net-20260730';
+import { createWorldSettingsPanel } from './world-settings-panel.js?v=monde-20260820';
 import { listCustomMaps, loadCustomMap, saveCustomMap, downloadCustomMap, slugify } from '../custom-maps.js?v=biseau-net-20260730';
 
 // ==========================================================================
@@ -269,8 +270,14 @@ async function startEditor(worldId) {
 }
 
 async function buildEditor(worldId) {
-  world = WORLD_MAPS.find(item => item.id === worldId);
-  if (!world) { showFatal('monde inconnu', new Error(`Aucun monde nommé « ${worldId} »`)); return; }
+  const source = WORLD_MAPS.find(item => item.id === worldId);
+  if (!source) { showFatal('monde inconnu', new Error(`Aucun monde nommé « ${worldId} »`)); return; }
+  // Le monde est RECOPIE. Le panneau reglera ces nombres en place, et l'ecran
+  // d'accueil promet que la carte d'origine ne bouge jamais : sans cette
+  // copie, changer un ciel salirait le catalogue pour toute la session.
+  // Les entrees du catalogue sont des donnees pures, sans fonction : la copie
+  // structuree passe.
+  world = structuredClone(source);
   picker.hidden = true;
   editorSection.hidden = false;
   document.title = `Éditeur — ${world.name}`;
@@ -326,6 +333,12 @@ async function buildEditor(worldId) {
       setStatus('Carte introuvable — on repart du monde de base');
     }
   }
+
+  // Le panneau du monde n'est branche qu'ici : ouvert plus tot, un reglage
+  // pourrait lancer une reconstruction pendant que les objets 3D arrivent
+  // encore, et la photographie de reference serait prise sur un monde a moitie
+  // bati.
+  wireWorldPanel();
 
   document.getElementById('loading').hidden = true;
   if (!resumeId) reportInventory();
@@ -385,6 +398,83 @@ function resetView() {
   camera.position.set(span, inSpace ? span * .5 : span * .42, span);
   controls.target.set(0, inSpace ? 0 : 40, 0);
   controls.update();
+}
+
+// ── RECONSTRUCTION DU MONDE ─────────────────────────────────────────────────
+//  Le panneau du monde ne change que des nombres ; seul un nouveau `buildWorld`
+//  les fait exister. Trois precautions, sans lesquelles la reconstruction
+//  couterait plus qu'elle ne rapporte :
+//
+//    1. Les pieces posees a la main sont DETACHEES avant la demolition, puis
+//       raccrochees. Elles n'appartiennent pas au monde genere ; les perdre a
+//       chaque reglage rendrait le panneau inutilisable.
+//    2. Les modeles 3D sont clones depuis un cache : leur geometrie appartient
+//       au modele d'origine. La liberer viderait le cache, et le monde suivant
+//       arriverait sans immeubles. On ne descend donc pas dans ces branches.
+//    3. Selection, annulation et suppressions designent des objets qui
+//       n'existent plus. Tout est remis a zero.
+
+function disposeBranch(node) {
+  if (node.userData.assetKey || node.userData.libraryKey) return;
+  node.children.forEach(disposeBranch);
+  // Seules les geometries sont liberees, et c'est delibere. Les materiaux du
+  // constructeur sont neufs a chaque passage, mais ceux de la bibliotheque
+  // sont partages entre toutes les pieces : un `dispose()` de trop et elles
+  // deviennent toutes noires. Le peu de memoire gagne ne vaut pas ce risque.
+  node.geometry?.dispose();
+}
+
+/** Ciel et brouillard vivent dans la scene : ils changent sans rien rebatir. */
+function applyAmbianceLive() {
+  if (!scene) return;
+  if (scene.background?.isColor) scene.background.set(world.sky);
+  else scene.background = new THREE.Color(world.sky);
+  if (scene.fog) {
+    scene.fog.color.set(world.fog);
+    scene.fog.density = world.fogDensity;
+  }
+}
+
+async function rebuildWorld() {
+  setStatus('Reconstruction du monde…');
+  select([]);
+
+  const kept = addedObjects.slice();
+  kept.forEach(piece => built.root.remove(piece));
+
+  scene.remove(built.root);
+  disposeBranch(built.root);
+
+  undoStack.length = 0;
+  deletedInstances.clear();
+
+  built = buildWorld(scene, world, message => setStatus(message), getPortalRoute(world.id));
+  kept.forEach(piece => built.root.add(piece));
+  controls.maxDistance = world.size * 2.2;
+
+  try { await built.assetsPromise; }
+  catch (error) { console.warn('[editeur] chargement partiel des objets 3D', error); }
+  // Nouvelle reference : le patch se mesure contre le monde qui vient d'etre
+  // bati, jamais contre le precedent.
+  baseline = captureBaseline(built.root);
+  reportInventory();
+}
+
+function wireWorldPanel() {
+  const panel = document.getElementById('world-panel');
+  const toggle = document.getElementById('btn-world');
+  createWorldSettingsPanel({
+    host: document.getElementById('world-panel-body'),
+    world,
+    onLive: applyAmbianceLive,
+    onRebuild: () => rebuildWorld().catch(error => showFatal('reconstruction du monde', error))
+  });
+  toggle.addEventListener('click', () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    document.body.classList.toggle('world-open', open);
+    toggle.setAttribute('aria-pressed', String(open));
+  });
 }
 
 // ── PALETTE ET POSE ─────────────────────────────────────────────────────────
@@ -1083,6 +1173,8 @@ function animate() {
 
 window.__raphaelEditor = {
   worldId: () => world?.id,
+  world: () => world,
+  rebuild: () => rebuildWorld(),
   selection: () => selected.map(target => target.label),
   added: () => addedObjects.length,
   deleted: () => deletedInstances.size,

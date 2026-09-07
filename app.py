@@ -362,19 +362,67 @@ MAX_CUSTOM_MAP_SIZE = 512 * 1024
 MAX_CUSTOM_MAPS = 60
 MAP_ID_PATTERN = re.compile(r"^[a-z0-9-]{1,60}$")
 
+# Deux familles de cartes cohabitent dans la fente du joueur, sous deux cles
+# separees. Une carte perso est un patch applique a un monde du catalogue ; une
+# carte de tunnel est un trace autonome. Les ranger ensemble ferait apparaitre
+# les unes dans la liste des autres, et l'editeur de mondes tenterait
+# d'appliquer un trace de tunnel comme patch.
+CUSTOM_MAPS_FIELD = "customMaps"
+TUNNEL_MAPS_FIELD = "tunnelMaps"
 
-def custom_maps_of(slot: str) -> dict:
+
+def maps_of(slot: str, field: str) -> dict:
     record = read_slot_file(slot)
-    maps = record.get("customMaps")
+    maps = record.get(field)
     return maps if isinstance(maps, dict) else {}
 
 
-def store_custom_maps(slot: str, maps: dict) -> None:
+def store_maps(slot: str, field: str, maps: dict) -> None:
     record = read_slot_file(slot)
     if not record:
         record = {"slot": slot}
-    record["customMaps"] = maps
+    record[field] = maps
     write_slot_file(slot, record)
+
+
+async def save_map_in(field: str, slot: str, map_id: str, request: Request) -> dict:
+    """Ecriture commune aux deux familles : memes garde-fous, meme reponse."""
+    if not MAP_ID_PATTERN.match(map_id):
+        raise HTTPException(400, "Identifiant de carte invalide")
+    raw = await request.body()
+    if len(raw) > MAX_CUSTOM_MAP_SIZE:
+        raise HTTPException(413, "Carte trop volumineuse")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise HTTPException(400, f"JSON invalide : {error}") from error
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "Carte invalide")
+
+    maps = maps_of(slot, field)
+    if map_id not in maps and len(maps) >= MAX_CUSTOM_MAPS:
+        raise HTTPException(409, f"Limite de {MAX_CUSTOM_MAPS} cartes atteinte")
+    payload["id"] = map_id
+    maps[map_id] = payload
+    store_maps(slot, field, maps)
+    return {"ok": True, "id": map_id, "count": len(maps)}
+
+
+def remove_map_in(field: str, slot: str, map_id: str) -> dict:
+    if not MAP_ID_PATTERN.match(map_id):
+        raise HTTPException(400, "Identifiant de carte invalide")
+    maps = maps_of(slot, field)
+    maps.pop(map_id, None)
+    store_maps(slot, field, maps)
+    return {"ok": True, "count": len(maps)}
+
+
+def custom_maps_of(slot: str) -> dict:
+    return maps_of(slot, CUSTOM_MAPS_FIELD)
+
+
+def store_custom_maps(slot: str, maps: dict) -> None:
+    store_maps(slot, CUSTOM_MAPS_FIELD, maps)
 
 
 @app.get("/api/custom-maps")
@@ -400,35 +448,50 @@ def get_custom_map(map_id: str, slot: str | None = Depends(resolve_slot_optional
 
 @app.post("/api/custom-maps/{map_id}")
 async def save_custom_map(map_id: str, request: Request, slot: str = Depends(resolve_slot)):
-    if not MAP_ID_PATTERN.match(map_id):
-        raise HTTPException(400, "Identifiant de carte invalide")
-    raw = await request.body()
-    if len(raw) > MAX_CUSTOM_MAP_SIZE:
-        raise HTTPException(413, "Carte trop volumineuse")
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise HTTPException(400, f"JSON invalide : {error}") from error
-    if not isinstance(payload, dict):
-        raise HTTPException(400, "Carte invalide")
-
-    maps = custom_maps_of(slot)
-    if map_id not in maps and len(maps) >= MAX_CUSTOM_MAPS:
-        raise HTTPException(409, f"Limite de {MAX_CUSTOM_MAPS} cartes atteinte")
-    payload["id"] = map_id
-    maps[map_id] = payload
-    store_custom_maps(slot, maps)
-    return {"ok": True, "id": map_id, "count": len(maps)}
+    return await save_map_in(CUSTOM_MAPS_FIELD, slot, map_id, request)
 
 
 @app.delete("/api/custom-maps/{map_id}")
 def remove_custom_map(map_id: str, slot: str = Depends(resolve_slot)):
+    return remove_map_in(CUSTOM_MAPS_FIELD, slot, map_id)
+
+
+# ---------------------------------------------------------------------------
+#  CARTES DE TUNNEL
+# ---------------------------------------------------------------------------
+#  Meme mecanique que les cartes perso, autre tiroir. Le serveur n'est jamais
+#  une condition pour jouer : l'editeur ecrit d'abord dans le navigateur, et
+#  pousse ici en plus. Sans profil choisi, la liste revient vide plutot qu'en
+#  erreur — le mode solo doit continuer a tourner en site statique.
+
+
+@app.get("/api/tunnel-maps")
+def list_tunnel_maps(slot: str | None = Depends(resolve_slot_optional)):
+    if not slot:
+        return {"maps": {}}
+    return {"maps": maps_of(slot, TUNNEL_MAPS_FIELD)}
+
+
+@app.get("/api/tunnel-maps/{map_id}")
+def get_tunnel_map(map_id: str, slot: str | None = Depends(resolve_slot_optional)):
     if not MAP_ID_PATTERN.match(map_id):
         raise HTTPException(400, "Identifiant de carte invalide")
-    maps = custom_maps_of(slot)
-    maps.pop(map_id, None)
-    store_custom_maps(slot, maps)
-    return {"ok": True, "count": len(maps)}
+    if not slot:
+        raise HTTPException(404, "Aucun profil choisi")
+    found = maps_of(slot, TUNNEL_MAPS_FIELD).get(map_id)
+    if not found:
+        raise HTTPException(404, "Carte inconnue")
+    return found
+
+
+@app.post("/api/tunnel-maps/{map_id}")
+async def save_tunnel_map(map_id: str, request: Request, slot: str = Depends(resolve_slot)):
+    return await save_map_in(TUNNEL_MAPS_FIELD, slot, map_id, request)
+
+
+@app.delete("/api/tunnel-maps/{map_id}")
+def remove_tunnel_map(map_id: str, slot: str = Depends(resolve_slot)):
+    return remove_map_in(TUNNEL_MAPS_FIELD, slot, map_id)
 
 
 @app.exception_handler(HTTPException)

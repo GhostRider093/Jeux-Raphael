@@ -57,6 +57,10 @@
   .carte b { flex:1 1 auto; font-weight:600; font-size:12.5px; color:#cfe9f5;
              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .carte button { flex:0 0 auto; padding:4px 9px; font-size:11.5px; }
+  /* Effacer est le seul geste irreversible du panneau : il porte sa couleur. */
+  .carte button.danger { color:#ffb4c1; border-color:rgba(255,120,150,.4);
+                         background:rgba(255,110,140,.08); }
+  .carte button.danger:hover { background:rgba(255,110,140,.22); }
   .vide { font-size:12px; color:#8fb6c8; font-style:italic; }
   /* Un fond colore fait une boite : le texte y est centre. */
   #message { margin-top:10px; padding:6px; text-align:center; font-size:12px; font-weight:700;
@@ -111,6 +115,13 @@
     <button id="enregistrer">Enregistrer</button>
     <button id="voler">Voler dedans</button>
   </div>
+  <div class="boutons" style="margin-top:7px">
+    <button id="fichier" title="Télécharger la carte en .json">Fichier</button>
+    <button id="importer" title="Charger une carte .json">Importer</button>
+    <!-- Le champ reste invisible : c'est le bouton ci-dessus qui l'ouvre, pour
+         que la barre garde une seule facon de cliquer. -->
+    <input type="file" id="fichier-entree" accept="application/json,.json" hidden>
+  </div>
 
   <h2>Cartes enregistrées</h2>
   <div id="liste" class="liste"></div>
@@ -143,8 +154,11 @@ addEventListener('error', e => {
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createTunnelTool } from './maps/tunnel-tool.js?v=tunnels-20260819e';
-import { getTunnelMap, listerCartes, enregistrerCarte, slug } from './maps/tunnel-maps.js?v=tunnels-20260819e';
+import { createTunnelTool } from './maps/tunnel-tool.js?v=tunnels-20260906a';
+import {
+  getTunnelMap, listerCartes, enregistrerCarte, publierCarte, supprimerCarte,
+  synchroniser, estCarteDuCatalogue, slug
+} from './maps/tunnel-maps.js?v=tunnels-20260906a';
 
 // L'editeur s'ouvre sur une carte existante : on entre avec quelque chose a
 // manipuler plutot qu'avec une grille vide.
@@ -291,6 +305,13 @@ function enregistrer() {
     return null;
   }
   const id = slug(champNom.value);
+  if (estCarteDuCatalogue(id)) {
+    // Le catalogue est livre avec le jeu : on ne le remplace pas depuis
+    // l'editeur, sinon un croquis rate ferait disparaitre un trace de
+    // reference pour tout le monde.
+    annoncer('CE NOM EST CELUI D\'UNE CARTE DU JEU');
+    return null;
+  }
   const existante = listerCartes()[id];
   enregistrerCarte(id, {
     label: champNom.value || 'Ma carte',
@@ -303,11 +324,97 @@ function enregistrer() {
   return id;
 }
 
-document.getElementById('enregistrer').addEventListener('click', enregistrer);
-document.getElementById('voler').addEventListener('click', () => {
+/**
+ * Le second exemplaire part sur le serveur, sans faire attendre : le travail
+ * est deja acquis dans le navigateur quand cette fonction demarre. Le message
+ * dit lequel des deux stockages a recu la carte, pour qu'on sache si elle
+ * survivra a un cache vide.
+ */
+async function enregistrerEtPublier() {
   const id = enregistrer();
-  if (id) open(`./vol_tunnel.html?map=${encodeURIComponent(id)}`, '_blank');
+  if (!id) return null;
+  annoncer(await publierCarte(id)
+    ? 'ENREGISTRÉE ICI ET SUR LE SERVEUR'
+    : 'ENREGISTRÉE DANS CE NAVIGATEUR');
+  return id;
+}
+
+document.getElementById('enregistrer').addEventListener('click', enregistrerEtPublier);
+document.getElementById('voler').addEventListener('click', () => {
+  // On ouvre le vol sur l'enregistrement local, sans attendre le serveur : la
+  // page de vol lit le meme stockage.
+  const id = enregistrer();
+  if (!id) return;
+  publierCarte(id);
+  open(`./vol_tunnel.html?map=${encodeURIComponent(id)}`, '_blank');
 });
+
+// ── FICHIER ─────────────────────────────────────────────────────────────────
+// Un filet independant du serveur et du navigateur : ni l'un ni l'autre ne
+// survit a une machine changee.
+document.getElementById('fichier').addEventListener('click', () => {
+  const id = enregistrer();
+  if (!id) return;
+  publierCarte(id);
+  const carte = listerCartes()[id];
+  const url = URL.createObjectURL(new Blob([JSON.stringify(carte, null, 2)],
+    { type: 'application/json' }));
+  const lien = document.createElement('a');
+  lien.href = url;
+  lien.download = `${id}.json`;
+  lien.click();
+  URL.revokeObjectURL(url);
+  annoncer('FICHIER TÉLÉCHARGÉ');
+});
+
+const champFichier = document.getElementById('fichier-entree');
+document.getElementById('importer').addEventListener('click', () => champFichier.click());
+champFichier.addEventListener('change', async () => {
+  const fichier = champFichier.files?.[0];
+  // Le champ est remis a zero tout de suite : sans ca, reimporter le meme
+  // fichier apres correction ne declencherait aucun evenement.
+  champFichier.value = '';
+  if (!fichier) return;
+  let carte;
+  try {
+    carte = JSON.parse(await fichier.text());
+  } catch {
+    annoncer('FICHIER ILLISIBLE');
+    return;
+  }
+  const points = carte?.tunnel?.points;
+  if (!Array.isArray(points) || points.length < 2) {
+    annoncer('CE FICHIER N\'EST PAS UNE CARTE DE TUNNEL');
+    return;
+  }
+  const label = carte.label || fichier.name.replace(/\.json$/i, '');
+  let id = slug(label);
+  // Une carte du catalogue porte peut-etre deja ce nom : l'import se range a
+  // cote plutot que d'ecraser la reference.
+  if (estCarteDuCatalogue(id)) id = `${id}-importee`;
+  enregistrerCarte(id, {
+    label,
+    tunnel: carte.tunnel,
+    montagnes: carte.montagnes || CARTE_DEPART.montagnes,
+    maisons: carte.maisons || CARTE_DEPART.maisons
+  });
+  champNom.value = label;
+  chargerCarte(id);
+  rafraichirListe();
+  annoncer(await publierCarte(id)
+    ? 'CARTE IMPORTÉE ET PUBLIÉE'
+    : 'CARTE IMPORTÉE');
+});
+
+/** Amene une carte enregistree dans l'editeur : trace, nom et reglages. */
+function chargerCarte(id) {
+  const carte = listerCartes()[id];
+  if (!carte?.tunnel) return;
+  champNom.value = carte.label || id;
+  outil.load(carte.tunnel);
+  rayon.value = carte.tunnel.radius; rayonVal.textContent = carte.tunnel.radius;
+  paroi.value = carte.tunnel.wall; paroiVal.textContent = carte.tunnel.wall;
+}
 
 function rafraichirListe() {
   const cartes = listerCartes();
@@ -326,20 +433,37 @@ function rafraichirListe() {
     const ouvrir = document.createElement('button');
     ouvrir.textContent = 'Ouvrir';
     ouvrir.addEventListener('click', () => {
-      champNom.value = carte.label || id;
-      outil.load(carte.tunnel);
-      rayon.value = carte.tunnel.radius; rayonVal.textContent = carte.tunnel.radius;
-      paroi.value = carte.tunnel.wall; paroiVal.textContent = carte.tunnel.wall;
+      chargerCarte(id);
       annoncer('CARTE CHARGÉE');
     });
     const voler = document.createElement('button');
     voler.textContent = 'Voler';
     voler.addEventListener('click', () => open(`./vol_tunnel.html?map=${encodeURIComponent(id)}`, '_blank'));
     ligne.append(nom, ouvrir, voler);
+    // Les cartes livrees avec le jeu n'ont pas de bouton : il n'y a rien a
+    // supprimer, elles sont dans le code.
+    if (!estCarteDuCatalogue(id)) {
+      const effacer = document.createElement('button');
+      effacer.className = 'danger';
+      effacer.textContent = '×';
+      effacer.title = 'Supprimer cette carte';
+      effacer.addEventListener('click', async () => {
+        if (!confirm(`Supprimer « ${carte.label || id} » ?\nLe tracé sera perdu ici et sur le serveur.`)) return;
+        const { serveur } = await supprimerCarte(id);
+        rafraichirListe();
+        annoncer(serveur ? 'CARTE SUPPRIMÉE' : 'SUPPRIMÉE DANS CE NAVIGATEUR');
+      });
+      ligne.appendChild(effacer);
+    }
     liste.appendChild(ligne);
   });
 }
 rafraichirListe();
+
+// Les cartes tracees ailleurs — autre navigateur, autre machine — arrivent
+// apres coup. La liste est deja affichee avec ce qu'on a en local : la synchro
+// ne fait jamais attendre devant une page vide.
+synchroniser().then(recu => { if (recu) rafraichirListe(); });
 
 outil.load(CARTE_DEPART.tunnel);
 cadrer(CARTE_DEPART.tunnel.points);

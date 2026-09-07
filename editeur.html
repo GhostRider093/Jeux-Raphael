@@ -76,6 +76,35 @@
     .act.danger { color:#ffd3d3; border-color:rgba(255,120,120,.4); }
     .act.danger:hover { background:rgba(120,26,26,.5); border-color:#ff7a7a; }
 
+    /* ── PANNEAU DU MONDE ──────────────────────────────────────────────────
+       Il occupe toute la colonne de droite : l'inspecteur et l'aide s'effacent
+       pendant qu'il est ouvert. Regler un monde et regler un objet sont deux
+       moments distincts du travail — les montrer ensemble ne ferait que
+       retrecir les deux. */
+    #world-panel { right:12px; top:12px; bottom:12px; width:274px; overflow-y:auto; }
+    body.world-open #inspector, body.world-open #hint { display:none !important; }
+    .ws-warn { margin:0 0 11px; padding:7px 8px; color:#ffe0ad; font-size:10.5px; line-height:1.5;
+      background:rgba(120,78,10,.34); border-left:2px solid #ffb340; }
+    .ws-group { margin-bottom:13px; }
+    .ws-group-name { margin-bottom:6px; color:rgba(214,236,248,.62); font:800 9px/1 Arial;
+      letter-spacing:1.4px; text-transform:uppercase; }
+    .ws-row { display:grid; grid-template-columns:88px 1fr 44px; gap:6px; align-items:center; margin-bottom:5px; }
+    .ws-row.ws-select, .ws-row.ws-color { grid-template-columns:88px 1fr; }
+    .ws-label { color:rgba(214,236,248,.72); font-size:11px; }
+    .ws-row select, .ws-row input[type=number] { width:100%; min-width:0; padding:4px 5px; color:#eaf7ff;
+      border:1px solid rgba(255,255,255,.16); border-radius:0; background:rgba(2,10,18,.7); font:11px Consolas,monospace; }
+    .ws-row select:focus, .ws-row input:focus { outline:none; border-color:var(--cyan); }
+    .ws-row input[type=range] { width:100%; min-width:0; accent-color:var(--cyan); }
+    .ws-row input[type=color] { width:100%; height:22px; padding:0; cursor:pointer;
+      border:1px solid rgba(255,255,255,.16); border-radius:0; background:rgba(2,10,18,.7); }
+    .ws-out { color:#cdeeff; text-align:right; font:10.5px Consolas,monospace; font-variant-numeric:tabular-nums; }
+    .ws-dice { padding:2px 0; cursor:pointer; color:#dbeeff; border:1px solid rgba(255,255,255,.16);
+      border-radius:0; background:rgba(255,255,255,.06); }
+    .ws-dice:hover { border-color:var(--lime); }
+    /* Pendant une reconstruction le panneau est inerte : deux mondes batis en
+       meme temps laisseraient deux racines dans la scene. */
+    #world-panel.ws-busy { opacity:.55; }
+
     #toolbar { left:50%; bottom:12px; transform:translateX(-50%); display:flex; align-items:center; gap:8px; padding:9px 12px; }
     #toolbar label { display:flex; align-items:center; gap:5px; color:rgba(214,236,248,.75); font-size:11px; font-weight:700; }
     #toolbar input[type=number] { width:52px; padding:3px 5px; color:#eaf7ff; text-align:right;
@@ -157,6 +186,16 @@
     </div>
   </aside>
 
+  <aside class="panel" id="world-panel" hidden>
+    <h2>Le monde</h2>
+    <p class="ws-warn">
+      Changer le relief, la graine ou la taille <b>reconstruit tout</b> : les arbres,
+      rochers et immeubles que tu avais déplacés reprennent leur place d’origine.
+      Les pièces posées à la main, elles, sont conservées.
+    </p>
+    <div id="world-panel-body"></div>
+  </aside>
+
   <aside class="panel" id="hint">
     <b>Bibliothèque</b> : clique une pièce, puis clique dans la carte pour la poser<br>
     <b>Glisser un objet</b> le déplace · <b>Maj + glisser</b> change l’altitude<br>
@@ -178,6 +217,7 @@
     <div class="sep"></div>
     <button class="act" id="btn-reset-view">Vue d’ensemble</button>
     <button class="act" id="btn-count">Inventaire</button>
+    <button class="act" id="btn-world" aria-pressed="false">🌍 Monde</button>
     <div class="sep"></div>
     <input type="text" id="map-name" placeholder="Nom de la carte" maxlength="40">
     <button class="act" id="btn-save" style="border-color:var(--lime);color:#dfffc9">💾 Enregistrer</button>
