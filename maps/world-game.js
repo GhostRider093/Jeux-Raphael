@@ -6,7 +6,7 @@ import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey }
 import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=biseau-net-20260730';
 import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=biseau-net-20260730';
 import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
-import { createWorldCombat } from './world-combat.js?v=jauge-vitesse-20260907';
+import { createWorldCombat } from './world-combat.js?v=chasseur-unique-20260907';
 import { createTargetRange } from './world-targets.js?v=biseau-net-20260730';
 import { createExplosionSystem } from './world-explosion.js?v=biseau-net-20260730';
 import { queryHit, collisionStats } from './world-collision.js?v=biseau-net-20260730';
@@ -37,7 +37,6 @@ const game = document.getElementById('game');
 const modePicker = document.getElementById('mode-picker');
 const mapGrid = document.getElementById('map-grid');
 const searchInput = document.getElementById('map-search');
-let originalChasseurGeometryPromise = null;
 
 if (thumbnailMode) document.body.classList.add('world-thumbnail');
 if (isMobileDevice) document.body.classList.add('is-mobile');
@@ -199,114 +198,36 @@ function buildGroundPlaceholder(modeId) {
   return group;
 }
 
-function parseOriginalChasseurObj(text) {
-  const positions = [];
-  const indices = [];
-  const lines = text.split(/\r?\n/);
-  for (const line of lines) {
-    if (line.startsWith('v ')) {
-      const parts = line.trim().split(/\s+/);
-      positions.push(Number(parts[1]), Number(parts[2]), Number(parts[3]));
-    } else if (line.startsWith('f ')) {
-      const parts = line.trim().split(/\s+/).slice(1);
-      if (parts.length < 3) continue;
-      const face = parts.map(part => {
-        const raw = part.split('/')[0];
-        const value = Number.parseInt(raw, 10);
-        if (!Number.isFinite(value)) return -1;
-        return value > 0 ? value - 1 : positions.length / 3 + value;
-      }).filter(index => index >= 0);
-      for (let i = 1; i < face.length - 1; i++) indices.push(face[0], face[i], face[i + 1]);
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
-  geometry.computeVertexNormals();
-  geometry.computeBoundingBox();
-  return geometry;
-}
-
-function getOriginalChasseurGeometry() {
-  if (!originalChasseurGeometryPromise) {
-    originalChasseurGeometryPromise = fetch('./perso/chasseur.obj?v=mondes-chasseur-original-20260718', { cache: 'no-store' })
-      .then(response => {
-        if (!response.ok) throw new Error(`OBJ chasseur introuvable : ${response.status}`);
-        return response.text();
-      })
-      .then(parseOriginalChasseurObj);
-  }
-  return originalChasseurGeometryPromise;
-}
-
-function fitOriginalChasseur(root, targetSize = 16.5) {
-  root.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(root);
-  const size = box.getSize(new THREE.Vector3());
-  const maxAxis = Math.max(size.x, size.y, size.z) || 1;
-  root.scale.setScalar(targetSize / maxAxis);
-  root.updateMatrixWorld(true);
-  const fitted = new THREE.Box3().setFromObject(root);
-  const center = fitted.getCenter(new THREE.Vector3());
-  root.position.sub(center);
-}
-
-function makeOriginalThruster(length, radius) {
-  const group = new THREE.Group();
-  [[radius, length, 0xff6a10, .5], [radius * .6, length * .78, 0xffae2e, .7], [radius * .3, length * .5, 0xfff3b0, .95]].forEach(([r, h, color, opacity]) => {
-    const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(r, h, 18, 1, true),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
-    );
-    flame.rotation.x = -Math.PI / 2;
-    flame.position.z = h / 2;
-    group.add(flame);
-  });
-  return group;
-}
-
+/**
+ * Pose l'appareil du joueur — ou d'un adversaire distant — dans un groupe.
+ *
+ * L'appareil est decrit une seule fois, dans ../chasseur-model.js. Ce qui
+ * vivait ici avant : un parseur OBJ maison qui jetait les coordonnees de
+ * texture, une mise a l'echelle sur la plus grande dimension, des tuyeres et
+ * des rampes a missiles remontees a la main — le tout recopie ailleurs avec
+ * d'autres valeurs. C'est pour cela que la ville et les Mondes ne volaient
+ * pas le meme avion.
+ */
 async function loadOriginalChasseurInto(player) {
-  const geometry = await getOriginalChasseurGeometry();
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x3a4147, roughness: .55, metalness: .35 }));
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.frustumCulled = false;
-  mesh.rotation.set(0, -Math.PI / 2, 0);
-  const wrapper = new THREE.Group();
-  wrapper.add(mesh);
-  fitOriginalChasseur(wrapper);
-  wrapper.updateMatrixWorld(true);
-
-  const box = new THREE.Box3().setFromObject(wrapper);
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-  const rearZ = box.max.z;
-  const length = Math.min(4.8, size.z * .34);
-  const radius = Math.min(.58, Math.max(.2, size.y * .18));
-  const spread = size.x * .13;
-  const y = center.y - size.y * .05;
-  const thrusters = [-spread, spread].map(x => {
-    const flame = makeOriginalThruster(length, radius);
-    flame.position.set(center.x + x, y, rearZ - size.z * .02);
-    return flame;
+  // Longueur nez-queue de 16 unites : l'echelle de reference des Mondes,
+  // celle qui etait obtenue jusqu'ici par une cible de 16,5 sur la plus
+  // grande dimension. Elle est simplement nommee maintenant.
+  const appareil = await window.RaphaelChasseur.construire({
+    longueur: 16,
+    reacteurs: true,
+    missiles: true,
+    // Finition d'origine des Mondes : metal sombre. Passer `null` rendrait
+    // l'appareil texture — la peau existe, elle n'a jamais ete branchee ici.
+    materiau: new THREE.MeshStandardMaterial({
+      color: 0x3a4147, roughness: .55, metalness: .35, side: THREE.DoubleSide
+    })
   });
-  const rackSpread = Math.max(2.1, size.x * .3);
-  const innerSpread = Math.max(1.25, size.x * .19);
-  const missileLength = THREE.MathUtils.clamp(size.z * .28, 3.6, 4.8);
-  const missileY = box.min.y - .22;
-  const missileZ = center.z - size.z * .05;
-  const missileRacks = [-rackSpread, -innerSpread, innerSpread, rackSpread].map((x, index) => {
-    const missile = makeWingMissile(missileLength);
-    missile.position.set(center.x + x, missileY, missileZ + (index % 2 ? -.2 : .28));
-    return missile;
-  });
-
   player.clear();
-  player.add(wrapper, ...thrusters, ...missileRacks);
-  player.userData.flames = thrusters;
-  player.userData.missileRacks = missileRacks;
-  player.userData.originalChasseur = wrapper;
-  return wrapper;
+  player.add(appareil);
+  player.userData.flames = appareil.userData.flames;
+  player.userData.missileRacks = appareil.userData.missileRacks;
+  player.userData.originalChasseur = appareil;
+  return appareil;
 }
 
 async function loadGroundCharacter(modeId, player, mixers) {

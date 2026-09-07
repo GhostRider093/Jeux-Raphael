@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aperçu des chasseurs · Nova Flight</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#0a1420; color:#dff2ff; font:14px Consolas,monospace; }
+  header { padding:14px 20px 6px; }
+  h1 { margin:0 0 4px; font-size:19px; letter-spacing:.04em; }
+  header p { margin:0; color:#8fb0c4; font-size:13px; line-height:1.5; }
+  .grille { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:14px 20px 20px; }
+  .volet { border:1px solid #2a4a63; border-radius:10px; background:#0d1c2a; overflow:hidden; }
+  .volet h2 { margin:0; padding:9px 13px; font-size:14px; color:#7fe3ff; border-bottom:1px solid #23405a; }
+  .volet .note { padding:8px 13px; font-size:12px; color:#8fb0c4; border-top:1px solid #23405a; min-height:44px; }
+  .scene { height:min(52vh,420px); }
+  .scene canvas { display:block; width:100%; height:100%; }
+  @media (max-width:820px) { .grille { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Les deux chasseurs, côte à côte</h1>
+  <p>Même maillage, même taille à l'écran, même éclairage : la seule différence est la finition.
+     Le modèle 3D est <strong>rigoureusement identique</strong> — 196 743 sommets, même boîte, mêmes coordonnées de texture.</p>
+</header>
+<div class="grille">
+  <section class="volet">
+    <h2>A · Celui de la ville — texturé</h2>
+    <div class="scene" id="scene-a"></div>
+    <div class="note">Charge le PNG posé à côté du modèle. C'est l'appareil du mode « Avion chasseur ».</div>
+  </section>
+  <section class="volet">
+    <h2>B · Celui des Mondes — gris métal</h2>
+    <div class="scene" id="scene-b"></div>
+    <div class="note">Sans texture : le chargeur des Mondes ne lit que les sommets et les faces, il jette les coordonnées de texture. Le gris n'est pas un choix, c'est une omission.</div>
+  </section>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./libs/three.module.js" } }
+</script>
+<script src="./chasseur-model.js?v=chasseur-unique-20260907"></script>
+<script type="module">
+import * as THREE from 'three';
+window.THREE = THREE;   // chasseur-model.js est un script classique
+
+// Deux scenes identiques a un detail pres : la matiere. Tout le reste — cadrage,
+// lumieres, vitesse de rotation — est partage, sinon la comparaison ne vaut rien.
+function monterScene(hote, materiau) {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d1c2a);
+  const camera = new THREE.PerspectiveCamera(38, 1, .1, 400);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Sans cartographie de tons ni exposition mesuree, les deux appareils
+  // saturent en blanc et la comparaison ne montre plus rien.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1;
+  hote.appendChild(renderer.domElement);
+
+  scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x1a2430, .55));
+  const soleil = new THREE.DirectionalLight(0xffffff, 1.35);
+  soleil.position.set(5, 8, 6);
+  scene.add(soleil);
+  const contre = new THREE.DirectionalLight(0x8fd4ff, .35);
+  contre.position.set(-6, 2, -7);
+  scene.add(contre);
+
+  const pivot = new THREE.Group();
+  scene.add(pivot);
+
+  window.RaphaelChasseur.construire({ longueur: 10, reacteurs: true, missiles: true, materiau })
+    .then(appareil => { pivot.add(appareil); document.body.dataset.apercu = 'pret'; })
+    .catch(erreur => { console.error('[apercu] chargement impossible', erreur); document.body.dataset.apercu = 'erreur'; });
+
+  function rendre() {
+    requestAnimationFrame(rendre);
+    const l = hote.clientWidth, h = hote.clientHeight;
+    if (renderer.domElement.width !== Math.round(l * Math.min(devicePixelRatio, 2))) {
+      renderer.setSize(l, h, false);
+      camera.aspect = l / h;
+      camera.updateProjectionMatrix();
+    }
+    // Trois quarts arriere, legerement au-dessus : la vue de poursuite,
+    // celle sous laquelle l'appareil se voit reellement en jeu.
+    const t = performance.now() * .00022;
+    pivot.rotation.y = t;
+    camera.position.set(0, 4.2, 17);
+    camera.lookAt(0, 0, 0);
+    renderer.render(scene, camera);
+  }
+  rendre();
+}
+
+monterScene(document.getElementById('scene-a'), null);
+monterScene(document.getElementById('scene-b'), new THREE.MeshStandardMaterial({
+  color: 0x3a4147, roughness: .55, metalness: .35, side: THREE.DoubleSide
+}));
+</script>
+</body>
+</html>

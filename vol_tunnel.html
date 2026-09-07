@@ -51,6 +51,8 @@
   #manche::before { content:""; position:absolute; inset:50% auto auto 50%; width:5px; height:5px;
                     margin:-2.5px 0 0 -2.5px; background:rgba(120,223,246,.5); }
 </style>
+<!-- L'appareil, decrit une seule fois. Script classique : charge avant les modules. -->
+<script src="./chasseur-model.js?v=chasseur-unique-20260907"></script>
 <script type="importmap">
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
@@ -94,14 +96,20 @@ addEventListener('error', e => {
 
 <script type="module">
 import * as THREE from 'three';
-import { getTunnelMap } from './maps/tunnel-maps.js?v=tunnels-20260819e';
-import { createTunnel } from './maps/tunnel-geometry.js?v=tunnels-20260819e';
-import { creerDecor } from './maps/tunnel-decor.js?v=tunnels-20260819e';
-import { creerChasseur, creerChasseurSimple } from './maps/fighter-model.js?v=tunnels-20260819e';
-import { createCollisionField, queryHit, addBoxFromCenter } from './maps/world-collision.js?v=tunnels-20260819e';
+import { getTunnelMap, listerCartes, synchroniser } from './maps/tunnel-maps.js?v=tunnels-20260906a';
+import { createTunnel } from './maps/tunnel-geometry.js?v=tunnels-20260906a';
+import { creerDecor } from './maps/tunnel-decor.js?v=tunnels-20260906a';
+import { creerChasseur, creerChasseurSimple } from './maps/fighter-model.js?v=chasseur-unique-20260907';
+import { createCollisionField, queryHit, addBoxFromCenter } from './maps/world-collision.js?v=tunnels-20260906a';
 
 const params = new URLSearchParams(location.search);
-const carte = getTunnelMap(params.get('map'));
+const carteDemandee = params.get('map');
+// Une carte tracee sur une autre machine n'est pas encore dans ce navigateur.
+// On ne va la chercher au serveur que si on ne la connait pas : voler une
+// carte deja locale ne doit rien attendre du reseau, et le mode solo doit
+// rester jouable en site statique, ou cet appel echoue en silence.
+if (carteDemandee && !listerCartes()[carteDemandee]) await synchroniser();
+const carte = getTunnelMap(carteDemandee);
 document.getElementById('titre').textContent = carte.label;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -109,30 +117,60 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
+// Une carte spatiale n'a ni sol, ni horizon, ni brume. La brume est le point
+// qui compte : dans le vide elle ne diffuse rien, et un tunnel noye dans une
+// soupe grise perd la seule chose qui reste ici, la sensation de vitesse.
+const espace = carte.espace === true;
+
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a1826);
-scene.fog = new THREE.Fog(0x0a1826, 2600, 9000);
+scene.background = new THREE.Color(espace ? 0x02030a : 0x0a1826);
+if (!espace) scene.fog = new THREE.Fog(0x0a1826, 2600, 9000);
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, .4, 22000);
 
-scene.add(new THREE.HemisphereLight(0xa8d8ff, 0x101820, 1.5));
-const soleil = new THREE.DirectionalLight(0xffffff, 1.25);
+// Dans l'espace, l'ambiance est baissee pour que le bandeau lumineux de la
+// paroi domine : c'est lui qui defile, donc lui qui donne la vitesse.
+scene.add(new THREE.HemisphereLight(0xa8d8ff, 0x101820, espace ? .5 : 1.5));
+const soleil = new THREE.DirectionalLight(0xffffff, espace ? .75 : 1.25);
 soleil.position.set(1200, 2400, 900);
 scene.add(soleil);
 
 // ── LA CARTE ────────────────────────────────────────────────────────────────
 const field = createCollisionField(7);
 
-const sol = new THREE.Mesh(
-  new THREE.PlaneGeometry(24000, 24000),
-  new THREE.MeshStandardMaterial({ color: 0x16202b, roughness: 1 })
-);
-sol.rotation.x = -Math.PI / 2;
-sol.position.y = -2;
-scene.add(sol);
+if (espace) {
+  // Un champ d'etoiles, et rien d'autre. Il ne sert pas a decorer : sans un
+  // fond fixe, une paroi lisse ne dit plus de quel cote on tourne. Les points
+  // sont poses sur une sphere lointaine, hors de portee du plan de coupe.
+  const ETOILES = 2600, RAYON = 17000;
+  const sommets = new Float32Array(ETOILES * 3);
+  for (let i = 0; i < ETOILES; i++) {
+    // Repartition uniforme sur la sphere : tirer la latitude au hasard les
+    // tasserait aux poles.
+    const z = Math.random() * 2 - 1;
+    const angle = Math.random() * Math.PI * 2;
+    const rayon = Math.sqrt(1 - z * z);
+    sommets[i * 3] = Math.cos(angle) * rayon * RAYON;
+    sommets[i * 3 + 1] = Math.sin(angle) * rayon * RAYON;
+    sommets[i * 3 + 2] = z * RAYON;
+  }
+  const geometrieEtoiles = new THREE.BufferGeometry();
+  geometrieEtoiles.setAttribute('position', new THREE.BufferAttribute(sommets, 3));
+  scene.add(new THREE.Points(geometrieEtoiles, new THREE.PointsMaterial({
+    color: 0xdfefff, size: 34, sizeAttenuation: true, depthWrite: false
+  })));
+} else {
+  const sol = new THREE.Mesh(
+    new THREE.PlaneGeometry(24000, 24000),
+    new THREE.MeshStandardMaterial({ color: 0x16202b, roughness: 1 })
+  );
+  sol.rotation.x = -Math.PI / 2;
+  sol.position.y = -2;
+  scene.add(sol);
 
-const grille = new THREE.GridHelper(20000, 100, 0x27566b, 0x142b38);
-grille.position.y = -1;
-scene.add(grille);
+  const grille = new THREE.GridHelper(20000, 100, 0x27566b, 0x142b38);
+  grille.position.y = -1;
+  scene.add(grille);
+}
 
 const tunnel = createTunnel({ ...carte.tunnel, name: 'tunnel-carte' });
 scene.add(tunnel.mesh);
@@ -205,7 +243,10 @@ function replacer() {
   const depart = tunnel.curve.getPointAt(0);
   const suite = tunnel.curve.getPointAt(.015);
   const axe = suite.clone().sub(depart).normalize();
-  pilote.position.copy(depart).addScaledVector(axe, -260);
+  // Un tunnel ouvert a une entree : on se place 260 m avant, dehors, et on y
+  // penetre. Un circuit ferme n'en a pas — reculer de 260 m sortirait par la
+  // paroi. On y demarre donc sur l'axe, deja dedans.
+  pilote.position.copy(depart).addScaledVector(axe, carte.tunnel?.closed ? 0 : -260);
   lacet = Math.atan2(-axe.x, -axe.z);
   tangage = Math.asin(THREE.MathUtils.clamp(axe.y, -1, 1));
   roulis = 0;
@@ -261,7 +302,17 @@ function boucle() {
   pilote.position.add(deplacement);
 
   // Orientation de l'appareil : nez dans l'axe de vol, plus le roulis.
-  cible.copy(pilote.position).add(avant);
+  //
+  // On vise DERRIERE, et ce n'est pas une erreur. `Object3D.lookAt` oriente le
+  // +Z vers la cible pour un objet ordinaire — l'inverse d'une camera, qui y
+  // pointe son -Z. Or le chasseur est construit « nez vers -Z »
+  // (`maps/fighter-model.js`). Viser devant lui faisait donc voler l'appareil
+  // a reculons, cul par-dessus tete. En visant le point situe en arriere, le
+  // +Z part vers la queue et le nez tombe dans l'axe de vol.
+  //
+  // Le roulis suit : `rotateZ` tourne autour de ce meme +Z, dirige vers
+  // l'arriere, et l'aile qui plonge est bien celle de l'interieur du virage.
+  cible.copy(pilote.position).sub(avant);
   pilote.lookAt(cible);
   pilote.rotateZ(roulis);
 
@@ -274,7 +325,9 @@ function boucle() {
     vitesse *= .86;              // on rale contre la paroi, on ne s'arrete pas net
   }
   // Le sol arrete aussi : sans cela on passe dessous et on vole a l'envers.
-  if (pilote.position.y < 6) { pilote.position.y = 6; if (tangage < 0) tangage = 0; }
+  // Dans l'espace il n'y a pas de sol, et ce plancher couperait la moitie
+  // basse du circuit — l'anneau descend a -570.
+  if (!espace && pilote.position.y < 6) { pilote.position.y = 6; if (tangage < 0) tangage = 0; }
 
   etat.classList.toggle('touche', contact.active);
   etat.textContent = contact.active ? 'CONTACT PAROI' : 'EN VOL';

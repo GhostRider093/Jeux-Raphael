@@ -322,17 +322,35 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     if (enemy.hp <= 0) destroyEnemy();
   }
 
+  // Bouche de canon reutilisee : la boucle de tir ne doit rien allouer.
+  const bouche = new THREE.Vector3();
+
+  /** Une salve part des deux ailes a la fois, jamais de l'axe de l'appareil. */
+  function tirerDepuis(position, direction) {
+    const mesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
+    mesh.position.copy(position);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
+    mesh.renderOrder = 40;
+    scene.add(mesh);
+    bullets.push({ mesh, velocity: direction.clone().multiplyScalar(BULLET_SPEED), life: 2.3 });
+  }
+
   function fireGun() {
     if (!enemy.alive) return;
     audio.gun();
     const direction = getAimDirection();
-    const muzzleForward = getForward().normalize();
-    const mesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
-    mesh.position.copy(player.position).addScaledVector(muzzleForward, 11);
-    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
-    mesh.renderOrder = 40;
-    scene.add(mesh);
-    bullets.push({ mesh, velocity: direction.multiplyScalar(BULLET_SPEED), life: 2.3 });
+    // Les canons sont dans les ailes, a cote des rampes a missiles. Les bouches
+    // viennent des ancrages de l'appareil : elles suivent le roulis sans un
+    // calcul de plus, et personne ici n'a besoin de connaitre l'envergure.
+    const appareil = player.userData.originalChasseur;
+    if (appareil && window.RaphaelChasseur) {
+      for (const nom of ['canonGauche', 'canonDroit']) {
+        window.RaphaelChasseur.ancrageMonde(appareil, nom, bouche);
+        tirerDepuis(bouche, direction);
+      }
+      return;
+    }
+    tirerDepuis(player.position.clone().addScaledVector(getForward().normalize(), 11), direction);
   }
 
   function denyMissile() {

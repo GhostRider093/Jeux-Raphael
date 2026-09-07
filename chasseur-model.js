@@ -34,6 +34,18 @@
 (function () {
   'use strict';
 
+  // THREE n'est une variable globale que dans la ville : les Mondes et les
+  // tunnels ne l'exposent pas, ils l'importent dans leurs modules. Plutot que
+  // d'exiger de chaque page qu'elle le pose sur `window` — encore une
+  // dependance implicite, exactement ce qui a produit quatre chasseurs — le
+  // module va le chercher par la table d'imports de la page.
+  let THREE = window.THREE || null;
+  async function assurerThree() {
+    if (THREE) return THREE;
+    THREE = await import('three');
+    return THREE;
+  }
+
   // Le maillage existe en double sur le disque sous deux noms. On ne charge
   // que celui-ci ; l'autre n'est plus reference par personne et pourra
   // disparaitre une fois la bascule verifiee en vol.
@@ -75,12 +87,21 @@
     });
   }
 
-  /** Attend que OBJLoader soit pose sur `window` par le module de la page. */
+  /**
+   * Trouve un OBJLoader, quelle que soit la page.
+   *
+   * La ville le pose sur `window` depuis son bloc de demarrage ; les Mondes et
+   * les tunnels ne le font pas. Plutot que d'exiger de chaque page qu'elle
+   * prepare le terrain — c'est exactement le genre de dependance implicite qui
+   * a produit quatre chasseurs differents — le module va le chercher lui-meme.
+   */
   function attendreLoader() {
     if (window.OBJLoader) return Promise.resolve(window.OBJLoader);
-    return new Promise(resolve => {
-      window.addEventListener('objloaderready', () => resolve(window.OBJLoader), { once: true });
-    });
+    return import('./libs/loaders/OBJLoader.js')
+      .then(module => module.OBJLoader)
+      .catch(() => new Promise(resolve => {
+        window.addEventListener('objloaderready', () => resolve(window.OBJLoader), { once: true });
+      }));
   }
 
   /**
@@ -88,11 +109,15 @@
    * du jeu et centre sur lui-meme : les appelants n'ont plus a le redresser,
    * c'est justement la correction que chacun refaisait a sa maniere.
    */
-  function chargerGabarit() {
+  function chargerGabarit(onProgress) {
     if (gabaritPromise) return gabaritPromise;
-    gabaritPromise = attendreLoader().then(Loader => new Loader()
+    gabaritPromise = assurerThree().then(attendreLoader).then(Loader => new Loader()
       .setPath(DOSSIER)
-      .loadAsync(`${FICHIER_OBJ}?v=${VERSION}`)
+      .loadAsync(`${FICHIER_OBJ}?v=${VERSION}`, evenement => {
+        // Le modele pese 38 Mo : le vol en tunnel affiche une barre pendant
+        // son telechargement, il lui faut la progression.
+        if (onProgress && evenement) onProgress(evenement.loaded, evenement.total);
+      })
     ).then(objet => {
       const materiau = materiauParDefaut();
       objet.traverse(noeud => {
@@ -203,10 +228,12 @@
    * @param {boolean} options.reacteurs pose les tuyeres et leur animation.
    * @param {boolean} options.missiles pose les quatre rampes sous les ailes.
    * @param {THREE.Material} options.materiau remplace la finition texturee.
+   * @param {function} options.onProgress recoit (octets recus, octets totaux)
+   *   pendant le premier chargement du modele, et lui seul.
    * @returns {Promise<THREE.Group>} l'appareil, ancrages compris.
    */
-  async function construire({ longueur = 5, reacteurs = true, missiles = false, materiau = null } = {}) {
-    const gabarit = await chargerGabarit();
+  async function construire({ longueur = 5, reacteurs = true, missiles = false, materiau = null, onProgress = null } = {}) {
+    const gabarit = await chargerGabarit(onProgress);
     const cellule = gabarit.clone(true);
     if (materiau) cellule.traverse(noeud => { if (noeud.isMesh) noeud.material = materiau; });
 
