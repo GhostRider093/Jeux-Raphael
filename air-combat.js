@@ -34,7 +34,7 @@
   // en cinq couches, onde de choc, anneau au sol, debris, etincelles, fumee.
   // Il n'y a aucune raison d'en avoir deux : la ville prend le meme.
   let explosionFactory=null, explosionSystem=null;
-  import('./maps/world-explosion.js?v=souffle-double-20260908')
+  import('./maps/world-explosion.js?v=sons-reels-20260908')
     .then(module=>{explosionFactory=module.createExplosionSystem;})
     .catch(error=>console.warn('[air-combat] module explosions indisponible, repli sur les particules',error));
 
@@ -45,12 +45,9 @@
     if(explosionSystem) return explosionSystem;
     if(!explosionFactory) return null;
     if(typeof scene==='undefined'||!scene||typeof camera==='undefined'||!camera) return null;
-    explosionSystem=explosionFactory({
-      scene, camera,
-      // Un seul emetteur pour le son de destruction : le systeme le declenche
-      // au moment ou le souffle part, plus personne ne le joue a cote.
-      onSound:()=>window.RaphaelMissileAudio?.playDestruction()
-    });
+    // Le son du souffle vit dans world-explosion.js : un seul enregistrement
+    // pour toutes les explosions du jeu, declenche au depart du souffle.
+    explosionSystem=explosionFactory({ scene, camera });
     return explosionSystem;
   }
 

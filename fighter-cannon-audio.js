@@ -11,7 +11,10 @@
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) return null;
       context = new AudioContextClass();
-      loading = fetch('./assets/audio/fighter-cannon-single.ogg?v=single-shot-20260719')
+      // Un coup isole extrait d'une rafale reelle. L'enregistrement tire a
+      // 24 coups/s, le jeu a 13,3 : impossible de le boucler tel quel sans
+      // fausser la cadence. On rejoue donc UN coup au rythme du jeu.
+      loading = fetch('./assets/sons/canon-coup.wav?v=rafale-reelle-20260908')
         .then(response => response.ok ? response.arrayBuffer() : Promise.reject(new Error(`Canon ${response.status}`)))
         .then(data => context.decodeAudioData(data))
         .then(buffer => { shotBuffer = buffer; })
@@ -30,7 +33,10 @@
     const gain = audioContext.createGain();
     source.buffer = shotBuffer;
     source.playbackRate.value = .96 + Math.random() * .09;
-    gain.gain.value = .46 + Math.random() * .08;
+    // A 13 coups par seconde avec 220 ms de traine, trois coups se superposent
+    // en permanence. C'est ce qui fait qu'une mitrailleuse sonne pleine plutot
+    // que hachee, mais le cumul sature : chaque coup part donc plus bas.
+    gain.gain.value = .27 + Math.random() * .06;
     source.connect(gain).connect(audioContext.destination);
     source.start();
   }

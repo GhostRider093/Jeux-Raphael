@@ -8,7 +8,7 @@ import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './w
 import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
 import { createWorldCombat } from './world-combat.js?v=chasseur-unique-20260907';
 import { createTargetRange } from './world-targets.js?v=biseau-net-20260730';
-import { createExplosionSystem } from './world-explosion.js?v=souffle-double-20260908';
+import { createExplosionSystem } from './world-explosion.js?v=sons-reels-20260908';
 import { queryHit, collisionStats } from './world-collision.js?v=biseau-net-20260730';
 import { addBoxFromCenter } from './world-collision.js?v=biseau-net-20260730';
 import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=biseau-net-20260730';
@@ -553,13 +553,10 @@ async function startWorld() {
   const getFlightForward = () => flightModel.setForward(new THREE.Vector3(), yaw, pitch);
   // Pool d'explosions partage : impacts du pilote et destructions ennemies
   // puisent dans les memes emplacements pre-construits.
-  const explosions = createExplosionSystem({
-    scene, camera,
-    onSound: () => {
-      if (combat.playExplosionSound) combat.playExplosionSound();
-      else window.RaphaelMissileAudio?.playDestruction();
-    }
-  });
+  // Pas de `onSound` : world-explosion.js joue lui-meme son enregistrement,
+  // le meme pour toutes les explosions du jeu. En brancher un second ici en
+  // ferait partir deux a chaque souffle.
+  const explosions = createExplosionSystem({ scene, camera });
   const combat = createWorldCombat({
     scene, camera, player, world, mode,
     getHeight: built.getHeight,

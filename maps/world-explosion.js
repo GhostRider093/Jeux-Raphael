@@ -84,6 +84,44 @@ function copiePlanche(THREE) {
 // Remettre a true pour retrouver le feu du code sous la video.
 const FEU_DU_CODE = false;
 
+// ── SON DU SOUFFLE ──────────────────────────────────────────────────────────
+// Un enregistrement, charge une seule fois pour toutes les explosions du jeu.
+// L'original portait 704 ms de quasi-silence en tete : dans une video ca ne se
+// voit pas, dans un jeu c'est presque une seconde entre l'appareil qui eclate
+// et le bruit. Le fichier est coupe au premier front.
+const SON_URL = './assets/sons/explosion-son.wav?v=rafale-reelle-20260908';
+let sonContexte = null, sonBuffer = null, sonChargement = null;
+
+function sonPret() {
+  if (sonContexte) return sonContexte;
+  const Classe = window.AudioContext || window.webkitAudioContext;
+  if (!Classe) return null;
+  sonContexte = new Classe();
+  sonChargement = fetch(SON_URL)
+    .then(r => r.arrayBuffer())
+    .then(d => sonContexte.decodeAudioData(d))
+    .then(b => { sonBuffer = b; })
+    .catch(e => console.warn('[explosion] son indisponible', e));
+  return sonContexte;
+}
+
+/** @param {number} scale ampleur du souffle : elle regle le volume et la hauteur. */
+function jouerSon(scale) {
+  const c = sonPret();
+  if (!c || !sonBuffer) return;
+  if (c.state === 'suspended') c.resume().catch(() => {});
+  const source = c.createBufferSource();
+  const gain = c.createGain();
+  source.buffer = sonBuffer;
+  // Une grosse explosion sonne plus grave et plus fort qu'un petit impact :
+  // c'est le meme enregistrement, ralenti et monte en niveau.
+  const ampleur = Math.max(.4, Math.min(3.5, scale));
+  source.playbackRate.value = 1.18 - Math.min(.45, ampleur * .13);
+  gain.gain.value = Math.min(.9, .22 + ampleur * .2);
+  source.connect(gain).connect(c.destination);
+  source.start();
+}
+
 const MAX_ACTIVE = 5;
 const DEBRIS_COUNT = 16;
 const SPARK_COUNT = 26;
@@ -411,6 +449,7 @@ export function createExplosionSystem({ scene, camera, onSound }) {
       slot.light.visible = false;
     }
 
+    jouerSon(scale);
     onSound?.(scale);
     return slot;
   }

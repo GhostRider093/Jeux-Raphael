@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=poursuite-20260907';
-import { createExplosionSystem } from './world-explosion.js?v=souffle-double-20260908';
+import { createExplosionSystem } from './world-explosion.js?v=sons-reels-20260908';
 
 preloadEnemyFighterModel().catch(() => {});
 
@@ -242,7 +242,9 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   const missileSmoke = [];
   // Le pilote et les ennemis partagent le meme pool d'explosions lorsqu'il est
   // fourni par le monde ; sinon le module en cree un pour lui seul.
-  const explosionSystem = sharedExplosions || createExplosionSystem({ scene, camera, onSound: () => audio.explosion() });
+  // Le son du souffle est joue par world-explosion.js, pas ici : sinon deux
+  // explosions se superposent a chaque destruction.
+  const explosionSystem = sharedExplosions || createExplosionSystem({ scene, camera });
   const ownsExplosions = !sharedExplosions;
   let locked = false;
   let lockProgress = 0;
