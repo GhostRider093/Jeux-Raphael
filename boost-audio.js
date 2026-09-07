@@ -1,114 +1,140 @@
 // ==========================================================================
 //  SON DE POUSSEE
 // --------------------------------------------------------------------------
-//  Souffle de sur-regime synthetise a la volee : aucun fichier a telecharger,
-//  fonctionne hors ligne. Meme approche que fighter-cannon-audio.js.
+//  Deux enregistrements de reacteur, et non plus une synthese.
 //
-//  Trois couches se superposent :
-//    grondement  oscillateur grave, la masse
-//    souffle     bruit blanc filtre en passe-bande qui monte, l'arrachement
-//    coup        salve courte a l'enclenchement, le « punch »
+//  L'ancienne version fabriquait le son a la volee : un oscillateur en dents
+//  de scie a 46 Hz pour la masse, du bruit blanc filtre en passe-bande pour
+//  l'arrachement, une salve de bruit a l'enclenchement. Rien de tout cela ne
+//  peut sonner comme un reacteur — un bruit blanc n'a pas d'harmoniques qui
+//  montent, et une dent de scie a frequence fixe n'a pas de grain. A pleine
+//  poussee, les trois couches saturaient ensemble.
+//
+//    coup      la montee en puissance d'un vrai survol, prise juste avant le
+//              sommet : c'est le geste d'une poussee qui s'etablit.
+//    souffle   la boucle moteur, assombrie et epaissie dans le grave pour
+//              passer SOUS le son du reacteur au lieu de se battre avec lui.
+//
+//  Les fichiers sont charges une seule fois, decodes une seule fois, et le
+//  souffle tourne en boucle sans discontinuite : son point de raccord a ete
+//  fabrique par fondu croise, l'ecart y est de 0,0001.
 //
 //  Le contexte audio n'est cree qu'au premier geste du joueur : les
 //  navigateurs refusent tout son avant une interaction.
+//
+//  Provenance et droits des enregistrements : assets/sons/PROVENANCE.md
 // ==========================================================================
 
 (function () {
+  const DOSSIER = './assets/sons/';
+  const FICHIER_COUP = 'boost-coup.wav';
+  const FICHIER_SOUFFLE = 'boost-souffle.wav';
+
+  // Niveau maximal du souffle tenu. L'ancienne version montait a 0,5 sur le
+  // gain principal en plus de ses trois couches : c'est ce cumul qui rendait
+  // la poussee insupportable a fond.
+  const SOUFFLE_MAX = .34;
+  const COUP_NIVEAU = .55;
+
   let context = null;
-  let noiseBuffer = null;
-  let rumble = null, rumbleGain = null;
-  let breath = null, breathGain = null, breathFilter = null;
   let masterGain = null;
+  let souffleSource = null, souffleGain = null, souffleFiltre = null;
   let running = false;
+  let coupBuffer = null, souffleBuffer = null;
+  let chargement = null;
 
   function ensure() {
     if (context) return context;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return null;
     context = new AudioContextClass();
-
     masterGain = context.createGain();
     masterGain.gain.value = 0;
     masterGain.connect(context.destination);
-
-    // Bruit blanc de deux secondes, boucle : suffisant pour un souffle continu.
-    const length = context.sampleRate * 2;
-    noiseBuffer = context.createBuffer(1, length, context.sampleRate);
-    const data = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
-
+    charger();
     return context;
+  }
+
+  /** Telechargement et decodage, une seule fois pour toute la partie. */
+  function charger() {
+    if (chargement) return chargement;
+    const lire = fichier => fetch(DOSSIER + fichier)
+      .then(r => r.arrayBuffer())
+      .then(donnees => context.decodeAudioData(donnees));
+    chargement = Promise.all([lire(FICHIER_COUP), lire(FICHIER_SOUFFLE)])
+      .then(([coup, souffle]) => { coupBuffer = coup; souffleBuffer = souffle; })
+      .catch(erreur => {
+        chargement = null;
+        console.warn('[poussee] enregistrements indisponibles', erreur);
+      });
+    return chargement;
   }
 
   function start() {
     const c = ensure();
-    if (!c || running) return;
+    if (!c || running || !souffleBuffer) return;
     running = true;
 
-    rumble = c.createOscillator();
-    rumble.type = 'sawtooth';
-    rumble.frequency.value = 46;
-    rumbleGain = c.createGain();
-    rumbleGain.gain.value = .0001;
-    const rumbleFilter = c.createBiquadFilter();
-    rumbleFilter.type = 'lowpass';
-    rumbleFilter.frequency.value = 180;
-    rumble.connect(rumbleFilter); rumbleFilter.connect(rumbleGain); rumbleGain.connect(masterGain);
-    rumble.start();
+    souffleSource = c.createBufferSource();
+    souffleSource.buffer = souffleBuffer;
+    souffleSource.loop = true;
 
-    breath = c.createBufferSource();
-    breath.buffer = noiseBuffer;
-    breath.loop = true;
-    breathFilter = c.createBiquadFilter();
-    breathFilter.type = 'bandpass';
-    breathFilter.frequency.value = 620;
-    breathFilter.Q.value = .8;
-    breathGain = c.createGain();
-    breathGain.gain.value = .0001;
-    breath.connect(breathFilter); breathFilter.connect(breathGain); breathGain.connect(masterGain);
-    breath.start();
+    // Le filtre s'ouvre avec la poussee. C'est ce glissement qui donne la
+    // sensation d'arrachement — un simple volume ne la donne pas.
+    souffleFiltre = c.createBiquadFilter();
+    souffleFiltre.type = 'lowpass';
+    souffleFiltre.frequency.value = 700;
+    souffleFiltre.Q.value = .7;
+
+    souffleGain = c.createGain();
+    souffleGain.gain.value = .0001;
+
+    souffleSource.connect(souffleFiltre);
+    souffleFiltre.connect(souffleGain);
+    souffleGain.connect(masterGain);
+    souffleSource.start();
   }
 
   /**
    * @param {number} intensity 0 a 1. Le son suit la poussee en continu.
    */
   function update(intensity) {
-    if (!context || !running) return;
+    if (!context) return;
+    if (!running) { start(); if (!running) return; }
     const value = Math.max(0, Math.min(1, intensity));
     const now = context.currentTime;
     // `setTargetAtTime` lisse la montee : sans lui chaque image produirait un
     // saut de gain audible en crepitement.
-    masterGain.gain.setTargetAtTime(value * .5, now, .08);
-    rumbleGain.gain.setTargetAtTime(.5 + value * .5, now, .1);
-    breathGain.gain.setTargetAtTime(.25 + value * .75, now, .07);
-    // La bande monte avec la poussee : c'est ce glissement qui donne la
-    // sensation d'arrachement plutot qu'un simple volume.
-    breathFilter.frequency.setTargetAtTime(520 + value * 2600, now, .12);
-    rumble.frequency.setTargetAtTime(42 + value * 34, now, .15);
+    masterGain.gain.setTargetAtTime(value * SOUFFLE_MAX, now, .09);
+    souffleGain.gain.setTargetAtTime(.35 + value * .65, now, .08);
+    souffleFiltre.frequency.setTargetAtTime(620 + value * 2400, now, .13);
+    // Le moteur prend des tours : la lecture accelere legerement. Tres peu —
+    // au-dela de 1,15 l'enregistrement se met a siffler.
+    if (souffleSource) souffleSource.playbackRate.setTargetAtTime(.94 + value * .18, now, .2);
   }
 
   /** Coup sec a l'enclenchement de la poussee. */
   function punch() {
     const c = ensure();
     if (!c) return;
-    start();
-    const source = c.createBufferSource();
-    source.buffer = noiseBuffer;
-    const filter = c.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(2400, c.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(220, c.currentTime + .5);
-    const gain = c.createGain();
-    gain.gain.setValueAtTime(.85, c.currentTime);
-    gain.gain.exponentialRampToValueAtTime(.0001, c.currentTime + .55);
-    source.connect(filter); filter.connect(gain); gain.connect(c.destination);
-    source.start();
-    source.stop(c.currentTime + .6);
+    const jouer = () => {
+      if (!coupBuffer) return;
+      start();
+      const source = c.createBufferSource();
+      source.buffer = coupBuffer;
+      const gain = c.createGain();
+      gain.gain.setValueAtTime(COUP_NIVEAU, c.currentTime);
+      source.connect(gain);
+      gain.connect(c.destination);
+      source.start();
+    };
+    if (coupBuffer) jouer();
+    else charger().then(jouer);
   }
 
   function stop() {
     if (!context || !running) return;
-    masterGain.gain.setTargetAtTime(0, context.currentTime, .12);
+    masterGain.gain.setTargetAtTime(0, context.currentTime, .14);
   }
 
   document.addEventListener('keydown', ensure, { passive: true, once: false });
