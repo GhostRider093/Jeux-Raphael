@@ -28,7 +28,9 @@ const PLANCHE_DUREE = 1.05;             // duree de lecture, en secondes
 // unites de large quand la boule de feu du code en faisait 17 : il etait
 // integralement noye dedans, et l'explosion paraissait inchangee. Il doit
 // dominer, c'est lui le sujet.
-const PLANCHE_TAILLE = 11;
+// Depuis que la planche est recadree serre, le feu remplit sa case au lieu de
+// flotter dans du vide : a contenu egal, il paraissait trois fois plus petit.
+const PLANCHE_TAILLE = 7;
 
 let plancheTexture = null;
 // Chaque emplacement lit sa propre case de la planche, il lui faut donc sa
@@ -253,7 +255,12 @@ export function createExplosionSystem({ scene, camera, onSound }) {
    * @param {number|null} tint teinte de la matiere qui brule (chasseur ennemi
    *   rouge, beton gris…). `null` conserve la palette de feu par defaut.
    */
-  function spawn(position, scale = 1, groundY = null, tint = null) {
+  /**
+   * @param {boolean} filmeSeul n'affiche QUE le souffle filme. Sert a lever
+   *   toute ambiguite quand on doute de ce qu'on regarde : si rien
+   *   n'apparait, la video ne s'affiche pas, et c'est definitif.
+   */
+  function spawn(position, scale = 1, groundY = null, tint = null, filmeSeul = false) {
     const slot = pickSlot();
     const tinted = tint !== null && tint !== undefined;
     if (tinted) tintColor.set(tint);
@@ -371,6 +378,18 @@ export function createExplosionSystem({ scene, camera, onSound }) {
     const proximity = Math.max(0, 1 - distance / (260 * scale));
     shake = Math.max(shake, proximity * scale * 1.7);
 
+    slot.filmeSeul = filmeSeul;
+    if (filmeSeul) {
+      slot.flash.visible = false;
+      slot.fireball.forEach(mesh => { mesh.visible = false; });
+      slot.shockwave.visible = false;
+      slot.groundRing.visible = false;
+      slot.debris.visible = false;
+      slot.sparks.visible = false;
+      slot.smoke.visible = false;
+      slot.light.visible = false;
+    }
+
     onSound?.(scale);
     return slot;
   }
@@ -410,6 +429,8 @@ export function createExplosionSystem({ scene, camera, onSound }) {
         slot.souffle.material.opacity = avanceSouffle < .66 ? 1 : 1 - (avanceSouffle - .66) / .34;
         slot.souffle.visible = true;
       }
+
+      if (slot.filmeSeul) continue;   // souffle filme seul : rien d'autre a animer
 
       // — Flash : tres court, il ouvre l'explosion.
       const flashProgress = Math.min(1, slot.life / .16);

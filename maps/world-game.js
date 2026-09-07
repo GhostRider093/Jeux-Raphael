@@ -8,7 +8,7 @@ import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './w
 import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
 import { createWorldCombat } from './world-combat.js?v=chasseur-unique-20260907';
 import { createTargetRange } from './world-targets.js?v=biseau-net-20260730';
-import { createExplosionSystem } from './world-explosion.js?v=souffle-alpha-20260908';
+import { createExplosionSystem } from './world-explosion.js?v=planche-serree-20260908';
 import { queryHit, collisionStats } from './world-collision.js?v=biseau-net-20260730';
 import { addBoxFromCenter } from './world-collision.js?v=biseau-net-20260730';
 import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=biseau-net-20260730';
@@ -1263,7 +1263,7 @@ async function startWorld() {
       if (!essaiExplosionArme) {
         essaiExplosionArme = true;
         const cible = player.position.clone().addScaledVector(forward, 95);
-        explosions.spawn(cible, 1.7, built.getHeight(cible.x, cible.z));
+        explosions.spawn(cible, 2.2, built.getHeight(cible.x, cible.z));
       }
     } else essaiExplosionArme = false;
 
