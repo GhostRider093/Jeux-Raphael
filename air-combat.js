@@ -7,9 +7,18 @@
     enemyCount: 10, radarRange: 650, lockRange: 480, lockCone: 0.92,
     lockSeconds: 3.8, lockDecay: 1.1, missileSpeed: 185,
     missileLife: 7, missileTurn: 2.25, enemyFireDelay: 7,
-    respawnDelay: 12, maxParticles: 180
+    respawnDelay: 12, maxParticles: 180,
+    // Rayons de declenchement des missiles. Celui de l'ennemi suit l'envergure
+    // du Kawasaki (environ 18 unites) : avec 4,8 le missile passait au travers
+    // des ailes. Celui du joueur reste inchange — son appareil n'a pas grandi,
+    // l'elargir ajouterait une difficulte que personne n'a demandee.
+    enemyHitRadius: 8, playerHitRadius: 4.8
   };
   const enemies = [], missiles = [], particles = [];
+  // Les ailiers du joueur. La liste vit ici parce que le radar, le HUD et — a
+  // l'etape suivante — le ciblage ennemi doivent la voir. Leur pilotage, lui,
+  // est ecrit dans `escadrille.js` : ce fichier est deja assez dense.
+  const allies = [];
   const cannonTracerGeometry=new THREE.CylinderGeometry(.14,.24,7.2,7);cannonTracerGeometry.rotateX(Math.PI/2);
   const cannonTracerMaterial=new THREE.MeshBasicMaterial({color:0xffed63,transparent:true,opacity:1,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false});
   const state = { active:false, lock:0, target:null, missiles:Infinity, hull:100,
@@ -18,8 +27,35 @@
   let missileLatch=false, rearLatch=false, initialized=false, gunClock=0, lockBeepClock=0, lockTonePlayed=false, lockOscillator=null, lockContinuousGain=null;
   let enemyModelModulePromise=null;
 
+  // ── EXPLOSIONS ──────────────────────────────────────────────────────────
+  // La ville se contentait de dix-huit petites spheres colorees, et la
+  // destruction d'un chasseur ne montrait meme rien : le maillage disparaissait
+  // sans un flash. Les Mondes, eux, ont un vrai systeme — flash, boule de feu
+  // en cinq couches, onde de choc, anneau au sol, debris, etincelles, fumee.
+  // Il n'y a aucune raison d'en avoir deux : la ville prend le meme.
+  let explosionFactory=null, explosionSystem=null;
+  import('./maps/world-explosion.js?v=explosions-ville-20260907')
+    .then(module=>{explosionFactory=module.createExplosionSystem;})
+    .catch(error=>console.warn('[air-combat] module explosions indisponible, repli sur les particules',error));
+
+  // `scene` et `camera` sont des variables de la page : elles n'existent
+  // qu'une fois la partie demarree. Le systeme se construit donc au premier
+  // besoin, pas au chargement du fichier.
+  function getExplosions(){
+    if(explosionSystem) return explosionSystem;
+    if(!explosionFactory) return null;
+    if(typeof scene==='undefined'||!scene||typeof camera==='undefined'||!camera) return null;
+    explosionSystem=explosionFactory({
+      scene, camera,
+      // Un seul emetteur pour le son de destruction : le systeme le declenche
+      // au moment ou le souffle part, plus personne ne le joue a cote.
+      onSound:()=>window.RaphaelMissileAudio?.playDestruction()
+    });
+    return explosionSystem;
+  }
+
   function getEnemyModelModule(){
-    if(!enemyModelModulePromise) enemyModelModulePromise=import('./maps/enemy-fighter-model.js?v=white-halo-20260722');
+    if(!enemyModelModulePromise) enemyModelModulePromise=import('./maps/enemy-fighter-model.js?v=poursuite-20260907');
     return enemyModelModulePromise;
   }
   // Start loading the definitive fighter before combat begins. No legacy jet
@@ -57,7 +93,7 @@
   }
   function upgradeEnemyVisual(root){
     getEnemyModelModule()
-      .then(module=>module.createEnemyFighterModel({targetLength:10,thrusters:true}))
+      .then(module=>module.createEnemyFighterModel({targetLength:13,thrusters:true}))
       .then(model=>{
         root.clear();
         root.add(model);
@@ -66,7 +102,7 @@
       })
       .catch(error=>{
         document.body.dataset.enemyFighterModel='error';
-        console.warn('[air-combat] modele ennemi rouge et noir non charge',error);
+        console.warn('[air-combat] modele ennemi Kawasaki non charge',error);
       });
   }
   function spawnEnemy(index){
@@ -80,9 +116,19 @@
       patrol:p.clone().add(new THREE.Vector3((Math.random()-.5)*180,20,(Math.random()-.5)*180)),
       provoked:false,reaction:0,dead:false,respawn:0});
   }
+  // Ce que l'escadrille a le droit de voir. `scene` et `player` sont des
+  // variables de la page, pas du fichier : elles passent par des accesseurs
+  // pour etre relues a chaque fois plutot que figees au branchement.
+  const arene={
+    THREE,
+    get scene(){return scene;},
+    get player(){return player;},
+    enemies,allies,forwardOf,terrainY,makeFighter,explode,trail,launchMissile,tone,spatialTone,CFG,state
+  };
   function init(){
     if(initialized||!available()) return; initialized=true; state.active=true;
     buildHud(); for(let i=0;i<CFG.enemyCount;i++) spawnEnemy(i);
+    if(window.RaphaelEscadrille) window.RaphaelEscadrille.attacher(arene);
   }
   function buildHud(){
     document.body.classList.add('ac-visor-active');
@@ -96,27 +142,36 @@
       #ac-top{position:absolute;left:13%;right:13%;top:0;height:46px;display:grid;grid-template-columns:1fr 1.45fr 1fr;align-items:center;clip-path:polygon(4% 0,96% 0,100% 82%,78% 82%,75% 100%,25% 100%,22% 82%,0 82%)}
       #ac-mode{font-size:clamp(10px,1.35vw,16px)}#ac-heading{font-size:clamp(14px,2vw,24px)}#ac-arm{font-size:clamp(11px,1.5vw,18px)}
       #ac-target{position:absolute;left:29%;right:29%;top:70px;height:32px;padding:4px;clip-path:polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)}
-      #ac-core{position:absolute;left:50%;top:51%;width:min(430px,48vw);aspect-ratio:1;transform:translate(-50%,-50%);border:4px solid var(--hud);border-radius:50%;background:radial-gradient(circle,transparent 0 12%,rgba(255,255,255,.82) 12.5% 13%,transparent 13.5% 30%,rgba(255,255,255,.68) 30.5% 31%,transparent 31.5% 49%,rgba(255,255,255,.45) 49.5% 50%,transparent 50.5%),repeating-conic-gradient(from 0deg,rgba(255,255,255,.75) 0 1deg,transparent 1deg 15deg),radial-gradient(circle,rgba(0,0,0,.15),var(--glass));box-shadow:inset 0 0 0 14px rgba(255,255,255,.08),inset 0 0 28px #000,0 0 0 7px rgba(3,6,8,.75)}
-      #ac-core:before,#ac-core:after{content:"";position:absolute;background:var(--hud);opacity:.9}#ac-core:before{left:-20%;right:-20%;top:50%;height:3px}#ac-core:after{top:-12%;bottom:-12%;left:50%;width:3px}
-      #ac-reticle{position:absolute;inset:25%;border:3px solid var(--hud);border-radius:50%}#ac-reticle:before,#ac-reticle:after{content:"";position:absolute;inset:23%;border:2px solid var(--hud);border-radius:50%}#ac-reticle:after{inset:43%;background:var(--hud);box-shadow:0 0 0 7px rgba(0,0,0,.72),0 0 0 9px var(--hud)}
+      /* Viseur ramene a 10 % de sa taille le 07/09/2026 : a 430 px il couvrait
+         tout l'ecran et cachait le jeu. Un pipper de 43 px se pose sur la
+         cible sans rien masquer. Les anneaux concentriques, la couronne de
+         graduations et le fond vitre n'ont plus de sens a cette taille : ils
+         sont retires plutot que reduits, sinon ils forment une bouillie. */
+      #ac-core{position:absolute;left:50%;top:51%;width:min(43px,4.8vw);aspect-ratio:1;transform:translate(-50%,-50%);border:2px solid var(--hud);border-radius:50%;background:radial-gradient(circle,transparent 0 60%,rgba(3,6,8,.3) 61% 100%);box-shadow:0 0 0 1px rgba(3,6,8,.8),0 0 7px rgba(0,0,0,.65)}
+      #ac-core:before,#ac-core:after{content:"";position:absolute;background:var(--hud);opacity:.85}#ac-core:before{left:-60%;right:-60%;top:50%;height:1px}#ac-core:after{top:-60%;bottom:-60%;left:50%;width:1px}
+      #ac-reticle{position:absolute;inset:38%;background:var(--hud);border-radius:50%;box-shadow:0 0 3px rgba(0,0,0,.9)}
       #ac-left-scale,#ac-right-scale{position:absolute;top:29%;bottom:22%;width:48px;border:2px solid var(--hud);background:repeating-linear-gradient(to bottom,transparent 0 9%,var(--hud) 9.5% 10.5%,transparent 11% 20%),rgba(3,7,10,.72)}#ac-left-scale{left:2%;border-radius:18px 4px 4px 18px}#ac-right-scale{right:2%;border-radius:4px 18px 18px 4px}
       #ac-speed,#ac-alt{position:absolute;top:38%;min-width:145px;padding:7px 12px}#ac-speed{left:7%}#ac-alt{right:7%}
       #ac-status{position:absolute;left:8%;bottom:3%;width:31%;padding:8px 10px;line-height:1.35;text-align:left;font-size:clamp(9px,1.15vw,13px);clip-path:polygon(0 0,90% 0,100% 24%,92% 100%,8% 100%,0 76%)}
       #ac-score{position:absolute;right:8%;bottom:3%;width:31%;padding:8px 10px;line-height:1.35;text-align:right;font-size:clamp(9px,1.15vw,13px);clip-path:polygon(10% 0,100% 0,100% 76%,92% 100%,8% 100%,0 24%)}
       #ac-lock{position:absolute;left:31%;right:31%;bottom:-3%;padding:7px;font-size:clamp(11px,1.45vw,17px);clip-path:polygon(10% 0,90% 0,100% 50%,90% 100%,10% 100%,0 50%)}
       #ac-alert{position:absolute;left:50%;top:-46px;transform:translateX(-50%);font-size:20px;font-weight:900;color:#ff4b35;white-space:nowrap;text-shadow:0 0 8px #000}
-      #air-combat-hud.locked #ac-core{--hud:#ffe45c;box-shadow:inset 0 0 0 14px rgba(255,228,92,.08),inset 0 0 28px #000,0 0 16px rgba(255,228,92,.4)}
-      @media(max-width:700px){#ac-visor{width:96vw;height:62vh;top:47%}#ac-core{width:min(330px,67vw)}#ac-left-scale,#ac-right-scale{display:none}#ac-speed{left:1%}#ac-alt{right:1%}#ac-speed,#ac-alt{min-width:105px;font-size:11px}#ac-status,#ac-score{width:36%;bottom:5%}#ac-lock{left:28%;right:28%}}
+      #air-combat-hud.locked #ac-core{--hud:#ffe45c;box-shadow:0 0 0 1px rgba(3,6,8,.8),0 0 10px rgba(255,228,92,.85)}
+      @media(max-width:700px){#ac-visor{width:96vw;height:62vh;top:47%}#ac-core{width:min(33px,6.7vw)}#ac-left-scale,#ac-right-scale{display:none}#ac-speed{left:1%}#ac-alt{right:1%}#ac-speed,#ac-alt{min-width:105px;font-size:11px}#ac-status,#ac-score{width:36%;bottom:5%}#ac-lock{left:28%;right:28%}}
     `;
     document.head.appendChild(style);
     hud.innerHTML='<div id="ac-visor"><div id="ac-alert"></div><div id="ac-top" class="ac-plate"><span id="ac-mode">LOCK</span><span id="ac-heading">HDG 000°</span><span id="ac-arm">ARMÉ</span></div><div id="ac-target" class="ac-plate">AUCUNE CIBLE</div><div id="ac-left-scale"></div><div id="ac-right-scale"></div><div id="ac-speed" class="ac-plate">SPD 000</div><div id="ac-alt" class="ac-plate">ALT 000 m</div><div id="ac-core"><div id="ac-reticle"></div></div><div id="ac-status" class="ac-plate"></div><div id="ac-score" class="ac-plate"></div><div id="ac-lock" class="ac-plate">RECHERCHE</div></div>';
     radarDiamond=document.createElement('div'); radarDiamond.id='ac-radar-diamond';
     seekerDiamond=document.createElement('div'); seekerDiamond.id='ac-seeker-diamond';
-    Object.assign(radarDiamond.style,{display:'none',position:'absolute',width:'58px',height:'58px',margin:'-29px 0 0 -29px',border:'2px solid #aeb7c2',transform:'rotate(45deg)',boxShadow:'0 0 8px rgba(190,200,210,.28)'});
-    Object.assign(seekerDiamond.style,{display:'none',position:'absolute',width:'58px',height:'58px',margin:'-29px 0 0 -29px',border:'2px solid #39a9ff',transform:'rotate(45deg)',boxShadow:'0 0 14px rgba(45,157,255,.58)'});
+    Object.assign(radarDiamond.style,{display:'none',position:'absolute',width:'87px',height:'87px',margin:'-43.5px 0 0 -43.5px',border:'2px solid #aeb7c2',transform:'rotate(45deg)',boxShadow:'0 0 8px rgba(190,200,210,.28)'});
+    Object.assign(seekerDiamond.style,{display:'none',position:'absolute',width:'87px',height:'87px',margin:'-43.5px 0 0 -43.5px',border:'2px solid #39a9ff',transform:'rotate(45deg)',boxShadow:'0 0 14px rgba(45,157,255,.58)'});
     hud.append(radarDiamond,seekerDiamond);
     radarCanvas=document.createElement('canvas'); radarCanvas.width=180; radarCanvas.height=180;
-    Object.assign(radarCanvas.style,{position:'absolute',left:'50%',top:'51%',transform:'translate(-50%,-50%)',width:'min(180px,24vw)',height:'min(180px,24vw)',border:'0',borderRadius:'50%',background:'rgba(0,10,12,.42)',opacity:'.72'});
+    // Le radar etait cale au centre de l'ecran, cache derriere l'ancien viseur
+    // de 430 px. Le viseur reduit, il se retrouvait seul au milieu de la vue :
+    // il part dans le coin haut gauche du visuel, au-dessus du bandeau de
+    // vitesse, la ou il ne masque rien.
+    Object.assign(radarCanvas.style,{position:'absolute',left:'-5%',top:'5%',transform:'none',width:'min(132px,17vw)',height:'min(132px,17vw)',border:'0',borderRadius:'50%',background:'rgba(0,10,12,.42)',opacity:'.68'});
     hud.querySelector('#ac-visor').appendChild(radarCanvas); document.body.appendChild(hud); radarCtx=radarCanvas.getContext('2d');
   }
   function ensureAudio(){
@@ -197,8 +252,10 @@
       const targetPos=m.target?(m.target===player?player.position:m.target.mesh.position):null;
       if(targetPos){const desired=targetPos.clone().sub(m.mesh.position).normalize().multiplyScalar(CFG.missileSpeed);m.vel.lerp(desired,Math.min(1,CFG.missileTurn*dt));}
       m.mesh.position.addScaledVector(m.vel,dt);m.mesh.lookAt(m.mesh.position.clone().add(m.vel));const flame=m.mesh.userData.missileFlame;if(flame)flame.scale.set(1+Math.sin(performance.now()*.047+i)*.12,1+Math.sin(performance.now()*.063+i)*.18,1);trail(m.mesh.position,m.owner==='player'?0xb9eaff:0xff7d32);
-      let hit=false;if(targetPos&&m.mesh.position.distanceTo(targetPos)<4.8){hit=true; if(m.target===player)damagePlayer(38,m.mesh.position);else damageEnemy(m.target,55,m.mesh.position);}
-      if(hit||m.life<=0||m.mesh.position.y<terrainY(m.mesh.position.x,m.mesh.position.z)){explode(m.mesh.position,hit?0xff9b32:0x778899);scene.remove(m.mesh);missiles.splice(i,1);}
+      const targetIsPlayer=m.target===player;
+      const hitRadius=targetIsPlayer?CFG.playerHitRadius:CFG.enemyHitRadius;
+      let hit=false;if(targetPos&&m.mesh.position.distanceTo(targetPos)<hitRadius){hit=true; if(targetIsPlayer)damagePlayer(38,m.mesh.position);else damageEnemy(m.target,55,m.mesh.position);}
+      if(hit||m.life<=0||m.mesh.position.y<terrainY(m.mesh.position.x,m.mesh.position.z)){explode(m.mesh.position,hit?0xff9b32:0x778899,hit?2.2:1.2);scene.remove(m.mesh);missiles.splice(i,1);}
     }
   }
   function damagePlayer(amount,hit){
@@ -210,7 +267,11 @@
   function damageEnemy(e,amount,hit){
     e.provoked=true;e.reaction=14;
     const local=e.mesh.worldToLocal(hit.clone()); const zone=Math.abs(local.x)>1.3?(local.x<0?'leftWing':'rightWing'):'engine';
-    e[zone]=Math.max(0,e[zone]-amount);e.health=Math.max(0,e.health-amount);if(e.health<=0){e.dead=true;e.respawn=CFG.respawnDelay;scene.remove(e.mesh);state.score++;state.target=null;state.lock=0;if(window.RaphaelMissileAudio)window.RaphaelMissileAudio.playDestruction();}
+    e[zone]=Math.max(0,e[zone]-amount);e.health=Math.max(0,e.health-amount);if(e.health<=0){e.dead=true;e.respawn=CFG.respawnDelay;
+      // Un appareil detruit explose. Il disparaissait en silence : c'est le
+      // moment le plus important d'un combat, il ne se voyait pas.
+      explode(e.mesh.position.clone(),0xff6a2a,3);
+      scene.remove(e.mesh);state.score++;state.target=null;state.lock=0;}
   }
   function updateEnemies(dt){
     let threat=0;
@@ -253,10 +314,22 @@
     particles.push({mesh,life:.22,vel:direction.clone().multiplyScalar(430),shared:true});
   }
   function trail(pos,color){if(particles.length>=CFG.maxParticles)return;const m=new THREE.Mesh(new THREE.SphereGeometry(.16,5,4),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.55,depthWrite:false}));m.position.copy(pos);scene.add(m);particles.push({mesh:m,life:.65,vel:new THREE.Vector3(0,.6,0)});}
-  function explode(pos,color){for(let j=0;j<18&&particles.length<CFG.maxParticles;j++){const m=new THREE.Mesh(new THREE.SphereGeometry(.22+Math.random()*.25,5,4),new THREE.MeshBasicMaterial({color,transparent:true,opacity:1}));m.position.copy(pos);scene.add(m);particles.push({mesh:m,life:.7+Math.random()*.5,vel:new THREE.Vector3((Math.random()-.5)*22,(Math.random()-.2)*20,(Math.random()-.5)*22)});}}
+  /**
+   * @param {number} scale 1 = impact leger, 3 = destruction complete.
+   * @param {number|null} color teinte de la matiere qui brule.
+   */
+  function explode(pos,color,scale=1.5){
+    const system=getExplosions();
+    if(system){system.spawn(pos,scale,terrainY(pos.x,pos.z),color??null);return;}
+    // Repli : l'ancien nuage de spheres, si le module n'a pas pu etre charge.
+    for(let j=0;j<18&&particles.length<CFG.maxParticles;j++){const m=new THREE.Mesh(new THREE.SphereGeometry(.22+Math.random()*.25,5,4),new THREE.MeshBasicMaterial({color,transparent:true,opacity:1}));m.position.copy(pos);scene.add(m);particles.push({mesh:m,life:.7+Math.random()*.5,vel:new THREE.Vector3((Math.random()-.5)*22,(Math.random()-.2)*20,(Math.random()-.5)*22)});}
+  }
   function updateParticles(dt){for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=dt;p.mesh.position.addScaledVector(p.vel,dt);p.vel.y-=5*dt;if(!p.shared)p.mesh.material.opacity=Math.max(0,p.life);if(p.life<=0){scene.remove(p.mesh);if(!p.shared){p.mesh.geometry.dispose();p.mesh.material.dispose();}particles.splice(i,1);}}}
   function renderRadar(){if(!radarCtx)return;const c=90,s=78;radarCtx.clearRect(0,0,180,180);radarCtx.strokeStyle='#34e8c2';radarCtx.globalAlpha=.55;for(const r of [26,52,78]){radarCtx.beginPath();radarCtx.arc(c,c,r,0,Math.PI*2);radarCtx.stroke();}radarCtx.globalAlpha=1;radarCtx.fillStyle='#7fffd4';radarCtx.fillRect(c-2,c-4,4,8);
-    for(const e of enemies){if(e.dead)continue;const rel=e.mesh.position.clone().sub(player.position);if(rel.length()>CFG.radarRange)continue;const scale=s/CFG.radarRange;radarCtx.fillStyle=e===state.target?'#39a9ff':'#aeb7c2';radarCtx.beginPath();radarCtx.arc(c+rel.x*scale,c+rel.z*scale,4,0,Math.PI*2);radarCtx.fill();}}
+    for(const e of enemies){if(e.dead)continue;const rel=e.mesh.position.clone().sub(player.position);if(rel.length()>CFG.radarRange)continue;const scale=s/CFG.radarRange;radarCtx.fillStyle=e===state.target?'#39a9ff':'#aeb7c2';radarCtx.beginPath();radarCtx.arc(c+rel.x*scale,c+rel.z*scale,4,0,Math.PI*2);radarCtx.fill();}
+    // Les allies en vert et en carre : la couleur seule ne suffit pas, un pilote
+    // doit pouvoir les distinguer du coin de l'oeil et sur un ecran pale.
+    for(const a of allies){if(a.mort)continue;const rel=a.mesh.position.clone().sub(player.position);if(rel.length()>CFG.radarRange)continue;const scale=s/CFG.radarRange;radarCtx.fillStyle='#5cff9d';radarCtx.fillRect(c+rel.x*scale-3,c+rel.z*scale-3,6,6);}}
   function updateHud(){if(!hud)return;hud.style.display=available()?'block':'none';if(!available())return;
     const s=document.getElementById('ac-status'),score=document.getElementById('ac-score'),l=document.getElementById('ac-lock'),a=document.getElementById('ac-alert'),mode=document.getElementById('ac-mode'),target=document.getElementById('ac-target'),heading=document.getElementById('ac-heading'),speed=document.getElementById('ac-speed'),alt=document.getElementById('ac-alt');
     const locked=state.lock>=1,targetDistance=state.target?Math.round(state.target.mesh.position.distanceTo(player.position)):0;
@@ -264,7 +337,8 @@
     const headingDeg=((THREE.MathUtils.radToDeg(player.rotation.y)%360)+360)%360;
     hud.classList.toggle('locked',locked);
     s.innerHTML=`COQUE ${Math.round(state.hull)}% · MOT ${Math.round(state.engine)}%<br>AILE G ${Math.round(state.leftWing)} · AILE D ${Math.round(state.rightWing)}`;
-    score.innerHTML=`MISSILES ∞<br>VICTOIRES ${state.score}/10+`;
+    const escadrille=allies.length?`<br>AILIERS ${allies.reduce((n,a)=>a.mort?n:n+1,0)}/${allies.length}`:'';
+    score.innerHTML=`MISSILES ∞<br>VICTOIRES ${state.score}/10+${escadrille}`;
     l.textContent=state.target?`${locked?'MISSILE PRÊT':'ACQUISITION'} ${Math.round(state.lock*100)}%`:'RECHERCHE CIBLE';
     mode.textContent=locked?'LOCK':'SCAN';
     target.textContent=state.target?`CIBLE ${targetDistance} m`:'AUCUNE CIBLE';
@@ -281,10 +355,11 @@
   function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-lastTime)/1000);lastTime=now;
     if(!available()){if(hud)hud.style.display='none';return;}init();acquireTarget(dt);const pressed=missilePressed();if(pressed&&!missileLatch)launchMissile('player',state.target);missileLatch=pressed;
     const rearPressed=rearMissilePressed();if(rearPressed&&!rearLatch)launchRearMissile();rearLatch=rearPressed;
-    updateEnemies(dt);updatePlayerGun(dt);updateMissiles(dt);updateParticles(dt);updateHud();spawnClock+=dt;}
-  window.RaphaelAirCombat={state,enemies,missiles,
+    updateEnemies(dt);if(window.RaphaelEscadrille)window.RaphaelEscadrille.update(dt);
+    updatePlayerGun(dt);updateMissiles(dt);updateParticles(dt);getExplosions()?.update(dt);updateHud();spawnClock+=dt;}
+  window.RaphaelAirCombat={state,enemies,missiles,allies,arene,
     flightModifiers:()=>({speed:.45+.55*state.engine/100,yaw:.55+.45*Math.min(state.leftWing,state.rightWing)/100}),
-    diagnostics:()=>({active:state.active,enemies:enemies.filter(e=>!e.dead).length,missiles:missiles.length,lock:state.lock,hull:state.hull})};
+    diagnostics:()=>({active:state.active,enemies:enemies.filter(e=>!e.dead).length,allies:allies.filter(a=>!a.mort).length,missiles:missiles.length,lock:state.lock,hull:state.hull})};
   requestAnimationFrame(loop);
   window.addEventListener('pointerdown',unlockAudio,{passive:true});
   window.addEventListener('keydown',unlockAudio,{passive:true});

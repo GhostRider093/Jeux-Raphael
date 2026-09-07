@@ -48,6 +48,15 @@ const TURN_SPD    = 0.048;
 
 let flightPitch = 0;
 let flightVisualPitch = 0;
+// Cran de poursuite : multiplicateur de la vitesse visee, monte et descendu
+// au clavier avec + et -. Il se garde d'une image a l'autre.
+let flightChaseNotch = 1;
+// Derniere consigne de vitesse, relue par le HUD pour placer le repere de la
+// jauge : c'est l'ecart entre la vitesse et elle qui montre l'acceleration.
+let flightTargetSpeed = 0;
+// Objet resultat reutilise par le modele de vol pour les figures : la boucle
+// d'animation ne doit rien allouer.
+const flightAcroAngles = { roll: 0, pitch: 0, done: true };
 let flightSpeed = 0;
 let boostAudioOn = false;      // evite de relancer le coup de poussee a chaque image
 let flightAerobatic = null;
@@ -62,9 +71,14 @@ const FLIGHT_MAX_ALTITUDE = 150;
 const FLIGHT_WORLD_LIMIT = 188;
 const FLIGHT_MAX_SPEED = 72;
 const FLIGHT_CRUISE_SPEED = 22;
-const FLIGHT_ACCEL_RATE = 2.7;
-const FLIGHT_YAW_RATE = 1.55;
-const FLIGHT_PITCH_RATE = 0.95;
+// Taux de rotation, debattement du nez, mise en vitesse, roulis et figures
+// sont maintenant dans flight-model.js : la ville et les Mondes doivent voler
+// exactement pareil. Ne restent ici que les cotes du terrain (limites, plafond
+// et vitesses), qui dependent de la taille de la carte et non de l'appareil.
+// La poussee verticale se deduit de la vitesse de croisiere, elle aussi.
+const FLIGHT_CLIMB_RATE = FLIGHT_CRUISE_SPEED * 2.5;
+// Vecteur de deplacement reutilise : la boucle de vol ne doit rien allouer.
+const flightForward = new THREE.Vector3();
 const GAMEPAD_DEAD_ZONE = 0.18;
 
 // â”€â”€ STATE MACHINE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -520,6 +534,7 @@ function init(){
     cameraZoom = 22;
     flightPitch = 0;
     flightVisualPitch = 0;
+    flightChaseNotch = 1;
     flightSpeed = FLIGHT_CRUISE_SPEED;
     flightGamepadIndex = null;
     flightGamepadStatus = "manette non detectee";
@@ -3232,6 +3247,16 @@ window.openGamepadMapper = openGamepadMapper;
 window.closeGamepadMapper = closeGamepadMapper;
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", setupGamepadMapperUi, { once: true });
+
+// ── LIEN DIRECT VERS UN MODE ────────────────────────────────────────────────
+// `raphael2.html?mode=chasseur` entre directement en combat aerien, sans
+// repasser par les tuiles du menu. C'est ce qu'il faut pour essayer une
+// correction : recharger et rejouer la meme situation, sans dix clics.
+// Un mode inconnu est ignore et le menu s'affiche normalement.
+document.addEventListener("DOMContentLoaded", () => {
+  const demande = new URLSearchParams(location.search).get("mode");
+  if (demande && typeof start === "function") start(demande);
+}, { once: true });
 } else {
   setupGamepadMapperUi();
 }
@@ -3285,11 +3310,23 @@ function updateFlightHud() {
 
   const speedKmh = Math.round(Math.abs(flightSpeed) * 3.6);
   const altitude = Math.round(player.position.y);
+
+  // Jauge de vitesse : meme affichage que dans les Mondes. Le maximum tient
+  // compte du boost et du plafond de poursuite du niveau, sinon la barre
+  // saturerait des qu'on pousse le cran et ne dirait plus rien.
+  const chaseCeiling = window.RaphaelFlightModel?.chaseCeiling?.() ?? 1;
+  window.RaphaelSpeedGauge?.update({
+    speed: Math.abs(flightSpeed),
+    target: flightTargetSpeed,
+    max: FLIGHT_MAX_SPEED * 1.25 * chaseCeiling,
+    notch: flightChaseNotch,
+    ceiling: chaseCeiling
+  });
   const flightLabel = playerMode === "chasseur" ? "Avion chasseur"
                     : playerMode === "wargun" ? "Wargun"
                     : "Vue avion";
   hudEl.innerHTML =
-    `${flightLabel} &nbsp; Stick=diriger &nbsp; X/L3+direction=vrille/looping &nbsp; RT/throttle=vitesse &nbsp; W/Z=accel &nbsp; M=manette`
+    `${flightLabel} &nbsp; Stick=diriger &nbsp; X/L3+direction=vrille/looping &nbsp; RT/throttle=vitesse &nbsp; W/Z=accel &nbsp; +/-=poursuite &nbsp; M=manette`
     + `<br><span style="font-size:22px;font-weight:bold">${speedKmh} <small>km/h</small></span>`
     + `&nbsp;&nbsp;<span style="font-size:18px;font-weight:bold">${altitude} <small>m</small></span>`
     + `&nbsp;&nbsp;<span style="opacity:0.75">[SURVOL]</span>`
@@ -3387,14 +3424,13 @@ function updateFlyoverMode(delta) {
   pitchInput = clampValue(pitchInput, -1, 1);
   climbInput = clampValue(climbInput, -1, 1);
 
+  const flightModel = window.RaphaelFlightModel;
   const acroHeld = !!(keys["KeyX"] || (gamepad && readGamepadButton(gamepad, 10)));
   const acroAxis = Math.max(Math.abs(yawInput), Math.abs(pitchInput));
-  if ((!acroHeld || acroAxis < 0.28) && !flightAerobatic) flightAerobaticArmed = true;
-  if (acroHeld && flightAerobaticArmed && !flightAerobatic && acroAxis > 0.55) {
-    flightAerobatic = Math.abs(yawInput) >= Math.abs(pitchInput)
-      ? { type: "roll", direction: Math.sign(yawInput) || 1, elapsed: 0, duration: 1.05 }
-      : { type: "loop", direction: Math.sign(pitchInput) || 1, elapsed: 0, duration: 1.55 };
-    flightAerobaticArmed = false;
+  if ((!acroHeld || acroAxis < flightModel.TUNING.acroRearm) && !flightAerobatic) flightAerobaticArmed = true;
+  if (acroHeld && flightAerobaticArmed && !flightAerobatic) {
+    flightAerobatic = flightModel.startAerobatic(yawInput, pitchInput);
+    if (flightAerobatic) flightAerobaticArmed = false;
   }
 
   if (keyboardForward) targetSpeed = Math.max(targetSpeed, FLIGHT_MAX_SPEED * 0.58);
@@ -3403,10 +3439,17 @@ function updateFlyoverMode(delta) {
 
   const combatFlightMods = window.RaphaelAirCombat ? window.RaphaelAirCombat.flightModifiers() : { speed: 1, yaw: 1 };
   targetSpeed *= combatFlightMods.speed;
-  flightSpeed += (targetSpeed - flightSpeed) * Math.min(1, delta * FLIGHT_ACCEL_RATE);
+  // Le cran de poursuite vient en dernier : il multiplie tout le reste, y
+  // compris le boost, et laisse le frein a zero puisque zero fois n'importe
+  // quoi reste zero.
+  const chase = flightModel.chaseKeys(keys);
+  flightChaseNotch = flightModel.advanceChase(flightChaseNotch, chase.up, chase.down, delta);
+  targetSpeed *= flightChaseNotch;
+  flightTargetSpeed = targetSpeed;
+  flightSpeed = flightModel.advanceSpeed(flightSpeed, targetSpeed, delta);
   if (Math.abs(flightSpeed) < 0.05) flightSpeed = 0;
   if (playerMode === "chasseur") {
-    window.RaphaelFighterEngine?.update(Math.abs(flightSpeed) / FLIGHT_MAX_SPEED, isBoost);
+    window.RaphaelFighterEngine?.update(Math.min(1, Math.abs(flightSpeed) / FLIGHT_MAX_SPEED), isBoost);
     // ── SUR-REGIME ──────────────────────────────────────────────────────────
     // Meme mesure et meme seuil que dans les mondes : l'intensite part de la
     // vitesse de croisiere et non de zero, sinon le souffle tourne en fond
@@ -3422,17 +3465,12 @@ function updateFlyoverMode(delta) {
     }
   }
 
-  playerYaw += yawInput * FLIGHT_YAW_RATE * combatFlightMods.yaw * delta;
-  flightPitch = clampValue(flightPitch + pitchInput * FLIGHT_PITCH_RATE * delta, -0.48, 0.52);
+  playerYaw = flightModel.advanceYaw(playerYaw, yawInput, delta, combatFlightMods.yaw);
+  flightPitch = flightModel.advancePitch(flightPitch, pitchInput, delta);
 
-  const cosPitch = Math.cos(flightPitch);
-  const forward = new THREE.Vector3(
-    -Math.sin(playerYaw) * cosPitch,
-    Math.sin(flightPitch),
-    -Math.cos(playerYaw) * cosPitch
-  );
+  const forward = flightModel.setForward(flightForward, playerYaw, flightPitch);
 
-  const verticalSpeed = forward.y * flightSpeed + climbInput * 30;
+  const verticalSpeed = forward.y * flightSpeed + climbInput * FLIGHT_CLIMB_RATE;
   player.position.x += forward.x * flightSpeed * delta;
   player.position.y += verticalSpeed * delta;
   player.position.z += forward.z * flightSpeed * delta;
@@ -3443,21 +3481,15 @@ function updateFlyoverMode(delta) {
   if (player.position.y <= FLIGHT_MIN_ALTITUDE + 0.01) flightPitch = Math.max(0, flightPitch);
   if (player.position.y >= FLIGHT_MAX_ALTITUDE - 0.01) flightPitch = Math.min(0, flightPitch);
 
-  const horizontalSpeed = Math.max(0.001, Math.hypot(forward.x * flightSpeed, forward.z * flightSpeed));
-  const trajectoryPitch = clampValue(Math.atan2(verticalSpeed, horizontalSpeed), -0.62, 0.62);
-  flightVisualPitch += (trajectoryPitch - flightVisualPitch) * Math.min(1, delta * 6.5);
-  const bank = yawInput * 0.45;   // inverse : ailes inclinees dans le bon sens
-  // Le modele OBJ a son axe de tangage visuel inverse par rapport au repere de vol.
-  let acroRoll = 0, acroPitch = 0;
-  if (flightAerobatic) {
-    flightAerobatic.elapsed += delta;
-    const progress = clampValue(flightAerobatic.elapsed / flightAerobatic.duration, 0, 1);
-    const angle = Math.PI * 2 * progress * flightAerobatic.direction;
-    if (flightAerobatic.type === "roll") acroRoll = angle;
-    else acroPitch = -angle;
-    if (progress >= 1) flightAerobatic = null;
-  }
-  player.rotation.set(-flightVisualPitch + acroPitch, playerYaw, bank + acroRoll);
+  const horizontalSpeed = Math.hypot(forward.x * flightSpeed, forward.z * flightSpeed);
+  flightVisualPitch = flightModel.advanceVisualPitch(flightVisualPitch, verticalSpeed, horizontalSpeed, delta);
+  const bank = flightModel.bankAngle(yawInput);
+  // Le nez du modele OBJ pointe vers -Z : une rotation X positive leve donc le
+  // nez. La trajectoire montante doit lever le nez et baisser le reacteur, la
+  // trajectoire descendante faire piquer. Le signe suit directement la pente.
+  const acro = flightModel.advanceAerobatic(flightAerobatic, delta, flightAcroAngles);
+  if (flightAerobatic && acro.done) flightAerobatic = null;
+  player.rotation.set(flightVisualPitch + acro.pitch, playerYaw, bank + acro.roll);
   if (player.userData.propeller) {
     player.userData.propeller.rotation.z += delta * (22 + Math.abs(flightSpeed) * 0.85);
   }

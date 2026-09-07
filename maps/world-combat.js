@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=biseau-net-20260730';
+import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=poursuite-20260907';
 import { createExplosionSystem } from './world-explosion.js?v=biseau-net-20260730';
 
 preloadEnemyFighterModel().catch(() => {});
@@ -205,7 +205,6 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   combatButtons.forEach(button => { button.hidden = false; });
   const reticle = document.getElementById('flight-reticle');
   const reticleRange = document.getElementById('reticle-range');
-  const aimLead = document.getElementById('aim-lead');
   const diamond = document.getElementById('target-diamond');
   const seekerDiamond = document.getElementById('missile-seeker-diamond');
   const radarTarget = document.getElementById('radar-target');
@@ -220,19 +219,22 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
 
   const enemy = {
     mesh: new THREE.Group(), hp: 100, maxHp: 100, alive: true,
-    radius: 11.5, phase: 0, holdUntil: 0, velocity: new THREE.Vector3()
+    // Le rayon suit la longueur du modele (0,575 x targetLength) : sans
+    // cela les obus traverseraient les ailes du Kawasaki, plus large que
+    // l'ancien appareil.
+    radius: 15, phase: 0, holdUntil: 0, velocity: new THREE.Vector3()
   };
   const initialZ = world.spawn.air[2] - 540;
   enemy.mesh.position.set(world.spawn.air[0], world.spawn.air[1] + 24, initialZ);
   scene.add(enemy.mesh);
-  const ready = createEnemyFighterModel({ targetLength: 20, thrusters: true }).then(model => {
+  const ready = createEnemyFighterModel({ targetLength: 26, thrusters: true }).then(model => {
     enemy.mesh.clear();
     enemy.mesh.add(model);
     enemy.mesh.userData.flames = model.userData.flames || [];
     document.body.dataset.enemyFighterModel = 'loaded';
   }).catch(error => {
     document.body.dataset.enemyFighterModel = 'error';
-    console.warn('[world-combat] modele ennemi rouge et noir non charge', error);
+    console.warn('[world-combat] modele ennemi Kawasaki non charge', error);
   });
 
   const bullets = [];
@@ -296,7 +298,6 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     radarTarget.style.display = 'none';
     diamond.className = '';
     seekerDiamond.className = '';
-    aimLead.className = '';
     reticle.classList.remove('locked', 'acquiring', 'denied');
     lockState.className = 'ok';
     lockState.textContent = `CIBLE DÉTRUITE · ${kills}/${targetKillCount}`;
@@ -487,7 +488,6 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
 
     diamond.className = '';
     seekerDiamond.className = '';
-    aimLead.className = '';
     const overlapsMobileHud = innerWidth <= 720 && aim && aim.sx > innerWidth - 155 && aim.sy < 292;
     if (aim?.visible && aim.screen < 300 && !overlapsMobileHud) {
       const acquisitionRatio = locked ? 1 : THREE.MathUtils.clamp(lockProgress / LOCK_ACQUIRE_TIME, 0, 1);
@@ -495,27 +495,15 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
       const phase = performance.now() * .0042;
       const orbitX = searchStrength * (Math.cos(phase) * 72 + Math.sin(phase * 2.3) * 14);
       const orbitY = searchStrength * (Math.sin(phase) * 48 + Math.cos(phase * 1.7) * 10);
-      const targetX = THREE.MathUtils.clamp(aim.sx, 27, innerWidth - 27);
-      const targetY = THREE.MathUtils.clamp(aim.sy, 27, innerHeight - 27);
+      const targetX = THREE.MathUtils.clamp(aim.sx, 39, innerWidth - 39);
+      const targetY = THREE.MathUtils.clamp(aim.sy, 39, innerHeight - 39);
       diamond.style.left = `${targetX}px`;
       diamond.style.top = `${targetY}px`;
       diamond.classList.add('visible');
-      seekerDiamond.style.left = `${THREE.MathUtils.clamp(targetX + orbitX, 27, innerWidth - 27)}px`;
-      seekerDiamond.style.top = `${THREE.MathUtils.clamp(targetY + orbitY, 27, innerHeight - 27)}px`;
+      seekerDiamond.style.left = `${THREE.MathUtils.clamp(targetX + orbitX, 39, innerWidth - 39)}px`;
+      seekerDiamond.style.top = `${THREE.MathUtils.clamp(targetY + orbitY, 39, innerHeight - 39)}px`;
       seekerDiamond.style.opacity = insideCapture || locked ? '1' : '.68';
       seekerDiamond.classList.add('visible');
-    }
-
-    if (aim?.visible && !overlapsMobileHud) {
-      const travelTime = Math.min(1.35, aim.distance / BULLET_SPEED);
-      const predicted = targetPoint().addScaledVector(enemy.velocity, travelTime);
-      const lead = projectPoint(predicted);
-      const leadOverlapsHud = innerWidth <= 720 && lead && lead.sx > innerWidth - 155 && lead.sy < 292;
-      if (lead?.visible && lead.screen < 360 && !leadOverlapsHud) {
-        aimLead.style.left = `${THREE.MathUtils.clamp(lead.sx, 18, innerWidth - 18)}px`;
-        aimLead.style.top = `${THREE.MathUtils.clamp(lead.sy, 18, innerHeight - 18)}px`;
-        aimLead.classList.add('visible');
-      }
     }
 
     if (performance.now() < deniedUntil) {

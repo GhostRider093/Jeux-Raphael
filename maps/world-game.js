@@ -6,7 +6,7 @@ import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey }
 import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=biseau-net-20260730';
 import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=biseau-net-20260730';
 import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
-import { createWorldCombat } from './world-combat.js?v=biseau-net-20260730';
+import { createWorldCombat } from './world-combat.js?v=jauge-vitesse-20260907';
 import { createTargetRange } from './world-targets.js?v=biseau-net-20260730';
 import { createExplosionSystem } from './world-explosion.js?v=biseau-net-20260730';
 import { queryHit, collisionStats } from './world-collision.js?v=biseau-net-20260730';
@@ -558,6 +558,12 @@ async function startWorld() {
   // Tous les points de départ sont placés au sud de la zone jouable : le pilote
   // doit donc regarder vers le centre de la carte au lancement.
   let yaw = 0, pitch = mode.type === 'flight' ? .12 : 0, flightVisualPitch = pitch, speed = mode.type === 'flight' ? 72 : 0, verticalVelocity = 0, cameraWide = mode.type === 'flight', cockpitView = false, lastView = false;
+  // Cran de poursuite : multiplicateur de la vitesse visee, monte et descendu
+  // au clavier avec + et -. Meme commande et meme plafond que dans la ville.
+  let chaseNotch = 1;
+  // Derniere consigne de vitesse, relue par le HUD pour placer le repere de la
+  // jauge : c'est l'ecart entre la vitesse et elle qui montre l'acceleration.
+  let flightTargetSpeed = 0;
   let launchSequence = mode.type === 'flight' ? 4.2 : 0;
   let aerobatic = null, aerobaticArmed = true;
   // Ordres clavier lisses : une touche est binaire, la rampe rend possible un
@@ -574,12 +580,11 @@ async function startWorld() {
   // securite ne vient pas d'un bridage du manche mais du plancher lui-meme —
   // `player.position.y` est borne a `getHeight + 9`, et au contact le tangage
   // est force positif, donc l'appareil se remet a plat au lieu de s'enfoncer.
-  const PITCH_LIMIT = 1.38;        // ~79 degres, a la montee comme au pique
-  const pitchUpLimit = PITCH_LIMIT;
-  const pitchDownLimit = PITCH_LIMIT;
-  const pitchRate = 1.15;          // adouci : 1.5 etait trop vif
-  const climbRate = 95;            // poussee verticale directe
-  const visualPitchLimit = 1.4;
+  // Taux de rotation, debattement du nez, roulis, mise en vitesse et figures
+  // viennent de flight-model.js : la ville et les Mondes partagent desormais
+  // le meme appareil. Ne reste ici que ce qui depend de la taille du monde.
+  const flightModel = window.RaphaelFlightModel;
+  const flightAcroAngles = { roll: 0, pitch: 0, done: true };
   // Reste specifique au vide : l'absence de sol change la mise en scene, pas
   // le pilotage.
   const freeFlight = world.terrain.kind === 'space';
@@ -621,10 +626,7 @@ async function startWorld() {
     cycleCameraView();
   }
   const cameraForward = new THREE.Vector3(0, 0, -1);
-  const getFlightForward = () => {
-    const cp = Math.cos(pitch);
-    return new THREE.Vector3(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp);
-  };
+  const getFlightForward = () => flightModel.setForward(new THREE.Vector3(), yaw, pitch);
   // Pool d'explosions partage : impacts du pilote et destructions ennemies
   // puisent dans les memes emplacements pre-construits.
   const explosions = createExplosionSystem({
@@ -1271,12 +1273,10 @@ async function startWorld() {
     );
     const acroHeld = !!(held('C') || touch.acro || pad.acro);
     const acroAxis = Math.max(Math.abs(yawInput), Math.abs(pitchInput));
-    if ((!acroHeld || acroAxis < .28) && !aerobatic) aerobaticArmed = true;
-    if (acroHeld && aerobaticArmed && !aerobatic && acroAxis > .55) {
-      aerobatic = Math.abs(yawInput) >= Math.abs(pitchInput)
-        ? { type: 'roll', direction: Math.sign(yawInput) || 1, elapsed: 0, duration: 1.05 }
-        : { type: 'loop', direction: Math.sign(pitchInput) || 1, elapsed: 0, duration: 1.55 };
-      aerobaticArmed = false;
+    if ((!acroHeld || acroAxis < flightModel.TUNING.acroRearm) && !aerobatic) aerobaticArmed = true;
+    if (acroHeld && aerobaticArmed && !aerobatic) {
+      aerobatic = flightModel.startAerobatic(yawInput, pitchInput);
+      if (aerobatic) aerobaticArmed = false;
     }
     const raceTuning = world.layout === 'race-circuit';
     const cruiseSpeed = raceTuning ? 68 : 38;
@@ -1299,8 +1299,14 @@ async function startWorld() {
     // reste, y compris le boost. C'est la vitesse lumiere.
     const lightSpeed = updateSpeedZones(dt);
     if (lightSpeed > 1) targetSpeed = Math.max(targetSpeed, boostSpeed) * lightSpeed;
-    speed += (targetSpeed - speed) * smoothing(4.4, dt);
-    window.RaphaelFighterEngine?.update(speed / boostSpeed, targetSpeed >= boostSpeed * .9);
+    // Le cran de poursuite vient en dernier : il multiplie tout le reste, et
+    // laisse le frein a zero puisque zero fois n'importe quoi reste zero.
+    const chase = flightModel.chaseKeys(keys);
+    chaseNotch = flightModel.advanceChase(chaseNotch, chase.up, chase.down, dt);
+    targetSpeed *= chaseNotch;
+    flightTargetSpeed = targetSpeed;
+    speed = flightModel.advanceSpeed(speed, targetSpeed, dt);
+    window.RaphaelFighterEngine?.update(Math.min(1, speed / boostSpeed), targetSpeed >= boostSpeed * .9);
 
     // ── SUR-REGIME ──────────────────────────────────────────────────────────
     // L'intensite part du plein regime et non de zero : le souffle ne doit se
@@ -1314,15 +1320,15 @@ async function startWorld() {
       boostAudioOn = false;
       window.RaphaelBoostAudio?.stop();
     }
-    yaw += THREE.MathUtils.clamp(yawInput, -1, 1) * 1.55 * dt;
-    pitch = THREE.MathUtils.clamp(pitch + THREE.MathUtils.clamp(pitchInput, -1, 1) * pitchRate * dt, -pitchDownLimit, pitchUpLimit);
+    yaw = flightModel.advanceYaw(yaw, yawInput, dt);
+    pitch = flightModel.advancePitch(pitch, pitchInput, dt);
     if (launchSequence > 0) {
       launchSequence = Math.max(0, launchSequence - dt);
       pitch += (.14 - pitch) * smoothing(3.4, dt);
       targetSpeed = Math.max(targetSpeed, 78);
     }
     const forward = getFlightForward();
-    const verticalSpeed = forward.y * speed + climbInput * climbRate;
+    const verticalSpeed = forward.y * speed + climbInput * cruiseSpeed * flightModel.TUNING.climbRatio;
     player.position.x += forward.x * speed * dt;
     player.position.y += verticalSpeed * dt;
     player.position.z += forward.z * speed * dt;
@@ -1334,21 +1340,15 @@ async function startWorld() {
     // Le decor est teste apres le relief : le degagement ne peut plus enfoncer
     // l'appareil dans le sol.
     updateCollisions(dt);
-    let acroRoll = 0, acroPitch = 0;
-    if (aerobatic) {
-      aerobatic.elapsed += dt;
-      const progress = THREE.MathUtils.clamp(aerobatic.elapsed / aerobatic.duration, 0, 1);
-      const angle = Math.PI * 2 * progress * aerobatic.direction;
-      if (aerobatic.type === 'roll') acroRoll = angle;
-      else acroPitch = -angle;
-      if (progress >= 1) aerobatic = null;
-    }
-    const horizontalSpeed = Math.max(.001, Math.hypot(forward.x * speed, forward.z * speed));
-    const trajectoryPitch = THREE.MathUtils.clamp(Math.atan2(verticalSpeed, horizontalSpeed), -visualPitchLimit, visualPitchLimit);
-    flightVisualPitch += (trajectoryPitch - flightVisualPitch) * smoothing(11, dt);
-    // Le modèle OBJ a son axe de tangage visuel inverse : une trajectoire
-    // montante lève le nez, une trajectoire descendante le fait piquer.
-    player.rotation.set(-flightVisualPitch + acroPitch, yaw, THREE.MathUtils.clamp(yawInput, -1, 1) * .45 + acroRoll);
+    const acro = flightModel.advanceAerobatic(aerobatic, dt, flightAcroAngles);
+    if (aerobatic && acro.done) aerobatic = null;
+    const acroRoll = acro.roll;
+    const horizontalSpeed = Math.hypot(forward.x * speed, forward.z * speed);
+    flightVisualPitch = flightModel.advanceVisualPitch(flightVisualPitch, verticalSpeed, horizontalSpeed, dt);
+    // Le nez du modèle OBJ pointe vers -Z : une rotation X positive lève le nez.
+    // Une trajectoire montante lève donc le nez et baisse le réacteur, une
+    // trajectoire descendante fait piquer l'appareil.
+    player.rotation.set(flightVisualPitch + acro.pitch, yaw, flightModel.bankAngle(yawInput) + acroRoll);
     (player.userData.flames || []).forEach((flame, index) => flame.scale.setScalar(.75 + speed / 80 + Math.sin(performance.now() * .04 + index) * .08));
     // La caméra de poursuite était la vraie source de latence ressentie : elle
     // mettait un quart de seconde à s'aligner alors que l'appareil, lui,
@@ -1486,6 +1486,18 @@ async function startWorld() {
     const speedKmh = Math.round(Math.abs(speed) * 3.6);
     const altitude = Math.max(0, Math.round(player.position.y));
     document.getElementById('world-speed').textContent = `${speedKmh} km/h`;
+    // Jauge de vitesse : meme affichage que dans la ville. Le maximum tient
+    // compte de la vitesse boostee du monde et du plafond de poursuite.
+    const chaseCeiling = flightModel.chaseCeiling();
+    if (mode.type === 'flight') {
+      window.RaphaelSpeedGauge?.update({
+        speed: Math.abs(speed),
+        target: flightTargetSpeed,
+        max: (world.layout === 'race-circuit' ? 168 : 92) * chaseCeiling,
+        notch: chaseNotch,
+        ceiling: chaseCeiling
+      });
+    }
     document.getElementById('world-altitude').textContent = `Altitude ${altitude} m`;
     document.getElementById('world-coordinates').textContent = `X ${Math.round(player.position.x)} · Z ${Math.round(player.position.z)}`;
     document.getElementById('world-gamepad').textContent = pad.name;

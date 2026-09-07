@@ -141,12 +141,9 @@
     #flight-reticle.locked { color:#ff5b48; border-color:#ff5b48; box-shadow:0 0 28px rgba(255,70,45,.42),inset 0 0 25px rgba(255,70,45,.1); }
     #flight-reticle.acquiring { color:#ffe268; border-color:#ffe268; }
     #flight-reticle.denied { color:#ff2818; animation:combat-denied .14s linear 4; }
-    #aim-lead { position:absolute; z-index:26; display:none; width:22px; height:22px; margin:-11px 0 0 -11px; border:2px solid #fff27a; border-radius:50%; pointer-events:none; box-shadow:0 0 12px rgba(255,242,122,.6); }
-    #aim-lead.visible { display:block; }
-    #aim-lead::before,#aim-lead::after { content:""; position:absolute; left:50%; top:50%; background:#fff27a; transform:translate(-50%,-50%); }
-    #aim-lead::before { width:34px; height:1px; }
-    #aim-lead::after { width:1px; height:34px; }
-    #target-diamond,#missile-seeker-diamond { position:absolute; z-index:26; display:none; width:48px; height:48px; margin:-24px 0 0 -24px; transform:rotate(45deg); pointer-events:none; }
+    /* Losanges de ciblage : 50 % plus gros depuis le 07/09/2026, ils se
+       perdaient sur le decor. Les marges valent la moitie de la taille. */
+    #target-diamond,#missile-seeker-diamond { position:absolute; z-index:26; display:none; width:72px; height:72px; margin:-36px 0 0 -36px; transform:rotate(45deg); pointer-events:none; }
     #target-diamond { border:2px solid #aeb7c2; box-shadow:0 0 9px rgba(190,200,210,.3); }
     #missile-seeker-diamond { z-index:27; border:2px solid #39a9ff; box-shadow:0 0 16px rgba(45,157,255,.58); }
     #target-diamond.visible,#missile-seeker-diamond.visible { display:block; }
@@ -476,7 +473,6 @@
         <div class="reticle-inner-ring"></div>
         <div id="reticle-range">CANON · PORTÉE -- M</div>
       </div>
-      <div id="aim-lead" aria-hidden="true"></div>
       <div id="target-diamond" aria-hidden="true"></div>
       <div id="missile-seeker-diamond" aria-hidden="true"></div>
       <aside id="combat-panel">
@@ -505,11 +501,15 @@
     }
   }
   </script>
+  <!-- Comportement de vol partage avec la ville : script classique, donc
+       execute avant le module world-game.js qui le lit. -->
+  <script src="./flight-model.js?v=poursuite-x3-20260907"></script>
+  <script src="./speed-gauge.js?v=jauge-vitesse-20260907"></script>
   <script src="./fighter-engine-audio.js?v=fighter-engine-20260719"></script>
   <script src="./boost-audio.js?v=biseau-net-20260730"></script>
   <script src="./background-ambience.js?v=background-20260719"></script>
   <script src="./fighter-cannon-audio.js?v=single-shot-20260719"></script>
   <script src="./fighter-missile-audio.js?v=impact-sync-20260719"></script>
-  <script type="module" src="./maps/world-game.js?v=cockpit-3d-20260816b"></script>
+  <script type="module" src="./maps/world-game.js?v=jauge-vitesse-20260907"></script>
 </body>
 </html>
