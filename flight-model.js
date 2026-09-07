@@ -277,8 +277,15 @@
     _prepare(orientation);
     // La composante horizontale du vecteur haut mesure l'inclinaison : elle
     // est nulle a plat, maximale sur la tranche. Son signe donne le sens.
+    // `inclinaison` vaut l'oppose de la composante verticale de l'aile droite :
+    // positif quand on penche a droite, negatif a gauche.
     const inclinaison = -haut.x * avant.z + haut.z * avant.x;
-    const angle = inclinaison * TUNING_ATTITUDE.virageInduit * dt;
+    // Signe NEGATIF, et c'est tout le sujet : une rotation positive autour de
+    // la verticale du monde emmene un nez pointe vers -Z vers la GAUCHE. Pour
+    // qu'une inclinaison a droite fasse virer a droite, il faut donc tourner
+    // dans le sens negatif. Avec le signe inverse, l'appareil penchait du bon
+    // cote mais partait de l'autre.
+    const angle = -inclinaison * TUNING_ATTITUDE.virageInduit * dt;
     if (!angle) return;
     const demi = angle / 2, s = Math.sin(demi);
     _q.set(0, s, 0, Math.cos(demi));
@@ -298,7 +305,10 @@
     if (sollicitation > .12) return;
     _prepare(orientation);
     const inclinaison = -haut.x * avant.z + haut.z * avant.x;
-    const angle = -inclinaison * TUNING_ATTITUDE.stabilite * dt;
+    // Le roulis s'applique autour de l'axe local Z : une commande negative
+    // penche a droite. Pour effacer une inclinaison a droite — donc positive —
+    // il faut une rotation positive.
+    const angle = inclinaison * TUNING_ATTITUDE.stabilite * dt;
     if (!angle) return;
     const demi = angle / 2, s = Math.sin(demi);
     _q.set(0, 0, s, Math.cos(demi));

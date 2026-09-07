@@ -1195,7 +1195,10 @@ async function startWorld() {
   function updateFlight(dt, pad) {
     // Q, S, D et C sont passes aux gaz et a l'acrobatie : la direction reste
     // aux fleches et a I/K, main droite.
-    keyYaw = rampKey(keyYaw, (keys.ArrowLeft ? 1 : 0) + (keys.ArrowRight ? -1 : 0), dt);
+    // Fleche droite = incliner a DROITE. Le clavier etait inverse par rapport
+    // a la manette depuis le debut : la meme intention donnait deux virages
+    // opposes selon qu'on jouait au clavier ou au stick.
+    keyYaw = rampKey(keyYaw, (keys.ArrowLeft ? -1 : 0) + (keys.ArrowRight ? 1 : 0), dt);
     keyPitch = rampKey(keyPitch, (keys.ArrowUp || keys.KeyI ? 1 : 0) + (keys.ArrowDown || keys.KeyK ? -1 : 0), dt);
     const yawInput = keyYaw - touch.x - motion.x - pad.x;
     const mobilePitchDirection = touchControlsInverted ? 1 : -1;
@@ -1306,6 +1309,14 @@ async function startWorld() {
     // visuel a calculer ni de figure preprogrammee a jouer : le pilote fait
     // ses loopings et ses tonneaux lui-meme, avec le manche.
     player.quaternion.copy(orientation);
+    // Point de mesure du vol : le cap et l'inclinaison, lisibles depuis la
+    // console. Verifier le sens d'un virage sur une capture d'ecran est
+    // beaucoup moins sur que de lire les nombres.
+    window.__diagVol = () => ({
+      cap: Math.round(((THREE.MathUtils.radToDeg(Math.atan2(-avantAppareil.x, -avantAppareil.z)) % 360) + 360) % 360),
+      inclinaison: +(-hautAppareil.x * avantAppareil.z + hautAppareil.z * avantAppareil.x).toFixed(2),
+      altitude: Math.round(player.position.y)
+    });
     (player.userData.flames || []).forEach((flame, index) => flame.scale.setScalar(.75 + speed / 80 + Math.sin(performance.now() * .04 + index) * .08));
     // La caméra de poursuite était la vraie source de latence ressentie : elle
     // mettait un quart de seconde à s'aligner alors que l'appareil, lui,
