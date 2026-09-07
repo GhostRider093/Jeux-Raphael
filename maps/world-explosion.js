@@ -27,15 +27,38 @@ const PLANCHE_DUREE = 1.05;             // duree de lecture, en secondes
 const PLANCHE_TAILLE = 5.4;             // largeur du billboard, en unites d'echelle
 
 let plancheTexture = null;
+// Chaque emplacement lit sa propre case de la planche, il lui faut donc sa
+// propre copie de la texture — mais `clone()` copie la REFERENCE de l'image,
+// pas ses pixels. Les copies faites avant la fin du telechargement restent
+// donc vides a jamais, et le souffle ne s'affiche jamais : aucune erreur,
+// aucun avertissement, juste rien a l'ecran. On garde la liste des copies
+// pour les recaler quand l'image arrive.
+const plancheCopies = [];
+
 function getPlancheTexture(THREE) {
   if (plancheTexture) return plancheTexture;
-  plancheTexture = new THREE.TextureLoader().load(PLANCHE_URL);
+  plancheTexture = new THREE.TextureLoader().load(PLANCHE_URL, texture => {
+    for (const copie of plancheCopies) {
+      copie.image = texture.image;
+      copie.needsUpdate = true;
+    }
+  });
   if (THREE.SRGBColorSpace) plancheTexture.colorSpace = THREE.SRGBColorSpace;
   // Chaque case doit etre lue seule : sans bornage, le filtrage va chercher
   // les pixels de la case voisine et l'explosion se borde d'un halo fantome.
   plancheTexture.wrapS = plancheTexture.wrapT = THREE.ClampToEdgeWrapping;
   plancheTexture.repeat.set(1 / PLANCHE_COTE, 1 / PLANCHE_COTE);
   return plancheTexture;
+}
+
+/** Copie de la planche pour un emplacement, recalee des l'image disponible. */
+function copiePlanche(THREE) {
+  const source = getPlancheTexture(THREE);
+  const copie = source.clone();
+  copie.needsUpdate = true;
+  if (source.image) copie.image = source.image;
+  else plancheCopies.push(copie);
+  return copie;
 }
 
 const MAX_ACTIVE = 5;
@@ -106,14 +129,13 @@ export function createExplosionSystem({ scene, camera, onSound }) {
     //   dixieme de seconde. Chaque emplacement a sa propre matiere : les cases
     //   lues ne sont pas les memes d'une explosion a l'autre.
     const souffle = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: getPlancheTexture(THREE).clone(),
+      map: copiePlanche(THREE),
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       toneMapped: false,
       opacity: 1
     }));
-    souffle.material.map.needsUpdate = true;
     souffle.name = 'explosion-souffle';
     souffle.renderOrder = 6;
     group.add(souffle);

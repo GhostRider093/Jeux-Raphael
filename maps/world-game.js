@@ -8,7 +8,7 @@ import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './w
 import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
 import { createWorldCombat } from './world-combat.js?v=chasseur-unique-20260907';
 import { createTargetRange } from './world-targets.js?v=biseau-net-20260730';
-import { createExplosionSystem } from './world-explosion.js?v=explosion-filmee-20260908';
+import { createExplosionSystem } from './world-explosion.js?v=souffle-visible-20260908';
 import { queryHit, collisionStats } from './world-collision.js?v=biseau-net-20260730';
 import { addBoxFromCenter } from './world-collision.js?v=biseau-net-20260730';
 import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=biseau-net-20260730';
