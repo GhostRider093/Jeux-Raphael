@@ -67,6 +67,19 @@ function copiePlanche(THREE) {
   return copie;
 }
 
+// ── INTERRUPTEUR DE DIAGNOSTIC ──────────────────────────────────────────────
+// A false, TOUTE l'explosion construite par le code est eteinte — flash, boule
+// de feu, onde de choc, anneau au sol, debris, etincelles, fumee, lumiere — et
+// il ne reste que le souffle filme. Aucune exception : destruction d'un
+// ennemi, crash, impact de missile, touche d'essai, tout passe par la.
+//
+// C'est le seul moyen de repondre a la question « est-ce que je regarde la
+// nouvelle explosion ou l'ancienne ? ». Si quelque chose d'autre apparait
+// encore a l'ecran, c'est que cette explosion-la ne vient pas d'ici.
+//
+// Remettre a true pour retrouver le feu du code sous la video.
+const FEU_DU_CODE = false;
+
 const MAX_ACTIVE = 5;
 const DEBRIS_COUNT = 16;
 const SPARK_COUNT = 26;
@@ -261,6 +274,7 @@ export function createExplosionSystem({ scene, camera, onSound }) {
    *   n'apparait, la video ne s'affiche pas, et c'est definitif.
    */
   function spawn(position, scale = 1, groundY = null, tint = null, filmeSeul = false) {
+    if (!FEU_DU_CODE) filmeSeul = true;
     const slot = pickSlot();
     const tinted = tint !== null && tint !== undefined;
     if (tinted) tintColor.set(tint);

@@ -34,7 +34,7 @@
   // en cinq couches, onde de choc, anneau au sol, debris, etincelles, fumee.
   // Il n'y a aucune raison d'en avoir deux : la ville prend le meme.
   let explosionFactory=null, explosionSystem=null;
-  import('./maps/world-explosion.js?v=planche-serree-20260908')
+  import('./maps/world-explosion.js?v=video-uniquement-20260908')
     .then(module=>{explosionFactory=module.createExplosionSystem;})
     .catch(error=>console.warn('[air-combat] module explosions indisponible, repli sur les particules',error));
 
@@ -368,7 +368,21 @@
     if(!available()){if(hud)hud.style.display='none';return;}init();acquireTarget(dt);const pressed=missilePressed();if(pressed&&!missileLatch)launchMissile('player',state.target);missileLatch=pressed;
     const rearPressed=rearMissilePressed();if(rearPressed&&!rearLatch)launchRearMissile();rearLatch=rearPressed;
     updateEnemies(dt);if(window.RaphaelEscadrille)window.RaphaelEscadrille.update(dt);
-    updatePlayerGun(dt);updateMissiles(dt);updateParticles(dt);getExplosions()?.update(dt);updateHud();spawnClock+=dt;}
+    updatePlayerGun(dt);updateMissiles(dt);updateParticles(dt);essaiExplosion();getExplosions()?.update(dt);updateHud();spawnClock+=dt;}
+
+  // Touche B : pose une explosion a 95 metres devant l'appareil. Regler un
+  // effet visuel demande de le revoir dix fois de suite ; devoir descendre un
+  // ennemi entre deux essais rend le reglage impossible. Le verrou empeche une
+  // pression maintenue d'en poser une par image.
+  let essaiArme=false;
+  function essaiExplosion(){
+    const appuye=typeof keys!=='undefined'&&!!keys['KeyB'];
+    if(appuye&&!essaiArme){
+      essaiArme=true;
+      const f=forwardOf(player);
+      explode(player.position.clone().addScaledVector(f,95),null,2.2);
+    }else if(!appuye) essaiArme=false;
+  }
   window.RaphaelAirCombat={state,enemies,missiles,allies,arene,
     flightModifiers:()=>({speed:.45+.55*state.engine/100,yaw:.55+.45*Math.min(state.leftWing,state.rightWing)/100}),
     diagnostics:()=>({active:state.active,enemies:enemies.filter(e=>!e.dead).length,allies:allies.filter(a=>!a.mort).length,missiles:missiles.length,lock:state.lock,hull:state.hull})};
