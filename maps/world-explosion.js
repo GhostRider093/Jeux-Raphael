@@ -28,9 +28,13 @@ const PLANCHE_DUREE = 1.05;             // duree de lecture, en secondes
 // unites de large quand la boule de feu du code en faisait 17 : il etait
 // integralement noye dedans, et l'explosion paraissait inchangee. Il doit
 // dominer, c'est lui le sujet.
-// Depuis que la planche est recadree serre, le feu remplit sa case au lieu de
-// flotter dans du vide : a contenu egal, il paraissait trois fois plus petit.
-const PLANCHE_TAILLE = 7;
+// Largeur du billboard, en unites d'echelle.
+//
+// Le recadrage laisse volontairement une marge de noir autour du feu : serrer
+// davantage revient a trancher dans la lueur, et un feu coupe net dessine un
+// bord droit — le cadre carre de la video, visible a l'ecran. La marge coute
+// de la place dans la case, on la rattrape en agrandissant le sprite.
+const PLANCHE_TAILLE = 18;
 
 let plancheTexture = null;
 // Chaque emplacement lit sa propre case de la planche, il lui faut donc sa
@@ -158,6 +162,9 @@ export function createExplosionSystem({ scene, camera, onSound }) {
     const souffle = new THREE.Sprite(new THREE.SpriteMaterial({
       map: copiePlanche(THREE),
       transparent: true,
+      // Les texels entierement transparents sont ecartes avant le melange :
+      // aucune chance qu'un fond quasi noir laisse deviner la forme de la case.
+      alphaTest: .01,
       depthWrite: false,
       toneMapped: false,
       opacity: 1
