@@ -20,11 +20,15 @@ import * as THREE from 'three';
 // fait disparaitre le noir tout seul. C'est la methode habituelle, et c'est
 // aussi la seule qui permette plusieurs explosions a la fois — une balise
 // video n'en jouerait qu'une.
-const PLANCHE_URL = './assets/vfx/explosion-8x8.jpg';
+const PLANCHE_URL = './assets/vfx/explosion-8x8.png';
 const PLANCHE_COTE = 8;                 // images par ligne et par colonne
 const PLANCHE_IMAGES = 64;
 const PLANCHE_DUREE = 1.05;             // duree de lecture, en secondes
-const PLANCHE_TAILLE = 5.4;             // largeur du billboard, en unites d'echelle
+// Largeur du billboard, en unites d'echelle. A 5,4 le souffle filme faisait 9
+// unites de large quand la boule de feu du code en faisait 17 : il etait
+// integralement noye dedans, et l'explosion paraissait inchangee. Il doit
+// dominer, c'est lui le sujet.
+const PLANCHE_TAILLE = 11;
 
 let plancheTexture = null;
 // Chaque emplacement lit sa propre case de la planche, il lui faut donc sa
@@ -69,12 +73,16 @@ const SMOKE_COUNT = 7;
 // `tint` dose la teinte appliquee a chaque couche. Le coeur reste neutre :
 // c'est la zone la plus chaude, elle doit rester blanche quelle que soit la
 // matiere qui brule. La couleur s'affirme vers l'exterieur.
+// Depuis que le souffle filme est en place, la boule de feu du code n'est plus
+// le sujet : elle donne la matiere et le volume sous la video, qui donne le
+// feu. Ses rayons sont donc reduits pour qu'elle reste dessous au lieu de la
+// recouvrir.
 const FIREBALL_LAYERS = [
-  { color: 0xfff8e6, radius: 2.2, growth: 3.4, life: .52, tint: 0 },
-  { color: 0xffe08a, radius: 2.9, growth: 3.9, life: .66, tint: .3 },
-  { color: 0xffa02a, radius: 3.6, growth: 4.4, life: .82, tint: .58 },
-  { color: 0xff4a14, radius: 4.3, growth: 4.9, life: .96, tint: .78 },
-  { color: 0x8a2b0c, radius: 5.0, growth: 5.6, life: 1.15, tint: .5 }
+  { color: 0xfff8e6, radius: 1.5, growth: 2.3, life: .52, tint: 0 },
+  { color: 0xffe08a, radius: 2.0, growth: 2.7, life: .66, tint: .3 },
+  { color: 0xffa02a, radius: 2.5, growth: 3.0, life: .82, tint: .58 },
+  { color: 0xff4a14, radius: 3.0, growth: 3.4, life: .96, tint: .78 },
+  { color: 0x8a2b0c, radius: 3.5, growth: 3.9, life: 1.15, tint: .5 }
 ];
 
 // Teintes de base des elements secondaires, avant application de la teinte.
@@ -128,10 +136,13 @@ export function createExplosionSystem({ scene, camera, onSound }) {
     //   posee avant le flash pour que le flash reste au-dessus au premier
     //   dixieme de seconde. Chaque emplacement a sa propre matiere : les cases
     //   lues ne sont pas les memes d'une explosion a l'autre.
+    // Melange NORMAL et non additif, avec un canal alpha tire de la luminance.
+    // En additif on ajoute de la lumiere a l'image : sur un ciel de jour ou une
+    // ville pale, l'explosion devient invisible quelle que soit sa taille —
+    // c'est exactement ce qui se passait. En alpha, elle se pose SUR le decor.
     const souffle = new THREE.Sprite(new THREE.SpriteMaterial({
       map: copiePlanche(THREE),
       transparent: true,
-      blending: THREE.AdditiveBlending,
       depthWrite: false,
       toneMapped: false,
       opacity: 1
@@ -518,10 +529,41 @@ export function createExplosionSystem({ scene, camera, onSound }) {
     slots.length = 0;
   }
 
+  /**
+   * Etat reel du souffle filme, lisible depuis la console.
+   *
+   * Une texture qui n'arrive pas ne provoque ni erreur ni carre rose : le
+   * sprite est simplement invisible. Sans ce point de mesure, la seule facon
+   * de s'en apercevoir est de fixer l'ecran en croyant regarder autre chose.
+   */
+  function diagnostic() {
+    const premier = slots[0];
+    return {
+      emplacements: slots.length,
+      actifs: slots.reduce((n, slot) => n + (slot.active ? 1 : 0), 0),
+      souffleVisible: premier ? premier.souffle.visible : null,
+      texture: premier && premier.souffle.material.map ? {
+        image: premier.souffle.material.map.image
+          ? `${premier.souffle.material.map.image.width}x${premier.souffle.material.map.image.height}`
+          : 'AUCUNE',
+        offset: premier.souffle.material.map.offset.toArray(),
+        repeat: premier.souffle.material.map.repeat.toArray()
+      } : 'AUCUNE CARTE',
+      echelle: premier ? premier.souffle.scale.x : null,
+      opacite: premier ? premier.souffle.material.opacity : null,
+      url: PLANCHE_URL
+    };
+  }
+
+  // Point d'entree de mise au point : le dernier systeme cree est joignable
+  // depuis la console, sinon rien n'est observable dans une page a modules.
+  if (typeof window !== 'undefined') window.RaphaelExplosionsDiag = diagnostic;
+
   return {
     spawn,
     update,
     dispose,
+    diagnostic,
     getShake: () => shake,
     activeCount: () => slots.reduce((total, slot) => total + (slot.active ? 1 : 0), 0)
   };

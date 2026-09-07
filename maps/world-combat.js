@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=poursuite-20260907';
-import { createExplosionSystem } from './world-explosion.js?v=souffle-visible-20260908';
+import { createExplosionSystem } from './world-explosion.js?v=souffle-alpha-20260908';
 
 preloadEnemyFighterModel().catch(() => {});
 
