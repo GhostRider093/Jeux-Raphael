@@ -298,12 +298,24 @@
     state.radarAlert=threat===2?'MISSILE / DANGER':threat===1?'ACCROCHAGE ENNEMI':'CALME';
     if(threat&&audio&&audio.ctx.currentTime-audio.lastAlert>1.2){tone(threat===2?1180:720,.15,'square',.1);audio.lastAlert=audio.ctx.currentTime;}
   }
+  // Bouches de canon reutilisees : la boucle de tir ne doit rien allouer.
+  const museauCanon=new THREE.Vector3();
   function updatePlayerGun(dt){
     const firing=typeof keys!=='undefined'&&(keys['Space']||keys[' ']);
     gunClock-=dt;if(!firing||gunClock>0)return;gunClock=.075;
     const f=forwardOf(player);let best=null,bestDist=Infinity;
     if(window.RaphaelFighterCannon)window.RaphaelFighterCannon.fireShot();
-    cannonTracer(player.position.clone().addScaledVector(f,6),f);
+    // Les canons sont dans les ailes, a cote des rampes a missiles : deux
+    // tracantes partent ensemble, une par aile. Un chasseur ne tire pas
+    // depuis son axe. Les bouches viennent des ancrages de l'appareil, ce
+    // qui les fait suivre le roulis sans aucun calcul ici.
+    const appareil=player.getObjectByName('chasseur');
+    if(appareil&&window.RaphaelChasseur){
+      for(const bouche of ['canonGauche','canonDroit']){
+        window.RaphaelChasseur.ancrageMonde(appareil,bouche,museauCanon);
+        cannonTracer(museauCanon,f);
+      }
+    }else cannonTracer(player.position.clone().addScaledVector(f,6),f);
     for(const e of enemies){if(e.dead)continue;const to=e.mesh.position.clone().sub(player.position),d=to.length();if(d>360)continue;
       if(f.dot(to.normalize())>.992&&d<bestDist){best=e;bestDist=d;}}
     if(best){damageEnemy(best,7,best.mesh.position.clone());trail(best.mesh.position,0xffd34d);}

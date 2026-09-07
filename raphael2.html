@@ -369,20 +369,21 @@ button { padding: 15px; margin: 10px; font-size: 20px; }
   window.dispatchEvent(new Event('objloaderready'));
 </script>
 <script src="poilhes-game-map.js?v=poilhes-20260504"></script>
-<script src="chasseur.js?v=chasseur-obj-texture-20260708c"></script>
+<!-- L'appareil, decrit une seule fois. A charger avant ses adaptateurs. -->
+<script src="chasseur-model.js?v=chasseur-unique-20260907"></script>
+<script src="chasseur.js?v=chasseur-unique-20260907"></script>
 <script src="fighter-engine-audio.js?v=fighter-engine-20260719"></script>
 <script src="boost-audio.js?v=biseau-net-20260730"></script>
 <script src="background-ambience.js?v=background-20260719"></script>
 <script src="fighter-cannon-audio.js?v=single-shot-20260719"></script>
 <script src="fighter-missile-audio.js?v=impact-sync-20260719"></script>
-<script src="wargun.js?v=wargun-obj-texture-20260708c"></script>
 <!-- Comportement de vol partage avec les Mondes : a charger avant rzphzel.js. -->
 <script src="flight-model.js?v=poursuite-x3-20260907"></script>
 <script src="speed-gauge.js?v=jauge-vitesse-20260907"></script>
 <script src="rzphzel.js?v=lien-direct-20260907"></script>
 <script src="combat.js?v=bright-tracers-20260719"></script>
 <script src="escadrille.js?v=ailiers-20260906a"></script>
-<script src="air-combat.js?v=viseur-pipper-20260907b"></script>
+<script src="air-combat.js?v=chasseur-unique-20260907"></script>
 <script src="sector-streaming.js?v=sectors-20260718"></script>
 <script src="ulvheim.js?v=ulvheim-20260618b"></script>
 
