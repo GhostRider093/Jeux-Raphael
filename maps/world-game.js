@@ -482,6 +482,9 @@ async function startWorld() {
   // Cran de poursuite : multiplicateur de la vitesse visee, monte et descendu
   // au clavier avec + et -. Meme commande et meme plafond que dans la ville.
   let chaseNotch = 1;
+  // Verrou de la touche d'essai : sans lui, une pression maintenue poserait
+  // une explosion par image.
+  let essaiExplosionArme = false;
   // Derniere consigne de vitesse, relue par le HUD pour placer le repere de la
   // jauge : c'est l'ecart entre la vitesse et elle qui montre l'acceleration.
   let flightTargetSpeed = 0;
@@ -1249,6 +1252,21 @@ async function startWorld() {
       targetSpeed = Math.max(targetSpeed, 78);
     }
     const forward = getFlightForward();
+
+    // ── ESSAI D'EXPLOSION ─────────────────────────────────────────────────
+    // Touche B : pose une explosion devant l'appareil. Regler un effet visuel
+    // demande de le revoir dix fois de suite ; devoir descendre un ennemi a
+    // chaque essai rend le reglage impossible. Le declencheur vit dans le jeu,
+    // pas dans un banc d'essai a cote : c'est la meme explosion, au meme
+    // endroit, dans la meme lumiere.
+    if (keys.KeyB) {
+      if (!essaiExplosionArme) {
+        essaiExplosionArme = true;
+        const cible = player.position.clone().addScaledVector(forward, 95);
+        explosions.spawn(cible, 1.7, built.getHeight(cible.x, cible.z));
+      }
+    } else essaiExplosionArme = false;
+
     const verticalSpeed = forward.y * speed + climbInput * cruiseSpeed * flightModel.TUNING.climbRatio;
     player.position.x += forward.x * speed * dt;
     player.position.y += verticalSpeed * dt;

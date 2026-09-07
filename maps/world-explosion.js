@@ -23,8 +23,8 @@ import * as THREE from 'three';
 const PLANCHE_URL = './assets/vfx/explosion-8x8.jpg';
 const PLANCHE_COTE = 8;                 // images par ligne et par colonne
 const PLANCHE_IMAGES = 64;
-const PLANCHE_DUREE = .85;              // duree de lecture, en secondes
-const PLANCHE_TAILLE = 9.5;             // largeur du billboard, en unites d'echelle
+const PLANCHE_DUREE = 1.05;             // duree de lecture, en secondes
+const PLANCHE_TAILLE = 5.4;             // largeur du billboard, en unites d'echelle
 
 let plancheTexture = null;
 function getPlancheTexture(THREE) {
