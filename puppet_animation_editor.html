@@ -515,7 +515,8 @@ function init() {
 function bindEvents() {
   dom.reloadModel.addEventListener("click", loadModel);
   dom.modelSelect.addEventListener("change", loadModel);
-  dom.backToGame.addEventListener("click", () => location.href = "raphael2.html");
+  // La ville est archivee : le retour se fait vers le catalogue des mondes.
+  dom.backToGame.addEventListener("click", () => location.href = "mondes.html");
   dom.recordButton.addEventListener("click", startRecording);
   dom.stopButton.addEventListener("click", stopRecording);
   dom.playButton.addEventListener("click", togglePlayback);

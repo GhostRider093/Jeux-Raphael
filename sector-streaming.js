@@ -3,7 +3,7 @@
   'use strict';
   const isValley=location.pathname.toLowerCase().endsWith('/vallee.html');
   const assets=isValley
-    ? ['raphael2.html','rzphzel.js','poilhes-game-map.js']
+    ? ['archive/ville/raphael2.html','archive/ville/rzphzel.js','archive/ville/poilhes-game-map.js']
     : ['vallee.html','perso/chasseur-texture/Meshy_AI_Avion_type_chasseur_d_0708033342_texture.obj','perso/chasseur-texture/Meshy_AI_Avion_type_chasseur_d_0708033342_texture.png'];
   const preload=()=>assets.forEach(href=>{const l=document.createElement('link');l.rel='prefetch';l.href=href;document.head.appendChild(l);});
   if('requestIdleCallback' in window)requestIdleCallback(preload,{timeout:2500});else setTimeout(preload,500);
