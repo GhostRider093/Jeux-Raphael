@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Aperçu des chasseurs · Nova Flight</title>
+<title>Quel chasseur ? · Nova Flight</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -13,69 +13,128 @@
   header p { margin:0; color:#8fb0c4; font-size:13px; line-height:1.5; }
   .grille { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:14px 20px 20px; }
   .volet { border:1px solid #2a4a63; border-radius:10px; background:#0d1c2a; overflow:hidden; }
-  .volet h2 { margin:0; padding:9px 13px; font-size:14px; color:#7fe3ff; border-bottom:1px solid #23405a; }
-  .volet .note { padding:8px 13px; font-size:12px; color:#8fb0c4; border-top:1px solid #23405a; min-height:44px; }
-  .scene { height:min(52vh,420px); }
+  .volet h2 { margin:0; padding:9px 13px; font-size:15px; color:#7fe3ff; border-bottom:1px solid #23405a; }
+  .volet .note { padding:9px 13px; font-size:12px; color:#8fb0c4; border-top:1px solid #23405a; min-height:56px; line-height:1.5; }
+  .scene { height:min(54vh,440px); }
   .scene canvas { display:block; width:100%; height:100%; }
   @media (max-width:820px) { .grille { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
 <header>
-  <h1>Les deux chasseurs, côte à côte</h1>
-  <p>Même maillage, même taille à l'écran, même éclairage : la seule différence est la finition.
-     Le modèle 3D est <strong>rigoureusement identique</strong> — 196 743 sommets, même boîte, mêmes coordonnées de texture.</p>
+  <h1>Lequel est « notre chasseur » ?</h1>
+  <p>Même cadrage, même éclairage, même taille à l'écran. Les deux existent déjà dans les Mondes :
+     <strong>A</strong> est celui qui s'affiche pendant le chargement, <strong>B</strong> celui qui le remplace une fois les 38 Mo téléchargés.</p>
 </header>
 <div class="grille">
   <section class="volet">
-    <h2>A · Celui de la ville — texturé</h2>
+    <h2>A · Le chasseur construit par le code</h2>
     <div class="scene" id="scene-a"></div>
-    <div class="note">Charge le PNG posé à côté du modèle. C'est l'appareil du mode « Avion chasseur ».</div>
+    <div class="note">Fuselage, nez, verrière, ailes, dérive, deux réacteurs, quatre missiles — tout est géométrie pure.
+      <strong>Aucun fichier à télécharger.</strong> C'est lui qu'on voit au démarrage d'un monde.</div>
   </section>
   <section class="volet">
-    <h2>B · Celui des Mondes — gris métal</h2>
+    <h2>B · Le modèle 3D importé</h2>
     <div class="scene" id="scene-b"></div>
-    <div class="note">Sans texture : le chargeur des Mondes ne lit que les sommets et les faces, il jette les coordonnées de texture. Le gris n'est pas un choix, c'est une omission.</div>
+    <div class="note">Un scan Meshy de 38 Mo et 196 743 sommets, avec sa texture. C'est lui qui remplace le A une fois chargé — et c'est celui que tu trouves sale.</div>
   </section>
 </div>
 
 <script type="importmap">
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
-<script src="./chasseur-model.js?v=chasseur-unique-20260907"></script>
+<script src="./chasseur-model.js?v=explosion-filmee-20260908"></script>
 <script type="module">
 import * as THREE from 'three';
-window.THREE = THREE;   // chasseur-model.js est un script classique
+window.THREE = THREE;
 
-// Deux scenes identiques a un detail pres : la matiere. Tout le reste — cadrage,
-// lumieres, vitesse de rotation — est partage, sinon la comparaison ne vaut rien.
-function monterScene(hote, materiau) {
+// ── A : le chasseur du code, recopie a l'identique de world-game.js ────────
+function fabriquerMissile(longueur = 3.7) {
+  const missile = new THREE.Group();
+  const corps = new THREE.MeshStandardMaterial({ color: 0xd9e2e8, roughness: .28, metalness: .62 });
+  const bande = new THREE.MeshStandardMaterial({ color: 0xb7271e, emissive: 0x320400, emissiveIntensity: .45, roughness: .42, metalness: .28 });
+  const sombre = new THREE.MeshStandardMaterial({ color: 0x20272d, roughness: .48, metalness: .52 });
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(.24, .31, longueur * .72, 12), corps);
+  tube.rotation.x = Math.PI / 2; missile.add(tube);
+  const ogive = new THREE.Mesh(new THREE.ConeGeometry(.25, longueur * .28, 12), bande);
+  ogive.rotation.x = -Math.PI / 2; ogive.position.z = -longueur * .5; missile.add(ogive);
+  const anneau = new THREE.Mesh(new THREE.CylinderGeometry(.33, .33, longueur * .09, 12), bande);
+  anneau.rotation.x = Math.PI / 2; anneau.position.z = -longueur * .18; missile.add(anneau);
+  [-1, 1].forEach(cote => {
+    const aileron = new THREE.Mesh(new THREE.BoxGeometry(.9, .07, .68), sombre);
+    aileron.position.set(0, cote * .17, longueur * .28);
+    aileron.rotation.z = cote > 0 ? .18 : -.18;
+    missile.add(aileron);
+  });
+  return missile;
+}
+
+function chasseurDuCode() {
+  const groupe = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: 0x3c4650, roughness: .42, metalness: .5 });
+  const sombre = new THREE.MeshStandardMaterial({ color: 0x151b23, roughness: .55, metalness: .3 });
+  const verre = new THREE.MeshStandardMaterial({ color: 0x63cfff, emissive: 0x0a4668, emissiveIntensity: .7, transparent: true, opacity: .72, roughness: .1 });
+  const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.05, .7, 10, 18), metal);
+  fuselage.rotation.x = Math.PI / 2; groupe.add(fuselage);
+  const nez = new THREE.Mesh(new THREE.ConeGeometry(1.05, 3.2, 18), metal);
+  nez.rotation.x = -Math.PI / 2; nez.position.z = -6.55; groupe.add(nez);
+  const verriere = new THREE.Mesh(new THREE.SphereGeometry(1.1, 18, 10), verre);
+  verriere.scale.set(.85, .45, 1.35); verriere.position.set(0, .82, -2.7); groupe.add(verriere);
+  const ailes = new THREE.Mesh(new THREE.BoxGeometry(10.5, .25, 2.8), metal);
+  ailes.position.z = -.3; groupe.add(ailes);
+  const plan = new THREE.Mesh(new THREE.BoxGeometry(4.2, .2, 2.1), metal);
+  plan.position.z = 4.1; groupe.add(plan);
+  const derive = new THREE.Mesh(new THREE.BoxGeometry(.28, 2.5, 1.2), metal);
+  derive.position.set(0, 1.15, 4.25); groupe.add(derive);
+  [-.62, .62].forEach(x => {
+    const reacteur = new THREE.Mesh(new THREE.CylinderGeometry(.55, .65, 2.2, 14), sombre);
+    reacteur.rotation.x = Math.PI / 2; reacteur.position.set(x, -.2, 4.65); groupe.add(reacteur);
+    const flamme = new THREE.Mesh(new THREE.ConeGeometry(.4, 3.2, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xff7a16, transparent: true, opacity: .72, blending: THREE.AdditiveBlending, depthWrite: false }));
+    flamme.rotation.x = Math.PI / 2; flamme.position.set(x, -.2, 6.9); groupe.add(flamme);
+  });
+  [-3.4, -2.15, 2.15, 3.4].forEach((x, i) => {
+    const missile = fabriquerMissile(3.7);
+    missile.position.set(x, -.92, i % 2 ? -.35 : .35);
+    groupe.add(missile);
+  });
+  groupe.scale.setScalar(1.55);
+  return groupe;
+}
+
+// Meme scene des deux cotes : seul l'appareil change. Sans cela la
+// comparaison ne vaudrait rien.
+function monterScene(hote, fournirAppareil) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0d1c2a);
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 400);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  // Sans cartographie de tons ni exposition mesuree, les deux appareils
-  // saturent en blanc et la comparaison ne montre plus rien.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1;
   hote.appendChild(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x1a2430, .55));
-  const soleil = new THREE.DirectionalLight(0xffffff, 1.35);
-  soleil.position.set(5, 8, 6);
-  scene.add(soleil);
-  const contre = new THREE.DirectionalLight(0x8fd4ff, .35);
-  contre.position.set(-6, 2, -7);
-  scene.add(contre);
+  scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x1a2430, .6));
+  const soleil = new THREE.DirectionalLight(0xffffff, 1.5);
+  soleil.position.set(5, 8, 6); scene.add(soleil);
+  const contre = new THREE.DirectionalLight(0x8fd4ff, .4);
+  contre.position.set(-6, 2, -7); scene.add(contre);
 
   const pivot = new THREE.Group();
   scene.add(pivot);
+  let rayon = 12;
 
-  window.RaphaelChasseur.construire({ longueur: 10, reacteurs: true, missiles: true, materiau })
-    .then(appareil => { pivot.add(appareil); document.body.dataset.apercu = 'pret'; })
-    .catch(erreur => { console.error('[apercu] chargement impossible', erreur); document.body.dataset.apercu = 'erreur'; });
+  Promise.resolve(fournirAppareil()).then(appareil => {
+    pivot.add(appareil);
+    // Meme taille apparente pour les deux : on cadre sur la boite reelle,
+    // sinon le plus gros paraitrait le mieux fini.
+    const boite = new THREE.Box3().setFromObject(appareil);
+    const taille = boite.getSize(new THREE.Vector3());
+    appareil.position.sub(boite.getCenter(new THREE.Vector3()));
+    rayon = Math.max(taille.x, taille.y, taille.z) * 1.15;
+    document.body.dataset.apercu = 'pret';
+  }).catch(erreur => { console.error('[apercu]', erreur); document.body.dataset.apercu = 'erreur'; });
 
   function rendre() {
     requestAnimationFrame(rendre);
@@ -85,21 +144,17 @@ function monterScene(hote, materiau) {
       camera.aspect = l / h;
       camera.updateProjectionMatrix();
     }
-    // Trois quarts arriere, legerement au-dessus : la vue de poursuite,
-    // celle sous laquelle l'appareil se voit reellement en jeu.
-    const t = performance.now() * .00022;
-    pivot.rotation.y = t;
-    camera.position.set(0, 4.2, 17);
+    pivot.rotation.y = performance.now() * .00022;
+    camera.position.set(0, rayon * .28, rayon * 1.25);
     camera.lookAt(0, 0, 0);
     renderer.render(scene, camera);
   }
   rendre();
 }
 
-monterScene(document.getElementById('scene-a'), null);
-monterScene(document.getElementById('scene-b'), new THREE.MeshStandardMaterial({
-  color: 0x3a4147, roughness: .55, metalness: .35, side: THREE.DoubleSide
-}));
+monterScene(document.getElementById('scene-a'), chasseurDuCode);
+monterScene(document.getElementById('scene-b'), () =>
+  window.RaphaelChasseur.construire({ longueur: 16, reacteurs: true, missiles: true, teinte: 0x59636e }));
 </script>
 </body>
 </html>

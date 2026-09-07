@@ -8,7 +8,7 @@ import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './w
 import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
 import { createWorldCombat } from './world-combat.js?v=chasseur-unique-20260907';
 import { createTargetRange } from './world-targets.js?v=biseau-net-20260730';
-import { createExplosionSystem } from './world-explosion.js?v=biseau-net-20260730';
+import { createExplosionSystem } from './world-explosion.js?v=explosion-filmee-20260908';
 import { queryHit, collisionStats } from './world-collision.js?v=biseau-net-20260730';
 import { addBoxFromCenter } from './world-collision.js?v=biseau-net-20260730';
 import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=biseau-net-20260730';
@@ -216,11 +216,11 @@ async function loadOriginalChasseurInto(player) {
     longueur: 16,
     reacteurs: true,
     missiles: true,
-    // Finition d'origine des Mondes : metal sombre. Passer `null` rendrait
-    // l'appareil texture — la peau existe, elle n'a jamais ete branchee ici.
-    materiau: new THREE.MeshStandardMaterial({
-      color: 0x3a4147, roughness: .55, metalness: .35, side: THREE.DoubleSide
-    })
+    // Texture d'origine du modele, assombrie. Les Mondes affichaient un gris
+    // uni parce que leur ancien chargeur jetait les coordonnees de texture :
+    // l'appareil perdait ses panneaux, ses rivets et ses marquages. Il les
+    // retrouve, en teinte sombre.
+    teinte: 0x59636e
   });
   player.clear();
   player.add(appareil);

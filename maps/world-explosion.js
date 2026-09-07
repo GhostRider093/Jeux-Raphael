@@ -13,6 +13,31 @@ import * as THREE from 'three';
  *   -> debris tournoyants -> etincelles -> fumee ascendante -> lumiere ponctuelle
  */
 
+// ── PLANCHE DE SPRITES ──────────────────────────────────────────────────────
+// L'explosion filmee est une video generee localement (Wan 2.2), decoupee en
+// 64 images sur une planche de 8 x 8. Elle est posee en billboard additif :
+// une video n'a pas de canal de transparence, mais sur fond noir l'additif
+// fait disparaitre le noir tout seul. C'est la methode habituelle, et c'est
+// aussi la seule qui permette plusieurs explosions a la fois — une balise
+// video n'en jouerait qu'une.
+const PLANCHE_URL = './assets/vfx/explosion-8x8.jpg';
+const PLANCHE_COTE = 8;                 // images par ligne et par colonne
+const PLANCHE_IMAGES = 64;
+const PLANCHE_DUREE = .85;              // duree de lecture, en secondes
+const PLANCHE_TAILLE = 9.5;             // largeur du billboard, en unites d'echelle
+
+let plancheTexture = null;
+function getPlancheTexture(THREE) {
+  if (plancheTexture) return plancheTexture;
+  plancheTexture = new THREE.TextureLoader().load(PLANCHE_URL);
+  if (THREE.SRGBColorSpace) plancheTexture.colorSpace = THREE.SRGBColorSpace;
+  // Chaque case doit etre lue seule : sans bornage, le filtrage va chercher
+  // les pixels de la case voisine et l'explosion se borde d'un halo fantome.
+  plancheTexture.wrapS = plancheTexture.wrapT = THREE.ClampToEdgeWrapping;
+  plancheTexture.repeat.set(1 / PLANCHE_COTE, 1 / PLANCHE_COTE);
+  return plancheTexture;
+}
+
 const MAX_ACTIVE = 5;
 const DEBRIS_COUNT = 16;
 const SPARK_COUNT = 26;
@@ -64,6 +89,9 @@ export function createExplosionSystem({ scene, camera, onSound }) {
   const tempObject = new THREE.Object3D();
   const tempColor = new THREE.Color();
   const tintColor = new THREE.Color();
+  // Le souffle filme est deja colore : on ne le teinte qu'a moitie, sinon la
+  // matiere qui brule ecrase le feu de la video.
+  const blancPur = new THREE.Color(0xffffff);
   let shake = 0;
 
   function buildSlot() {
@@ -72,6 +100,23 @@ export function createExplosionSystem({ scene, camera, onSound }) {
     group.visible = false;
     group.matrixAutoUpdate = true;
     scene.add(group);
+
+    // — Souffle filme : la planche de sprites, en billboard additif. Elle est
+    //   posee avant le flash pour que le flash reste au-dessus au premier
+    //   dixieme de seconde. Chaque emplacement a sa propre matiere : les cases
+    //   lues ne sont pas les memes d'une explosion a l'autre.
+    const souffle = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: getPlancheTexture(THREE).clone(),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+      opacity: 1
+    }));
+    souffle.material.map.needsUpdate = true;
+    souffle.name = 'explosion-souffle';
+    souffle.renderOrder = 6;
+    group.add(souffle);
 
     // — Flash : seul element dessine par-dessus le decor, pour rester lisible
     //   meme lorsque l'impact a lieu contre une paroi.
@@ -139,7 +184,7 @@ export function createExplosionSystem({ scene, camera, onSound }) {
     group.add(light);
 
     return {
-      group, flash, fireball, shockwave, groundRing, debris, sparks, smoke, light,
+      group, souffle, flash, fireball, shockwave, groundRing, debris, sparks, smoke, light,
       active: false,
       life: 0,
       scale: 1,
@@ -185,6 +230,14 @@ export function createExplosionSystem({ scene, camera, onSound }) {
     slot.group.visible = true;
     slot.group.position.copy(position);
     slot.groundOffset = groundY === null ? -scale * 2.2 : Math.min(-.4, groundY - position.y + .6);
+
+    // Le souffle filme part a sa premiere image, oriente et dimensionne.
+    slot.souffle.scale.setScalar(scale * PLANCHE_TAILLE);
+    slot.souffle.material.opacity = 1;
+    slot.souffle.material.map.offset.set(0, 1 - 1 / PLANCHE_COTE);
+    slot.souffle.visible = true;
+    if (tinted) slot.souffle.material.color.copy(tintColor).lerp(blancPur, .55);
+    else slot.souffle.material.color.set(0xffffff);
 
     slot.flash.scale.setScalar(scale * 3.1);
     slot.flash.material.opacity = 1;
@@ -303,6 +356,27 @@ export function createExplosionSystem({ scene, camera, onSound }) {
       if (!slot.active) continue;
       slot.life += dt;
       const scale = slot.scale;
+
+      // — Souffle filme : on avance dans la planche, case par case. Le calcul
+      //   ne fait que deplacer une coordonnee de texture, il n'y a ni copie
+      //   d'image ni nouvelle matiere a chaque image.
+      const avanceSouffle = slot.life / PLANCHE_DUREE;
+      if (avanceSouffle >= 1) slot.souffle.visible = false;
+      else {
+        const image = Math.min(PLANCHE_IMAGES - 1, Math.floor(avanceSouffle * PLANCHE_IMAGES));
+        const colonne = image % PLANCHE_COTE;
+        const ligne = Math.floor(image / PLANCHE_COTE);
+        slot.souffle.material.map.offset.set(
+          colonne / PLANCHE_COTE,
+          1 - (ligne + 1) / PLANCHE_COTE
+        );
+        // Le souffle grandit un peu pendant sa lecture : la video est cadree
+        // serre, l'expansion qu'elle montre ne suffit pas a l'echelle du jeu.
+        slot.souffle.scale.setScalar(scale * PLANCHE_TAILLE * (1 + avanceSouffle * .55));
+        // Extinction sur le dernier tiers, sinon la derniere image se coupe net.
+        slot.souffle.material.opacity = avanceSouffle < .66 ? 1 : 1 - (avanceSouffle - .66) / .34;
+        slot.souffle.visible = true;
+      }
 
       // — Flash : tres court, il ouvre l'explosion.
       const flashProgress = Math.min(1, slot.life / .16);

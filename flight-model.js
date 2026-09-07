@@ -67,15 +67,15 @@
   // pilote, au lieu de tenir une touche pendant toute la chasse.
   const CHASE = {
     min: 1,
-    // Crans par seconde de touche maintenue. La consigne est constante :
-    // trois secondes du ralenti a la pleine poursuite, quel que soit le
-    // plafond. La course ayant double le 07/09/2026, la cadence double aussi.
-    rate: .67,
-    // Plafond par niveau — c'est ici que la difficulte evoluera. Releve de
-    // 50 % le 07/09/2026 : en debutant, a 3, on approche 216 unites par
-    // seconde contre 90 a l'ennemi. Les autres niveaux suivent le meme
-    // rapport, pour que l'echelle garde sa forme.
-    levels: { debutant: 3, confirme: 2.4, expert: 1.95 },
+    // Crans par seconde de touche maintenue. La consigne ne bouge pas : trois
+    // secondes du ralenti a la pleine poursuite, quel que soit le plafond. La
+    // cadence suit donc la course a chaque fois qu'on l'allonge.
+    rate: 1,
+    // Plafond par niveau — c'est ici que la difficulte evoluera. Porte a 4 le
+    // 08/09/2026 : en debutant on approche 288 unites par seconde contre 90 a
+    // l'ennemi. Les autres niveaux suivent le meme rapport, pour que l'echelle
+    // garde sa forme.
+    levels: { debutant: 4, confirme: 3.2, expert: 2.6 },
     level: 'debutant'
   };
 

@@ -46,11 +46,24 @@
     return THREE;
   }
 
-  // Le maillage existe en double sur le disque sous deux noms. On ne charge
-  // que celui-ci ; l'autre n'est plus reference par personne et pourra
-  // disparaitre une fois la bascule verifiee en vol.
-  const DOSSIER = './perso/chasseur-texture/';
-  const FICHIER_OBJ = 'Meshy_AI_Avion_type_chasseur_d_0708033342_texture.obj';
+  // ── LE PIEGE DES DEUX COPIES ────────────────────────────────────────────
+  // Le maillage existe en double sur le disque. Les deux fichiers ont la meme
+  // geometrie — 196 743 sommets, meme boite, memes UV — mais celui du dossier
+  // « chasseur-texture » contient DEUX lignes `l` en fin de fichier, deux
+  // aretes isolees oubliees a l'export.
+  //
+  // Cela suffit a tout casser : des qu'OBJLoader rencontre un `l`, il bascule
+  // l'objet courant en type « Line » et jette ses 393 725 faces. L'appareil
+  // n'etait donc pas un maillage mais un nuage de segments, dessine en blanc,
+  // sans ombrage et sans texture possible. C'est la « bouillie blanche » de la
+  // ville : un defaut de chargement, pas un mauvais modele.
+  //
+  // On charge donc la copie propre pour la geometrie, et la texture reste dans
+  // le dossier de l'autre. Ne pas « simplifier » en revenant a un seul chemin
+  // sans avoir verifie que le fichier ne contient aucune ligne `l`.
+  const DOSSIER = './perso/';
+  const FICHIER_OBJ = 'chasseur.obj';
+  const DOSSIER_TEXTURE = './perso/chasseur-texture/';
   const FICHIER_TEXTURE = 'Meshy_AI_Avion_type_chasseur_d_0708033342_texture.png';
   const VERSION = 'chasseur-unique-20260907';
 
@@ -70,17 +83,22 @@
 
   function chargerTexture() {
     if (texture) return texture;
-    texture = new THREE.TextureLoader().setPath(DOSSIER).load(`${FICHIER_TEXTURE}?v=${VERSION}`);
+    texture = new THREE.TextureLoader().setPath(DOSSIER_TEXTURE).load(`${FICHIER_TEXTURE}?v=${VERSION}`);
     if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
     else texture.encoding = THREE.sRGBEncoding;
     texture.anisotropy = 8;
     return texture;
   }
 
-  function materiauParDefaut() {
+  /**
+    * Finition texturee. `teinte` multiplie la texture : c'est ce qui permet
+    * d'assombrir l'appareil sans perdre ses panneaux, ses rivets et ses
+    * marquages. Une matiere unie, elle, les efface tous.
+    */
+  function materiauParDefaut(teinte) {
     return new THREE.MeshStandardMaterial({
       map: chargerTexture(),
-      color: 0x9fb3c2,
+      color: teinte ?? 0x9fb3c2,
       roughness: .72,
       metalness: .08,
       side: THREE.DoubleSide
@@ -119,7 +137,7 @@
         if (onProgress && evenement) onProgress(evenement.loaded, evenement.total);
       })
     ).then(objet => {
-      const materiau = materiauParDefaut();
+      const materiau = materiauParDefaut();   // teinte reglee par instance
       objet.traverse(noeud => {
         if (!noeud.isMesh) return;
         noeud.material = materiau;
@@ -228,14 +246,19 @@
    * @param {boolean} options.reacteurs pose les tuyeres et leur animation.
    * @param {boolean} options.missiles pose les quatre rampes sous les ailes.
    * @param {THREE.Material} options.materiau remplace la finition texturee.
+   * @param {number} options.teinte couleur multipliant la texture, pour
+   *   assombrir ou colorer l'appareil sans effacer ses marquages.
    * @param {function} options.onProgress recoit (octets recus, octets totaux)
    *   pendant le premier chargement du modele, et lui seul.
    * @returns {Promise<THREE.Group>} l'appareil, ancrages compris.
    */
-  async function construire({ longueur = 5, reacteurs = true, missiles = false, materiau = null, onProgress = null } = {}) {
+  async function construire({ longueur = 5, reacteurs = true, missiles = false, materiau = null, teinte = null, onProgress = null } = {}) {
     const gabarit = await chargerGabarit(onProgress);
     const cellule = gabarit.clone(true);
-    if (materiau) cellule.traverse(noeud => { if (noeud.isMesh) noeud.material = materiau; });
+    // Une matiere fournie remplace tout ; sinon on garde la texture et on ne
+    // change que sa teinte. Chaque instance a la sienne, d'ou la copie.
+    const matiere = materiau || materiauParDefaut(teinte);
+    cellule.traverse(noeud => { if (noeud.isMesh) noeud.material = matiere; });
 
     // Mise a l'echelle sur la longueur nez-queue et non sur la plus grande
     // dimension : sur cet appareil la plus grande dimension est l'envergure,
