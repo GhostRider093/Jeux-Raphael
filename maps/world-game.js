@@ -1199,7 +1199,11 @@ async function startWorld() {
     // a la manette depuis le debut : la meme intention donnait deux virages
     // opposes selon qu'on jouait au clavier ou au stick.
     keyYaw = rampKey(keyYaw, (keys.ArrowLeft ? -1 : 0) + (keys.ArrowRight ? 1 : 0), dt);
-    keyPitch = rampKey(keyPitch, (keys.ArrowUp || keys.KeyI ? 1 : 0) + (keys.ArrowDown || keys.KeyK ? -1 : 0), dt);
+    // Fleche HAUT = piquer, fleche BAS = cabrer. C'est la convention du manche :
+    // on le pousse pour descendre, on le tire pour monter. Le stick faisait
+    // deja cela — pousser l'axe vers le bas leve le nez — le clavier disait
+    // l'inverse. Les deux commandes s'accordent enfin.
+    keyPitch = rampKey(keyPitch, (keys.ArrowUp || keys.KeyI ? -1 : 0) + (keys.ArrowDown || keys.KeyK ? 1 : 0), dt);
     const yawInput = keyYaw - touch.x - motion.x - pad.x;
     const mobilePitchDirection = touchControlsInverted ? 1 : -1;
     const pitchInput = keyPitch + (touch.y + motion.y) * mobilePitchDirection + pad.y;
