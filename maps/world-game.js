@@ -6,7 +6,7 @@ import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey }
 import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=biseau-net-20260730';
 import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=biseau-net-20260730';
 import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
-import { createWorldCombat } from './world-combat.js?v=chasseur-unique-20260907';
+import { createWorldCombat } from './world-combat.js?v=losange-seul-20260908';
 import { createTargetRange } from './world-targets.js?v=biseau-net-20260730';
 import { createExplosionSystem } from './world-explosion.js?v=sons-reels-20260908';
 import { queryHit, collisionStats } from './world-collision.js?v=biseau-net-20260730';
@@ -14,7 +14,7 @@ import { addBoxFromCenter } from './world-collision.js?v=biseau-net-20260730';
 import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=biseau-net-20260730';
 import { loadCustomMap } from '../custom-maps.js?v=biseau-net-20260730';
 import { createTwoPlayerMultiplayer } from './world-multiplayer.js?v=biseau-net-20260730';
-import { createCockpitView } from './cockpit-view.js?v=cockpit-3d-20260816b';
+import { creerPosteDePilotage } from './poste-de-pilotage.js?v=poste-20260908o';
 
 const params = new URLSearchParams(location.search);
 const requestedMap = params.get('map');
@@ -412,14 +412,19 @@ async function startWorld() {
   document.body.classList.toggle('world-flight-active', mode.type === 'flight');
   document.body.classList.toggle('world-combat-off', world.combat === false);
 
-  // Cockpit 3D : chargé dès l'ouverture du monde, pas au premier basculement.
-  // Le modèle amène une lampe de poste, donc une recompilation des shaders :
-  // autant la payer pendant l'écran de chargement plutôt qu'en plein vol.
-  // Si le GLB manque, l'habillage CSS d'origine reste seul en place.
-  const cockpitRig = mode.type === 'flight' ? createCockpitView(camera) : null;
+  // Poste de pilotage : construit en géométrie, pas téléchargé. L'ancien
+  // cockpit venait d'un kit à imprimer en 3D — millimètres, visserie de
+  // plateau, écrans prévus pour des feuilles de papier — et sa casquette
+  // mangeait la moitié de l'image. Celui-ci est dessiné autour d'une seule
+  // question : que cache-t-il ? Mesuré au banc, il masque 6,6 % de l'écran en
+  // verrière et 16,4 % en poste complet, et laisse la bande centrale libre.
+  //
+  // Le champ compte : `targetFov` ouvre à 72° en poste, et c'est de lui que
+  // l'arche tire ses cotes.
+  const cockpitRig = mode.type === 'flight' ? creerPosteDePilotage({ camera, champ: 72, rendu: renderer }) : null;
   cockpitRig?.ready
     .then(() => document.body.classList.add('world-cockpit-3d'))
-    .catch(error => console.warn('[mondes] cockpit 3D non chargé, habillage CSS conservé', error));
+    .catch(error => console.warn('[mondes] poste de pilotage indisponible, habillage CSS conservé', error));
   let assetMessage = 'Préparation des objets 3D…';
   let pilotMessage = mode.type === 'flight' ? 'chargement du chasseur original…' : 'chargement du personnage…';
   const renderLoadStatus = () => { status.textContent = `${assetMessage} · ${pilotMessage}`; };
@@ -504,6 +509,9 @@ async function startWorld() {
   // Ordres clavier lisses : une touche est binaire, la rampe rend possible un
   // ajustement fin sans rendre la commande molle.
   let keyYaw = 0, keyPitch = 0;
+  // Derniere commande du pilote, relue par le poste de pilotage pour animer le
+  // manche. Un objet reutilise, jamais realloue dans la boucle.
+  const commandePilote = { x: 0, y: 0 };
   let boostAudioOn = false;      // evite de relancer le coup a chaque image
 
   // ── ENVELOPPE DE VOL ──────────────────────────────────────────────────────
@@ -1210,6 +1218,8 @@ async function startWorld() {
     const yawInput = keyYaw - touch.x - motion.x - pad.x;
     const mobilePitchDirection = touchControlsInverted ? 1 : -1;
     const pitchInput = keyPitch + (touch.y + motion.y) * mobilePitchDirection + pad.y;
+    commandePilote.x = THREE.MathUtils.clamp(yawInput, -1, 1);
+    commandePilote.y = THREE.MathUtils.clamp(pitchInput, -1, 1);
     const climbInput = THREE.MathUtils.clamp(
       // C est passe a l'acrobatie : la descente garde Ctrl et Page bas.
       (keys.KeyE || keys.PageUp ? 1 : 0)
@@ -1568,9 +1578,30 @@ async function startWorld() {
       // temps de l'explosion, puis le pilote repart du point de depart.
       wreckTimer -= dt;
       if (wreckTimer <= 0) respawnFighter();
+    } else if (window.__postePause) {
+      // Panneau de reglage du poste ouvert (F2) : le pilotage est suspendu.
+      // Regler une piece pendant que l'appareil vole et percute un immeuble
+      // est ingerable — la vue change sous les doigts. Seul le pilotage
+      // s'arrete : le poste continue de se rafraichir plus bas, donc on voit
+      // l'effet de chaque cran.
     } else if (mode.type === 'flight') updateFlight(dt, pad);
     else updateGround(dt, pad);
-    updateRace(elapsed);
+    if (!window.__postePause) updateRace(elapsed);
+    // Le poste est anime ici, et il ne l'etait pas : il etait construit, rendu
+    // visible, puis laisse pour mort. Ses trois ecrans n'ont jamais ete peints
+    // une seule fois — ils paraissaient noirs alors qu'ils etaient vierges —
+    // l'echelle de tangage ne suivait pas l'assiette, le manche ne bougeait pas
+    // et la manette des gaz non plus.
+    if (cockpitRig && cockpitRig.niveau() > 0) {
+      cockpitRig.mettreAJour({
+        vitesse: speed,
+        altitude: player.position.y,
+        poussee: THREE.MathUtils.clamp(speed / 128, 0, 1),
+        avancement: raceGates.length ? raceIndex / raceGates.length : 0,
+        commandeX: commandePilote.x,
+        commandeY: commandePilote.y
+      }, dt);
+    }
     combat.update(dt, elapsed, pad, keys, touch);
     if (targetRange.active && mode.type === 'flight') {
       targetRange.update(dt, elapsed, !!(keys.Space || keys.KeyF || touch.fire || pad.fire));
