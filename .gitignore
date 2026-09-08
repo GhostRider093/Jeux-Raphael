@@ -10,3 +10,8 @@ data/
 # propres a chaque serveur, jamais versionnees.
 config/
 nova-deploy.tgz
+
+# Projets d'impression 3D deposes a la racine : geometrie en millimetres, sans
+# texture, que le jeu ne lit jamais. Un seul en pesait 6,2 Mo. Une piece qui
+# doit servir dans le jeu entre par assets/, convertie en GLB.
+*.3mf
