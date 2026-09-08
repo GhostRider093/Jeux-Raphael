@@ -362,13 +362,9 @@ MAX_CUSTOM_MAP_SIZE = 512 * 1024
 MAX_CUSTOM_MAPS = 60
 MAP_ID_PATTERN = re.compile(r"^[a-z0-9-]{1,60}$")
 
-# Deux familles de cartes cohabitent dans la fente du joueur, sous deux cles
-# separees. Une carte perso est un patch applique a un monde du catalogue ; une
-# carte de tunnel est un trace autonome. Les ranger ensemble ferait apparaitre
-# les unes dans la liste des autres, et l'editeur de mondes tenterait
-# d'appliquer un trace de tunnel comme patch.
+# Les cartes perso vivent dans la fente du joueur, sous leur propre cle : une
+# carte perso est un patch applique a un monde du catalogue.
 CUSTOM_MAPS_FIELD = "customMaps"
-TUNNEL_MAPS_FIELD = "tunnelMaps"
 
 
 def maps_of(slot: str, field: str) -> dict:
@@ -454,44 +450,6 @@ async def save_custom_map(map_id: str, request: Request, slot: str = Depends(res
 @app.delete("/api/custom-maps/{map_id}")
 def remove_custom_map(map_id: str, slot: str = Depends(resolve_slot)):
     return remove_map_in(CUSTOM_MAPS_FIELD, slot, map_id)
-
-
-# ---------------------------------------------------------------------------
-#  CARTES DE TUNNEL
-# ---------------------------------------------------------------------------
-#  Meme mecanique que les cartes perso, autre tiroir. Le serveur n'est jamais
-#  une condition pour jouer : l'editeur ecrit d'abord dans le navigateur, et
-#  pousse ici en plus. Sans profil choisi, la liste revient vide plutot qu'en
-#  erreur — le mode solo doit continuer a tourner en site statique.
-
-
-@app.get("/api/tunnel-maps")
-def list_tunnel_maps(slot: str | None = Depends(resolve_slot_optional)):
-    if not slot:
-        return {"maps": {}}
-    return {"maps": maps_of(slot, TUNNEL_MAPS_FIELD)}
-
-
-@app.get("/api/tunnel-maps/{map_id}")
-def get_tunnel_map(map_id: str, slot: str | None = Depends(resolve_slot_optional)):
-    if not MAP_ID_PATTERN.match(map_id):
-        raise HTTPException(400, "Identifiant de carte invalide")
-    if not slot:
-        raise HTTPException(404, "Aucun profil choisi")
-    found = maps_of(slot, TUNNEL_MAPS_FIELD).get(map_id)
-    if not found:
-        raise HTTPException(404, "Carte inconnue")
-    return found
-
-
-@app.post("/api/tunnel-maps/{map_id}")
-async def save_tunnel_map(map_id: str, request: Request, slot: str = Depends(resolve_slot)):
-    return await save_map_in(TUNNEL_MAPS_FIELD, slot, map_id, request)
-
-
-@app.delete("/api/tunnel-maps/{map_id}")
-def remove_tunnel_map(map_id: str, slot: str = Depends(resolve_slot)):
-    return remove_map_in(TUNNEL_MAPS_FIELD, slot, map_id)
 
 
 @app.exception_handler(HTTPException)
