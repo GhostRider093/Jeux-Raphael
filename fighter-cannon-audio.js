@@ -24,27 +24,52 @@
 (function () {
   'use strict';
 
-  const VERSION = 'canon-lent-20260908';
+  const VERSION = 'canon-fort-20260908';
   const IMPACT_URL = `./assets/sons/canon-coup.wav?v=${VERSION}`;
   const GRONDEMENT_URL = `./assets/sons/canon-grondement.wav?v=${VERSION}`;
 
   // Niveau de chaque impact. Le canon tire lentement — sept coups par seconde
   // — donc chaque coup a le temps de s'eteindre avant le suivant et peut
   // partir bien plus fort qu'a la cadence d'une mitrailleuse, ou trois coups
-  // sonnaient en permanence ensemble.
-  const IMPACT_NIVEAU = .44;
-  // Tres en retrait : a 0,38 la nappe couvrait les impacts au lieu de les
-  // porter. Elle ne doit s'entendre que si on la coupe.
-  const GRONDEMENT_NIVEAU = .17;
+  // sonnaient en permanence ensemble. On depasse volontairement 1 : le
+  // limiteur du bus de sortie ramasse les cretes, et c'est ce depassement qui
+  // fait la difference entre un canon qu'on entend et un canon qui cogne.
+  const IMPACT_NIVEAU = 1.15;
+  // La nappe monte avec les impacts : elle ne doit plus seulement se sentir,
+  // elle doit porter le coup. Elle reste largement sous l'impact pour ne pas
+  // le noyer.
+  const GRONDEMENT_NIVEAU = .46;
   // Au-dela de ce silence, on considere que le joueur a lache la detente.
   const SILENCE_ARRET = .19;
 
   let context = null;
+  let sortie = null;
   let shotBuffer = null, rumbleBuffer = null;
   let loading = null;
   let lastShotAt = -Infinity;
   let rumbleSource = null, rumbleGain = null;
   let surveillance = null;
+
+  /**
+   * Bus de sortie : tout passe par un limiteur. Le canon part maintenant bien
+   * au-dessus de 1 en gain, et sans limiteur les cretes seraient tranchees
+   * net par la sortie audio — ca ne s'entend pas comme une detonation plus
+   * forte, ca s'entend comme un craquement sale. Le limiteur ecrete
+   * proprement : le coup garde son claquement, et il gagne en presence au
+   * lieu de gagner en distorsion.
+   */
+  function busSortie() {
+    if (sortie) return sortie;
+    const limiteur = context.createDynamicsCompressor();
+    limiteur.threshold.value = -3;
+    limiteur.knee.value = 0;
+    limiteur.ratio.value = 20;
+    limiteur.attack.value = .002;
+    limiteur.release.value = .12;
+    limiteur.connect(context.destination);
+    sortie = limiteur;
+    return sortie;
+  }
 
   function ensure() {
     if (!context) {
@@ -70,7 +95,7 @@
     rumbleSource.loop = true;
     rumbleGain = context.createGain();
     rumbleGain.gain.value = .0001;
-    rumbleSource.connect(rumbleGain).connect(context.destination);
+    rumbleSource.connect(rumbleGain).connect(busSortie());
     rumbleSource.start();
   }
 
@@ -103,7 +128,7 @@
     source.buffer = shotBuffer;
     source.playbackRate.value = .96 + Math.random() * .09;
     gain.gain.value = IMPACT_NIVEAU * (.88 + Math.random() * .24);
-    source.connect(gain).connect(audioContext.destination);
+    source.connect(gain).connect(busSortie());
     source.start();
 
     demarrerGrondement();
