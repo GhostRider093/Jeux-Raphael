@@ -130,6 +130,13 @@
     #portal-flash.active { opacity:1; }
     #combat-ui[hidden] { display:none; }
     #flight-reticle { position:absolute; z-index:25; left:50%; top:44%; width:122px; height:122px; transform:translate(-50%,-50%); border:1px solid rgba(112,235,255,.88); border-radius:50%; color:#70ebff; pointer-events:none; box-shadow:0 0 22px rgba(55,205,255,.18),inset 0 0 25px rgba(55,205,255,.09); transition:color .16s,border-color .16s,box-shadow .16s; }
+    /* La cible canon est reduite cinq fois par une seule valeur, `scale(.2)`,
+       plutot qu'en retouchant les douze cotes en pixels de l'anneau, de la
+       croix, du cercle interieur et des graduations. Tout suit, et le rapport
+       reste juste. Le libelle de portee, lui, est contre-mis a l'echelle par
+       5 : produit avec le .2 du parent, il retrouve sa taille d'origine et
+       reste lisible sous une cible devenue minuscule. */
+    #flight-reticle { transform:translate(-50%,-50%) scale(.2); }
     #flight-reticle::before,#flight-reticle::after { content:""; position:absolute; left:50%; top:50%; background:currentColor; opacity:.9; transform:translate(-50%,-50%); }
     #flight-reticle::before { width:158px; height:1px; background:linear-gradient(90deg,currentColor 0 27%,transparent 27% 43%,currentColor 43% 57%,transparent 57% 73%,currentColor 73%); }
     #flight-reticle::after { width:1px; height:158px; background:linear-gradient(180deg,currentColor 0 27%,transparent 27% 43%,currentColor 43% 57%,transparent 57% 73%,currentColor 73%); }
@@ -137,16 +144,39 @@
     .reticle-inner-ring::before,.reticle-inner-ring::after { content:""; position:absolute; left:50%; top:50%; width:7px; height:7px; transform:translate(-50%,-50%); border:1px solid currentColor; border-radius:50%; }
     .reticle-inner-ring::after { width:2px; height:2px; border:0; background:currentColor; box-shadow:0 0 8px currentColor; }
     .reticle-ticks { position:absolute; inset:-7px; border-radius:50%; background:repeating-conic-gradient(from -1deg,currentColor 0 1deg,transparent 1deg 14deg); opacity:.38; -webkit-mask:radial-gradient(circle,transparent 0 61px,#000 62px 67px,transparent 68px); mask:radial-gradient(circle,transparent 0 61px,#000 62px 67px,transparent 68px); }
-    #reticle-range { position:absolute; left:50%; top:calc(100% + 9px); min-width:145px; transform:translateX(-50%); color:currentColor; font:700 9px/1 Consolas,monospace; letter-spacing:1px; text-align:center; text-shadow:0 0 6px rgba(60,222,255,.7); }
-    #flight-reticle.locked { color:#ff5b48; border-color:#ff5b48; box-shadow:0 0 28px rgba(255,70,45,.42),inset 0 0 25px rgba(255,70,45,.1); }
+    #reticle-range { position:absolute; left:50%; top:calc(100% + 9px); min-width:145px; transform:translateX(-50%) scale(5); color:currentColor; font:700 9px/1 Consolas,monospace; letter-spacing:1px; text-align:center; text-shadow:0 0 6px rgba(60,222,255,.7); }
+    /* Plus de rouge sur la cible canon : le losange, le rectangle et le point
+       disent deja l'etat du verrouillage, et un troisieme signal rouge au
+       milieu de l'ecran ne fait que charger l'image. */
     #flight-reticle.acquiring { color:#ffe268; border-color:#ffe268; }
     #flight-reticle.denied { color:#ff2818; animation:combat-denied .14s linear 4; }
     /* Losanges de ciblage : 50 % plus gros depuis le 07/09/2026, ils se
        perdaient sur le decor. Les marges valent la moitie de la taille. */
     #target-diamond,#missile-seeker-diamond { position:absolute; z-index:26; display:none; width:72px; height:72px; margin:-36px 0 0 -36px; transform:rotate(45deg); pointer-events:none; }
-    #target-diamond { border:2px solid #aeb7c2; box-shadow:0 0 9px rgba(190,200,210,.3); }
-    #missile-seeker-diamond { z-index:27; border:2px solid #39a9ff; box-shadow:0 0 16px rgba(45,157,255,.58); }
+    /* Un seul losange dessine, et il est MARRON : celui qui tient la cible et
+       ne bouge pas. Le rouge est reserve a ce qui vient dessus. Le
+       chercheur n'a plus ni bordure ni halo — il ne porte que le cadre inscrit
+       et son point. C'est donc le RECTANGLE qui erre puis vient s'accorder
+       dans le losange, au lieu d'un losange qui se pose sur un autre.
+       Le chercheur garde ses cotes et sa rotation : elles ne sont pas
+       decoratives, elles servent au placement et au contre-tournage de ses
+       enfants. */
+    #target-diamond { border:2px solid #b06a35; box-shadow:0 0 16px rgba(176,106,53,.55); }
+    #missile-seeker-diamond { z-index:27; }
     #target-diamond.visible,#missile-seeker-diamond.visible { display:block; }
+    /* Le cadre inscrit dans le losange chercheur, et le point au centre.
+       Le losange est un carre de 72 px tourne de 45 degres : sa demi-diagonale
+       vaut 36*V2 = 50,9 px a l'ecran, et TOUT rectangle a coins poses sur ses
+       quatre cotes verifie demi-largeur + demi-hauteur = 50,9. D'ou 20,9 + 30 :
+       un rectangle de 41,8 x 60 px, debout, pile dans le losange et symetrique
+       sur les deux axes. Echanger les deux cotes le couche d'un quart de tour
+       sans rien changer d'autre — c'est la SOMME qui doit rester a 50,9.
+       Les enfants heritent de la rotation du parent : le cadre est donc
+       contre-tourne de -45 degres pour rester droit a l'ecran. Le point, lui,
+       est rond, la rotation ne le concerne pas. */
+    #missile-seeker-diamond > * { position:absolute; left:50%; top:50%; pointer-events:none; }
+    #missile-seeker-diamond .cadre { width:41.8px; height:60px; margin:-30px 0 0 -20.9px; border:1px solid rgba(255,59,48,.85); transform:rotate(-45deg); }
+    #missile-seeker-diamond .point { width:6px; height:6px; margin:-3px 0 0 -3px; border-radius:50%; background:#ff3b30; box-shadow:0 0 7px rgba(255,59,48,.95); }
     #combat-panel { position:absolute; z-index:25; right:15px; top:92px; width:184px; padding:12px; border:1px solid rgba(91,224,255,.3); border-radius:0; background:rgba(3,11,20,.72); backdrop-filter:blur(9px); color:#dff7ff; pointer-events:none; }
     #radar-scope { position:relative; width:112px; height:112px; margin:0 auto 10px; overflow:hidden; border:1px solid rgba(104,235,255,.72); border-radius:50%; background:radial-gradient(circle,rgba(30,127,143,.18),rgba(2,17,25,.78) 70%); box-shadow:inset 0 0 22px rgba(46,219,255,.14); }
     #radar-scope::before,#radar-scope::after { content:""; position:absolute; background:rgba(109,231,255,.22); }
@@ -376,6 +406,7 @@
     <header class="catalog-header">
       <nav class="catalog-nav">
         <span id="map-count" class="world-count">22 mondes</span>
+        <a class="back-link" href="test_manette.html">Configurer la manette</a>
       </nav>
       <div class="hero-kicker">Raphael · Atlas jouable</div>
       <h1>Vingt-deux mondes.<br>Deux façons de les vivre.</h1>
@@ -472,7 +503,7 @@
         <div id="reticle-range">CANON · PORTÉE -- M</div>
       </div>
       <div id="target-diamond" aria-hidden="true"></div>
-      <div id="missile-seeker-diamond" aria-hidden="true"></div>
+      <div id="missile-seeker-diamond" aria-hidden="true"><div class="cadre"></div><div class="point"></div></div>
       <aside id="combat-panel">
         <div id="radar-scope"><div id="radar-sweep"></div><div id="radar-player"></div><div id="radar-target"></div></div>
         <div id="combat-lock-state">RECHERCHE RADAR</div>

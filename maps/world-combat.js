@@ -4,8 +4,11 @@ import { createExplosionSystem } from './world-explosion.js?v=sons-reels-2026090
 
 preloadEnemyFighterModel().catch(() => {});
 
-const LOCK_SEARCH_DELAY = .85;
-const LOCK_ACQUIRE_TIME = 3.6;
+// Le cadrage complet, attente radar comprise, tient en deux fois moins de
+// temps qu'avant : 4,45 s -> 2,22 s. Les deux valeurs sont divisees par deux,
+// pas seulement l'acquisition — c'est le delai ressenti qui compte.
+const LOCK_SEARCH_DELAY = .42;
+const LOCK_ACQUIRE_TIME = 1.8;
 const LOCK_CAPTURE_RADIUS = 60;
 const LOCK_RELEASE_RADIUS = 92;
 const BULLET_SPEED = 560;
@@ -513,17 +516,28 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
       const acquisitionRatio = locked ? 1 : THREE.MathUtils.clamp(lockProgress / LOCK_ACQUIRE_TIME, 0, 1);
       const searchStrength = insideCapture && !locked ? 1 - acquisitionRatio : 0;
       const phase = performance.now() * .0042;
-      const orbitX = searchStrength * (Math.cos(phase) * 72 + Math.sin(phase * 2.3) * 14);
-      const orbitY = searchStrength * (Math.sin(phase) * 48 + Math.cos(phase * 1.7) * 10);
+      // Le chercheur part large et se resserre : son ecart est `searchStrength`,
+      // qui tombe a zero au verrouillage. Trois harmoniques incommensurables
+      // au lieu de deux — la trajectoire ne se referme jamais sur elle-meme et
+      // le balayage garde l'air de chercher plutot que de tourner en rond.
+      // Excursion maximale : 134 px en x, 92 px en y.
+      const orbitX = searchStrength * (Math.cos(phase) * 104 + Math.sin(phase * 2.3) * 21 + Math.sin(phase * 4.7) * 9);
+      const orbitY = searchStrength * (Math.sin(phase) * 70 + Math.cos(phase * 1.7) * 15 + Math.cos(phase * 3.9) * 7);
       const targetX = THREE.MathUtils.clamp(aim.sx, 39, innerWidth - 39);
       const targetY = THREE.MathUtils.clamp(aim.sy, 39, innerHeight - 39);
       diamond.style.left = `${targetX}px`;
       diamond.style.top = `${targetY}px`;
       diamond.classList.add('visible');
-      seekerDiamond.style.left = `${THREE.MathUtils.clamp(targetX + orbitX, 39, innerWidth - 39)}px`;
-      seekerDiamond.style.top = `${THREE.MathUtils.clamp(targetY + orbitY, 39, innerHeight - 39)}px`;
-      seekerDiamond.style.opacity = insideCapture || locked ? '1' : '.68';
-      seekerDiamond.classList.add('visible');
+      // Le rectangle n'apparait QUE pendant l'acquisition. Hors du cone,
+      // `searchStrength` vaut zero : il se posait donc pile sur le losange des
+      // l'apparition de la cible, et on voyait un losange a carre au lieu d'un
+      // losange seul. D'abord le losange seul sur l'avion, ensuite le
+      // rectangle qui vient le retrouver.
+      if (insideCapture || locked) {
+        seekerDiamond.style.left = `${THREE.MathUtils.clamp(targetX + orbitX, 39, innerWidth - 39)}px`;
+        seekerDiamond.style.top = `${THREE.MathUtils.clamp(targetY + orbitY, 39, innerHeight - 39)}px`;
+        seekerDiamond.classList.add('visible');
+      }
     }
 
     if (performance.now() < deniedUntil) {
@@ -579,7 +593,10 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
       if (missile.velocity.lengthSq() > 1) missile.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), missile.velocity.clone().normalize());
       const flame = missile.mesh.userData.missileFlame;
       if (flame) flame.scale.set(1 + Math.sin(performance.now() * .045) * .12, 1 + Math.sin(performance.now() * .061) * .18, 1);
-      const hit = missile.guided && enemy.alive && missile.mesh.position.distanceTo(targetPoint()) < enemy.radius + 2;
+      // Tout missile qui touche compte, guide ou non. Le test exigeait
+      // `missile.guided` : un missile tire sans verrouillage traversait
+      // l'appareil sans rien faire, ce qui n'a aucun sens a l'impact.
+      const hit = enemy.alive && missile.mesh.position.distanceTo(targetPoint()) < enemy.radius + 2;
       if (hit) damageEnemy(100);
       if (hit || missile.life <= 0) {
       scene.remove(missile.mesh);

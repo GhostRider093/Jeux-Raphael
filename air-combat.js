@@ -5,7 +5,7 @@
 
   const CFG = {
     enemyCount: 10, radarRange: 650, lockRange: 480, lockCone: 0.92,
-    lockSeconds: 3.8, lockDecay: 1.1, missileSpeed: 185,
+    lockSeconds: 1.9, lockDecay: 1.1, missileSpeed: 185,
     missileLife: 7, missileTurn: 2.25, enemyFireDelay: 7,
     respawnDelay: 12, maxParticles: 180,
     // Rayons de declenchement des missiles. Celui de l'ennemi suit l'envergure
@@ -160,8 +160,23 @@
     hud.innerHTML='<div id="ac-visor"><div id="ac-alert"></div><div id="ac-top" class="ac-plate"><span id="ac-mode">LOCK</span><span id="ac-heading">HDG 000°</span><span id="ac-arm">ARMÉ</span></div><div id="ac-target" class="ac-plate">AUCUNE CIBLE</div><div id="ac-left-scale"></div><div id="ac-right-scale"></div><div id="ac-speed" class="ac-plate">SPD 000</div><div id="ac-alt" class="ac-plate">ALT 000 m</div><div id="ac-core"><div id="ac-reticle"></div></div><div id="ac-status" class="ac-plate"></div><div id="ac-score" class="ac-plate"></div><div id="ac-lock" class="ac-plate">RECHERCHE</div></div>';
     radarDiamond=document.createElement('div'); radarDiamond.id='ac-radar-diamond';
     seekerDiamond=document.createElement('div'); seekerDiamond.id='ac-seeker-diamond';
-    Object.assign(radarDiamond.style,{display:'none',position:'absolute',width:'87px',height:'87px',margin:'-43.5px 0 0 -43.5px',border:'2px solid #aeb7c2',transform:'rotate(45deg)',boxShadow:'0 0 8px rgba(190,200,210,.28)'});
-    Object.assign(seekerDiamond.style,{display:'none',position:'absolute',width:'87px',height:'87px',margin:'-43.5px 0 0 -43.5px',border:'2px solid #39a9ff',transform:'rotate(45deg)',boxShadow:'0 0 14px rgba(45,157,255,.58)'});
+    // Un seul losange dessine, et il est MARRON : celui qui tient la cible. Le
+    // chercheur n'a plus ni bordure ni halo, il ne porte que le cadre inscrit
+    // et son point, en rouge — c'est le rectangle qui erre puis vient s'accorder
+    // dans le losange. Ses cotes et sa rotation restent : elles servent au placement
+    // et au contre-tournage de ses enfants.
+    Object.assign(radarDiamond.style,{display:'none',position:'absolute',width:'87px',height:'87px',margin:'-43.5px 0 0 -43.5px',border:'2px solid #b06a35',transform:'rotate(45deg)',boxShadow:'0 0 14px rgba(176,106,53,.55)'});
+    Object.assign(seekerDiamond.style,{display:'none',position:'absolute',width:'87px',height:'87px',margin:'-43.5px 0 0 -43.5px',transform:'rotate(45deg)'});
+    // Cadre inscrit et point central, comme dans les mondes. Le losange est un
+    // carre de 87 px tourne de 45 degres : demi-diagonale 43,5*V2 = 61,5 px, et
+    // tout rectangle a coins poses sur les quatre cotes verifie
+    // demi-largeur + demi-hauteur = 61,5. D'ou 36 + 25,5. Le cadre est
+    // contre-tourne de -45 degres, sans quoi il heriterait de la rotation.
+    const cadreSeeker=document.createElement('div');
+    Object.assign(cadreSeeker.style,{position:'absolute',left:'50%',top:'50%',width:'51px',height:'72px',margin:'-36px 0 0 -25.5px',border:'1px solid rgba(255,59,48,.85)',transform:'rotate(-45deg)'});
+    const pointSeeker=document.createElement('div');
+    Object.assign(pointSeeker.style,{position:'absolute',left:'50%',top:'50%',width:'6px',height:'6px',margin:'-3px 0 0 -3px',borderRadius:'50%',background:'#ff3b30',boxShadow:'0 0 7px rgba(255,59,48,.95)'});
+    seekerDiamond.append(cadreSeeker,pointSeeker);
     hud.append(radarDiamond,seekerDiamond);
     radarCanvas=document.createElement('canvas'); radarCanvas.width=180; radarCanvas.height=180;
     // Le radar etait cale au centre de l'ecran, cache derriere l'ancien viseur
@@ -251,7 +266,7 @@
       m.mesh.position.addScaledVector(m.vel,dt);m.mesh.lookAt(m.mesh.position.clone().add(m.vel));const flame=m.mesh.userData.missileFlame;if(flame)flame.scale.set(1+Math.sin(performance.now()*.047+i)*.12,1+Math.sin(performance.now()*.063+i)*.18,1);trail(m.mesh.position,m.owner==='player'?0xb9eaff:0xff7d32);
       const targetIsPlayer=m.target===player;
       const hitRadius=targetIsPlayer?CFG.playerHitRadius:CFG.enemyHitRadius;
-      let hit=false;if(targetPos&&m.mesh.position.distanceTo(targetPos)<hitRadius){hit=true; if(targetIsPlayer)damagePlayer(38,m.mesh.position);else damageEnemy(m.target,55,m.mesh.position);}
+      let hit=false;if(targetPos&&m.mesh.position.distanceTo(targetPos)<hitRadius){hit=true; if(targetIsPlayer)damagePlayer(38,m.mesh.position);else damageEnemy(m.target,100,m.mesh.position);}
       if(hit||m.life<=0||m.mesh.position.y<terrainY(m.mesh.position.x,m.mesh.position.z)){explode(m.mesh.position,hit?0xff9b32:0x778899,hit?2.2:1.2);scene.remove(m.mesh);missiles.splice(i,1);}
     }
   }
@@ -357,8 +372,18 @@
     if(state.target&&typeof camera!=='undefined'){
       const screen=state.target.mesh.position.clone().project(camera);
       const visible=screen.z>-1&&screen.z<1&&Math.abs(screen.x)<1.15&&Math.abs(screen.y)<1.15;
-      radarDiamond.style.display=seekerDiamond.style.display=visible?'block':'none';
-      if(visible){const x=(screen.x*.5+.5)*innerWidth,y=(-screen.y*.5+.5)*innerHeight,phase=performance.now()*.0035,strength=locked?0:1-state.lock;radarDiamond.style.left=x+'px';radarDiamond.style.top=y+'px';seekerDiamond.style.left=(x+strength*(Math.cos(phase)*72+Math.sin(phase*1.7)*12))+'px';seekerDiamond.style.top=(y+strength*(Math.sin(phase)*46+Math.cos(phase*1.3)*9))+'px';seekerDiamond.style.opacity=state.lock>0?'1':'.72';}
+      // Le losange marron des que la cible est a l'ecran ; le rectangle rouge
+      // seulement quand l'acquisition tourne. Sinon l'ecart vaut zero et le
+      // rectangle se pose sur le losange avant meme que le cadrage commence.
+      radarDiamond.style.display=visible?'block':'none';
+      seekerDiamond.style.display=visible&&(locked||state.lock>0)?'block':'none';
+      // Le chercheur part large et se resserre : son ecart est `strength`,
+      // soit 1 moins le verrouillage. Trois harmoniques incommensurables au
+      // lieu de deux — la trajectoire ne se referme jamais sur elle-meme et
+      // le balayage garde l'air de chercher plutot que de tourner en rond.
+      // Excursion maximale : 132 px en x, 88 px en y, atteinte a l'accrochage
+      // et nulle une fois la cible tenue.
+      if(visible){const x=(screen.x*.5+.5)*innerWidth,y=(-screen.y*.5+.5)*innerHeight,phase=performance.now()*.0035,strength=locked?0:1-state.lock;radarDiamond.style.left=x+'px';radarDiamond.style.top=y+'px';seekerDiamond.style.left=(x+strength*(Math.cos(phase)*104+Math.sin(phase*1.7)*19+Math.sin(phase*4.3)*9))+'px';seekerDiamond.style.top=(y+strength*(Math.sin(phase)*67+Math.cos(phase*1.3)*14+Math.cos(phase*3.7)*7))+'px';}
     }else radarDiamond.style.display=seekerDiamond.style.display='none';
     a.style.color=state.radarAlert==='CALME'?'#70f0ca':'#ff4b35';a.textContent=state.radarAlert==='CALME'?'':state.radarAlert;renderRadar();}
   function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-lastTime)/1000);lastTime=now;
