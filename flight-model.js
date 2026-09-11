@@ -211,8 +211,12 @@
 
   const TUNING_ATTITUDE = {
     // Vitesses de rotation propres, en radians par seconde.
-    roulis: 2.6,       // le plus rapide : c'est lui qu'on sollicite en premier
-    tangage: 1.5,
+    // Baissees d'environ un cinquieme : a 2.6 rad/s le moindre appui partait
+    // trop vite, l'appareil depassait la cible avant qu'on ait relache. Ces
+    // deux valeurs commandent le clavier ET la manette : c'est ici qu'on
+    // change le toucher pour tout le monde, pas dans la mise en forme du stick.
+    roulis: 2.0,       // le plus rapide : c'est lui qu'on sollicite en premier
+    tangage: 1.2,
     lacet: .55,        // la derive, faible : un avion ne vire pas au palonnier
     // Virage induit par l'inclinaison. Un avion incline transforme une part de
     // sa portance en virage, sans que le pilote ne demande quoi que ce soit.

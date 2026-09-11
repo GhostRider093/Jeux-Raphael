@@ -4,6 +4,7 @@ import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 import { GAMEPAD_PROFILE_KEY, loadMergedProfile, readLocalProfile } from '../gamepad-profile.js';
 import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey } from '../input-shaping.js?v=biseau-net-20260730';
 import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=biseau-net-20260730';
+import { creerReglageSensibilite } from './reglage-sensibilite.js?v=sensibilite-20260911a';
 import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=biseau-net-20260730';
 import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
 import { createWorldCombat } from './world-combat.js?v=flotte-dix-20260908';
@@ -253,16 +254,26 @@ async function loadGroundCharacter(modeId, player, mixers) {
 // Cible : precis et direct. La zone morte est radiale et serree, la courbe
 // exponentielle donne de la finesse au centre sans amputer l'autorite a fond
 // de course. Voir input-shaping.js pour le detail.
-// Valeurs volontairement prudentes : l'expo forte a ete jugee trop molle a la
-// manette. On garde les corrections de fond (zone morte circulaire, derive
-// annulee) et on laisse le toucher se regler en jeu via RaphaelWorldInput.
+// L'expo a ete remontee a .35 le 11/09/2026 avec la baisse des vitesses de
+// rotation : trop molle seule, elle devient juste une fois que l'appareil ne
+// part plus au quart de tour. On garde les corrections de fond (zone morte
+// circulaire, derive annulee) et le toucher reste reglable en jeu via
+// RaphaelWorldInput.
 const STICK_DEAD_ZONE = .10;
-const STICK_EXPO = .2;
+// .35 : le centre du stick est adouci sans amputer le fond de course — la
+// pleine autorite reste atteinte a 100 % de deflexion, seule la zone des
+// petites corrections devient moins nerveuse.
+const STICK_EXPO = .35;
 const TRIGGER_DEAD_ZONE = .04;
 
 // Le stick de vol est traite comme un tout : zone morte circulaire, direction
 // preservee, et recentrage automatique contre la derive materielle.
 const flightStick = createStickShaper({ deadZone: STICK_DEAD_ZONE, expo: STICK_EXPO });
+// Réglage de sensibilité, ouvert en vol par la touche P. Il reprend la main
+// sur la zone morte et la douceur ci-dessus dès qu'une valeur a été enregistrée
+// lors d'une partie précédente — c'est voulu : le toucher appartient au joueur,
+// pas au fichier.
+const sensibilite = creerReglageSensibilite({ stick: flightStick });
 // Gaz et frein apprennent leur position de repos : sans cela un axe non
 // actionne est lu comme une commande permanente.
 const throttleShaper = createTriggerShaper({ deadZone: .07 });
@@ -275,7 +286,8 @@ window.RaphaelWorldInput = {
   /**
    * Réglage à chaud du toucher, effet immédiat sans recharger la page.
    *   set({ expo: 0, deadZone: .13 })  → toucher d'origine, réponse linéaire
-   *   set({ expo: .2 })                → réglage actuel
+   *   set({ expo: .2 })                → ancien réglage, plus nerveux au centre
+   *   set({ expo: .35 })               → réglage actuel
    *   set({ expo: .45 })               → très progressif au centre
    */
   set: options => flightStick.configure(options),
@@ -367,6 +379,10 @@ function readGamepad() {
   const configuredId = String(worldGamepadProfile.gamepadId || '');
   const pad = usablePads.find(item => configuredId && item.id === configuredId) || usablePads[0] || null;
   if (!pad) return { x: 0, y: 0, throttle: 0, brake: 0, climb: 0, boost: false, acro: false, jump: false, view: false, portal: false, fire: false, missile: false, name: 'Aucune manette' };
+  // La croix directionnelle pilote le panneau de sensibilité quand il est
+  // ouvert, et ne fait rien le reste du temps : on règle le toucher manette en
+  // main, sans lâcher le stick pour aller chercher une souris.
+  sensibilite.lireManette(pad);
   // Les deux axes du stick de vol passent ensemble dans la mise en forme :
   // zone morte circulaire, courbe expo, derive materielle annulee.
   const stick = flightStick.shape(readRawControl(pad, 'yaw'), readRawControl(pad, 'pitch'));
@@ -1050,6 +1066,10 @@ async function startWorld() {
   const held = label => !!keys[`@${label}`];
 
   window.addEventListener('keydown', event => {
+    // Le panneau de sensibilité mange les flèches quand il est ouvert, sinon
+    // on réglerait la sensibilité en virant, et on virerait en la réglant.
+    if (event.code === 'KeyP') { sensibilite.basculer(); event.preventDefault(); return; }
+    if (sensibilite.lireClavier(event.code)) { event.preventDefault(); return; }
     keys[event.code] = true;
     const label = labelKey(event);
     if (label) keys[label] = true;
@@ -1215,9 +1235,15 @@ async function startWorld() {
     // Physiquement opposes, logiquement identiques — les inverser pour les
     // "accorder" casserait l'un des deux.
     keyPitch = rampKey(keyPitch, (keys.ArrowUp || keys.KeyI ? 1 : 0) + (keys.ArrowDown || keys.KeyK ? -1 : 0), dt);
-    const yawInput = keyYaw - touch.x - motion.x - pad.x;
+    // Le facteur de sensibilité s'applique APRÈS le mélange des sources et
+    // AVANT la limite à ±1. Les deux comptent : appliqué avant, il ne toucherait
+    // que la manette et l'appareil tournerait différemment au clavier ; appliqué
+    // après la limite, il n'aurait plus aucun effet à fond de course, là où le
+    // virage est justement le plus brutal.
+    const doseVirage = sensibilite.facteurs().virage;
+    const yawInput = (keyYaw - touch.x - motion.x - pad.x) * doseVirage;
     const mobilePitchDirection = touchControlsInverted ? 1 : -1;
-    const pitchInput = keyPitch + (touch.y + motion.y) * mobilePitchDirection + pad.y;
+    const pitchInput = (keyPitch + (touch.y + motion.y) * mobilePitchDirection + pad.y) * doseVirage;
     commandePilote.x = THREE.MathUtils.clamp(yawInput, -1, 1);
     commandePilote.y = THREE.MathUtils.clamp(pitchInput, -1, 1);
     const climbInput = THREE.MathUtils.clamp(
