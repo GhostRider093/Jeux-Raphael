@@ -130,21 +130,47 @@
     #portal-flash.active { opacity:1; }
     #combat-ui[hidden] { display:none; }
     #flight-reticle { position:absolute; z-index:25; left:50%; top:44%; width:122px; height:122px; transform:translate(-50%,-50%); border:1px solid rgba(112,235,255,.88); border-radius:50%; color:#70ebff; pointer-events:none; box-shadow:0 0 22px rgba(55,205,255,.18),inset 0 0 25px rgba(55,205,255,.09); transition:color .16s,border-color .16s,box-shadow .16s; }
-    /* La cible canon est reduite cinq fois par une seule valeur, `scale(.2)`,
-       plutot qu'en retouchant les douze cotes en pixels de l'anneau, de la
-       croix, du cercle interieur et des graduations. Tout suit, et le rapport
-       reste juste. Le libelle de portee, lui, est contre-mis a l'echelle par
-       5 : produit avec le .2 du parent, il retrouve sa taille d'origine et
-       reste lisible sous une cible devenue minuscule. */
-    #flight-reticle { transform:translate(-50%,-50%) scale(.2); }
-    #flight-reticle::before,#flight-reticle::after { content:""; position:absolute; left:50%; top:50%; background:currentColor; opacity:.9; transform:translate(-50%,-50%); }
-    #flight-reticle::before { width:158px; height:1px; background:linear-gradient(90deg,currentColor 0 27%,transparent 27% 43%,currentColor 43% 57%,transparent 57% 73%,currentColor 73%); }
-    #flight-reticle::after { width:1px; height:158px; background:linear-gradient(180deg,currentColor 0 27%,transparent 27% 43%,currentColor 43% 57%,transparent 57% 73%,currentColor 73%); }
-    .reticle-inner-ring { position:absolute; inset:25px; border:1px solid currentColor; border-radius:50%; opacity:.72; box-shadow:0 0 9px rgba(75,221,255,.16); }
-    .reticle-inner-ring::before,.reticle-inner-ring::after { content:""; position:absolute; left:50%; top:50%; width:7px; height:7px; transform:translate(-50%,-50%); border:1px solid currentColor; border-radius:50%; }
-    .reticle-inner-ring::after { width:2px; height:2px; border:0; background:currentColor; box-shadow:0 0 8px currentColor; }
-    .reticle-ticks { position:absolute; inset:-7px; border-radius:50%; background:repeating-conic-gradient(from -1deg,currentColor 0 1deg,transparent 1deg 14deg); opacity:.38; -webkit-mask:radial-gradient(circle,transparent 0 61px,#000 62px 67px,transparent 68px); mask:radial-gradient(circle,transparent 0 61px,#000 62px 67px,transparent 68px); }
-    #reticle-range { position:absolute; left:50%; top:calc(100% + 9px); min-width:145px; transform:translateX(-50%) scale(5); color:currentColor; font:700 9px/1 Consolas,monospace; letter-spacing:1px; text-align:center; text-shadow:0 0 6px rgba(60,222,255,.7); }
+    /* CIBLE CANON.
+       Elle était ramenée à 20 % de sa taille par un `scale(.2)` : 24 px de
+       large, soit une poussière — on ne voyait plus sur quoi on tirait. Elle
+       est rendue à une taille lisible, mais redessinée autour d'une règle :
+
+         LE CENTRE RESTE VIDE.
+
+       Un viseur qui remplit son propre milieu masque très exactement ce qu'on
+       vise. Toute la matière est donc repoussée vers les bords, et il ne reste
+       au centre qu'un pipper de 3 px, minuscule mais très lumineux : l'œil le
+       trouve seul, sans que rien ne soit caché derrière.
+
+       Trois couronnes concentriques, de la plus discrète à la plus nette en
+       allant vers le centre : les graduations, l'anneau extérieur, l'anneau de
+       télémétrie. Le regard est conduit vers le milieu au lieu d'y être
+       accroché. */
+    /* TOUTES LES COTES SONT RELATIVES. La taille du viseur est fixée une seule
+       fois, plus bas ; ici on ne décrit que sa forme. En pixels, la forme se
+       déformerait à chaque changement de taille — c'est ce qui s'était passé :
+       un `scale(.2)` réduisait l'ensemble faute de pouvoir toucher aux douze
+       cotes, et le libellé de portée devait être contre-mis à l'échelle par 5
+       pour rester lisible. */
+    #flight-reticle { transform:translate(-50%,-50%);
+      box-shadow:0 0 26px rgba(55,205,255,.16),inset 0 0 20px rgba(55,205,255,.05); }
+    /* En vue cockpit, la cible descend au centre exact de l'image. */
+    body.world-cockpit-view #flight-reticle { top:50%; }
+    /* Les quatre branches s'arrêtent net avant le centre : elles le désignent
+       sans jamais le couvrir. */
+    #flight-reticle::before,#flight-reticle::after { content:""; position:absolute; left:50%; top:50%; background:currentColor; opacity:.92; transform:translate(-50%,-50%); }
+    #flight-reticle::before { width:142%; height:1px; background:linear-gradient(90deg,currentColor 0 24%,transparent 24% 76%,currentColor 76%); }
+    #flight-reticle::after { width:1px; height:142%; background:linear-gradient(180deg,currentColor 0 24%,transparent 24% 76%,currentColor 76%); }
+    /* Anneau de télémétrie : le cercle sur lequel on cadre l'envergure d'un
+       appareil pour juger sa distance. C'est le trait le plus net du viseur. */
+    .reticle-inner-ring { position:absolute; inset:26%; border:1px solid currentColor; border-radius:50%; opacity:.92; box-shadow:0 0 12px rgba(75,221,255,.26),inset 0 0 10px rgba(75,221,255,.1); }
+    /* Quatre crans sur l'anneau, aux quarts. */
+    .reticle-inner-ring::before { content:""; position:absolute; inset:-9%; border-radius:50%; opacity:.85; background:conic-gradient(from -3deg,currentColor 0 6deg,transparent 6deg 84deg,currentColor 84deg 96deg,transparent 96deg 174deg,currentColor 174deg 186deg,transparent 186deg 264deg,currentColor 264deg 276deg,transparent 276deg 354deg,currentColor 354deg);
+      -webkit-mask:radial-gradient(circle,transparent 0 43%,#000 44% 50%,transparent 51%); mask:radial-gradient(circle,transparent 0 43%,#000 44% 50%,transparent 51%); }
+    /* Le pipper. Petit, très lumineux, et seul au milieu. */
+    .reticle-inner-ring::after { content:""; position:absolute; left:50%; top:50%; width:3px; height:3px; transform:translate(-50%,-50%); border-radius:50%; background:#eafdff; box-shadow:0 0 4px #fff,0 0 11px currentColor,0 0 22px currentColor; }
+    .reticle-ticks { position:absolute; inset:-5%; border-radius:50%; background:repeating-conic-gradient(from -1deg,currentColor 0 1deg,transparent 1deg 14deg); opacity:.28; -webkit-mask:radial-gradient(circle,transparent 0 46%,#000 47% 50%,transparent 51%); mask:radial-gradient(circle,transparent 0 46%,#000 47% 50%,transparent 51%); }
+    #reticle-range { position:absolute; left:50%; top:calc(100% + 11px); min-width:160px; transform:translateX(-50%); color:currentColor; font:700 11px/1 Consolas,monospace; letter-spacing:1.6px; text-align:center; text-shadow:0 0 6px rgba(60,222,255,.7); }
     /* Plus de rouge sur la cible canon : le losange, le rectangle et le point
        disent deja l'etat du verrouillage, et un troisieme signal rouge au
        milieu de l'ecran ne fait que charger l'image. */
@@ -213,11 +239,13 @@
     #speed-tape .flight-tape-mark span { left:0; } #altitude-tape .flight-tape-mark span { right:0; }
     .flight-tape-value { position:absolute; top:50%; min-width:91px; padding:8px 10px; transform:translateY(-50%); color:#effbff; background:linear-gradient(180deg,rgba(12,35,49,.96),rgba(3,14,22,.96)); border:1px solid rgba(200,239,252,.95); box-shadow:0 0 0 3px rgba(2,12,19,.7),0 0 18px rgba(96,214,255,.2); font-size:21px; font-weight:850; letter-spacing:1px; text-align:center; text-shadow:0 1px 3px #000; }
     #speed-value { right:6px; clip-path:polygon(0 0,88% 0,100% 50%,88% 100%,0 100%); } #altitude-value { left:6px; clip-path:polygon(12% 0,100% 0,100% 100%,12% 100%,0 50%); }
-    #flight-reticle { top:48%; width:min(430px,42vw); height:min(430px,42vw); color:rgba(220,239,247,.74); border-color:rgba(220,239,247,.58); box-shadow:none; }
-    #flight-reticle::before { width:130%; background:linear-gradient(90deg,currentColor 0 23%,transparent 23% 43%,currentColor 43% 57%,transparent 57% 77%,currentColor 77%); }
-    #flight-reticle::after { height:108%; }
-    .reticle-inner-ring { inset:22%; box-shadow:none; }.reticle-ticks { inset:-5px; opacity:.2; -webkit-mask:radial-gradient(circle,transparent 0 48%,#000 49% 51%,transparent 52%); mask:radial-gradient(circle,transparent 0 48%,#000 49% 51%,transparent 52%); }
-    #reticle-range { top:24%; min-width:200px; font-size:10px; }
+    /* LA SEULE COTE DU VISEUR. Tout le reste est relatif : changer ce nombre
+       change le viseur entier sans en déformer un seul rapport.
+       190 px est un compromis mesuré à l'œil du pilote : assez grand pour se
+       lire d'un coup, assez petit pour qu'un chasseur à portée de canon tienne
+       dans l'anneau de télémétrie sans être recouvert. La borne en `vw` le
+       garde proportionné sur un écran étroit. */
+    #flight-reticle { top:48%; width:min(190px,20vw); height:min(190px,20vw); color:rgba(224,243,251,.82); border-color:rgba(210,236,247,.34); }
     #combat-panel { left:5%; right:auto; top:auto; bottom:5%; width:150px; padding:0; border:0; border-radius:0; background:transparent; backdrop-filter:none; text-align:center; }
     #radar-scope { width:132px; height:132px; margin-bottom:7px; border-color:rgba(222,241,249,.72); background:radial-gradient(circle,rgba(20,90,115,.24),rgba(2,16,27,.82) 72%); }
     #combat-lock-state { position:fixed; left:50%; top:125px; transform:translateX(-50%); min-width:280px; color:rgba(230,243,248,.9); text-align:center; }
