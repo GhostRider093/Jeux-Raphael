@@ -211,6 +211,10 @@
     #radar-sweep { position:absolute; left:50%; top:50%; width:50%; height:1px; transform-origin:left; background:linear-gradient(90deg,#73eeff,transparent); animation:radar-sweep 2.1s linear infinite; }
     #radar-player { position:absolute; left:50%; top:50%; width:7px; height:9px; transform:translate(-50%,-50%); clip-path:polygon(50% 0,100% 100%,50% 76%,0 100%); background:#9eff77; }
     #radar-target { position:absolute; left:50%; top:25%; width:8px; height:8px; transform:translate(-50%,-50%) rotate(45deg); border:2px solid #ff5b48; box-shadow:0 0 8px #ff5b48; }
+    /* Les neuf autres chasseurs de la flotte. Le losange rouge reste LA cible —
+       celle que le HUD suit et que le missile guide poursuit ; les echos sont
+       plus petits et plus sourds pour qu'on ne les confonde pas d'un coup d'oeil. */
+    #radar-scope .radar-echo { position:absolute; left:50%; top:50%; width:5px; height:5px; transform:translate(-50%,-50%) rotate(45deg); border:1px solid rgba(255,150,116,.72); box-shadow:0 0 5px rgba(255,110,70,.5); }
     #combat-lock-state { color:#ffcf55; font-size:11px; font-weight:900; line-height:1.35; }
     #combat-lock-state.locked { color:#ff6350; }
     #combat-lock-state.ok { color:#a5ed78; }
@@ -539,7 +543,7 @@
         <div id="combat-ammo">Missiles 4 · Canon prêt</div>
         <div id="missile-rack-status">SOUS AILES  ◆ ◆ ◆ ◆</div>
         <div id="target-health-bar"><div id="target-health-fill"></div></div>
-        <div id="combat-score">Cible aérienne · PV 100</div>
+        <div id="combat-score">En vol 10/10</div>
         <div id="combat-audio-state">Son : appuyez sur une commande</div>
       </aside>
     </div>

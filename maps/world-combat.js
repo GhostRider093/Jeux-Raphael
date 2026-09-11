@@ -220,25 +220,105 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   const scoreState = document.getElementById('combat-score');
   const audio = createAudioSystem(document.getElementById('combat-audio-state'));
 
-  const enemy = {
-    mesh: new THREE.Group(), hp: 100, maxHp: 100, alive: true,
-    // Le rayon suit la longueur du modele (0,575 x targetLength) : sans
-    // cela les obus traverseraient les ailes du Kawasaki, plus large que
-    // l'ancien appareil.
-    radius: 15, phase: 0, holdUntil: 0, velocity: new THREE.Vector3()
-  };
-  const initialZ = world.spawn.air[2] - 540;
-  enemy.mesh.position.set(world.spawn.air[0], world.spawn.air[1] + 24, initialZ);
-  scene.add(enemy.mesh);
-  const ready = createEnemyFighterModel({ targetLength: 26, thrusters: true }).then(model => {
-    enemy.mesh.clear();
-    enemy.mesh.add(model);
-    enemy.mesh.userData.flames = model.userData.flames || [];
-    document.body.dataset.enemyFighterModel = 'loaded';
-  }).catch(error => {
-    document.body.dataset.enemyFighterModel = 'error';
-    console.warn('[world-combat] modele ennemi Kawasaki non charge', error);
+  // -- LA FLOTTE ------------------------------------------------------------
+  //
+  //  DIX chasseurs en vol EN MEME TEMPS, chacun sur sa patrouille, disperses
+  //  sur toute la carte. Ils ne ripostent pas : ils se baladent, et c'est au
+  //  joueur d'aller les chercher.
+  //
+  //  UN SEUL EST « LA CIBLE » a un instant donne — celui que le losange tient,
+  //  dont le HUD montre les points de vie, vers qui part un missile guide. Tout
+  //  le module continue donc de raisonner sur une cible unique : c'est `cible`
+  //  qui change de main, la mecanique du verrouillage n'a pas bouge.
+  //
+  //  MAIS LES NEUF AUTRES ENCAISSENT. Les collisions balaient la flotte
+  //  entiere, jamais la seule cible : un obus qui traverse un chasseur non vise
+  //  doit lui faire mal, sinon on tire dans le tas sans effet et le jeu ment.
+  //
+  //  LA PATROUILLE EST UNE ORBITE, pas un cap a tenir. Une position calculee a
+  //  partir du temps ne derive pas, ne s'emballe pas et ne demande aucune
+  //  memoire : `angle = phase0 + sens * vitesse * t`. Dix appareils coutent dix
+  //  cosinus par image.
+  const FLOTTE = 10;
+
+  // Position d'un chasseur sur son orbite a l'instant `t`. Le plancher a 45 m
+  // au-dessus du relief garde l'orbite en l'air : un cercle trace au-dessus
+  // d'une plaine traverse la montagne d'a cote sans ce garde-fou.
+  const positionOrbite = new THREE.Vector3();
+  function poserSurPatrouille(chasseur, t) {
+    const p = chasseur.patrouille;
+    const angle = p.phase0 + p.sens * p.vitesse * t;
+    const x = p.centreX + Math.cos(angle) * p.rayon;
+    const z = p.centreZ + Math.sin(angle) * p.rayon;
+    const dansLeMonde = Math.abs(x) < world.size * .48 && Math.abs(z) < world.size * .48;
+    const sol = dansLeMonde ? getHeight(x, z) : -999;
+    const y = Math.max(sol + 45, p.altitude + Math.sin(t * .5 + p.phase0) * 18);
+    return positionOrbite.set(x, y, z);
+  }
+
+  //  LES ORBITES SONT CENTREES SUR LE MILIEU DU MONDE, pas sur le point
+  //  d'apparition. Celui-ci est pose au bord sud — z vaut 430 a 520 pour un
+  //  monde qui s'arrete a 720 — et un etalement mesure depuis la aurait envoye
+  //  la moitie de la flotte au-dessus du vide, hors du relief.
+  //
+  //  Chaque centre est place selon l'angle d'or, a un rayon en racine : dix
+  //  points reellement etales, sans deux voisins colles ni trou au milieu — ce
+  //  qu'un tirage au hasard ne garantit pas sur dix essais. Le placement est
+  //  donc le meme d'une partie a l'autre, et le reglage se teste.
+  //
+  //  `PORTEE` borne le centre PLUS le rayon d'orbite : aucune patrouille ne
+  //  franchit 0,42 fois la taille du monde, alors que le relief va jusqu'a 0,48.
+  const PORTEE = world.size * .42;
+  const flotte = Array.from({ length: FLOTTE }, (_, index) => {
+    const angle = index * 2.39996;
+    // Des cercles LARGES, 180 a 420 m. Un chasseur qui tourne sur 100 m se voit
+    // tourner en rond ; sur 400 m il traverse le paysage et il faut le suivre.
+    const rayon = 180 + (index % 4) * 80;
+    const distance = (PORTEE - rayon) * Math.sqrt((index + .55) / FLOTTE);
+    const chasseur = {
+      index,
+      mesh: new THREE.Group(),
+      hp: 100, maxHp: 100, alive: true,
+      // Le rayon suit la longueur du modele (0,575 x targetLength) : sans
+      // cela les obus traverseraient les ailes du Kawasaki, plus large que
+      // l'ancien appareil.
+      radius: 15, phase: 0, holdUntil: 0, velocity: new THREE.Vector3(),
+      patrouille: {
+        centreX: Math.cos(angle) * distance,
+        centreZ: Math.sin(angle) * distance,
+        rayon,
+        altitude: world.spawn.air[1] + 4 + (index % 5) * 28,
+        // La vitesse angulaire se DEDUIT d'une vitesse au sol de 48 a 80 m/s.
+        // Fixer l'angle directement donnait un grand cercle parcouru au pas et
+        // un petit cercle parcouru en trombe : la meme flotte, deux allures.
+        vitesse: (48 + (index % 3) * 16) / rayon,
+        sens: index % 2 ? 1 : -1,
+        phase0: angle
+      }
+    };
+    chasseur.mesh.position.copy(poserSurPatrouille(chasseur, 0));
+    scene.add(chasseur.mesh);
+    return chasseur;
   });
+
+  //  Un seul gabarit est telecharge : `createEnemyFighterModel` en rend un
+  //  clone, qui partage geometrie et matieres avec les neuf autres. Dix
+  //  appareils ne coutent donc pas dix fois un appareil.
+  const ready = Promise.all(flotte.map(chasseur =>
+    createEnemyFighterModel({ targetLength: 26, thrusters: true }).then(model => {
+      chasseur.mesh.clear();
+      chasseur.mesh.add(model);
+      chasseur.mesh.userData.flames = model.userData.flames || [];
+    })
+  )).then(() => { document.body.dataset.enemyFighterModel = 'loaded'; })
+    .catch(error => {
+      document.body.dataset.enemyFighterModel = 'error';
+      console.warn('[world-combat] modele ennemi Kawasaki non charge', error);
+    });
+
+  //  La cible courante, et le compte des vivants.
+  let cible = flotte[0];
+  const vivants = () => flotte.filter(chasseur => chasseur.alive);
 
   const bullets = [];
   const missiles = [];
@@ -257,7 +337,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   let deniedUntil = 0;
   let gunCooldown = 0;
   let previousMissile = false;
-  const targetKillCount = 10;
+  const targetKillCount = FLOTTE;
   let kills = 0;
   const missilesLeft = Infinity;
   let score = 0;
@@ -273,7 +353,26 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     depthTest: false
   });
 
-  function targetPoint() { return enemy.mesh.position.clone(); }
+  function targetPoint() { return cible.mesh.position.clone(); }
+
+  //  QUI EST LA CIBLE. Le plus proche du reticule a l'ecran ; a defaut — si
+  //  aucun n'est dans le champ — le plus proche en distance. UN VERROUILLAGE EN
+  //  COURS FIGE LE CHOIX : sans cela un chasseur qui traverse l'ecran vole le
+  //  losange d'un autre au dernier moment, juste avant le tir.
+  function choisirCible() {
+    if (cible?.alive && (locked || performance.now() < forcedLockUntil)) return;
+    let meilleur = null;
+    let meilleurScore = Infinity;
+    for (const chasseur of flotte) {
+      if (!chasseur.alive) continue;
+      const vue = projectPoint(chasseur.mesh.position);
+      // Hors champ, on classe par distance DERRIERE tous les visibles — d'ou
+      // les cent mille : aucun ecran ne fait cent mille pixels de large.
+      const score = vue?.visible ? vue.screen : 1e5 + chasseur.mesh.position.distanceTo(player.position);
+      if (score < meilleurScore) { meilleurScore = score; meilleur = chasseur; }
+    }
+    if (meilleur) cible = meilleur;
+  }
 
   function getAimDirection() {
     const ndcY = 1 - aimVerticalRatio() * 2;
@@ -289,42 +388,47 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     explosionSystem.spawn(position, scale, getHeight(position.x, position.z));
   }
 
-  function destroyEnemy() {
-    if (!enemy.alive) return;
-    enemy.alive = false;
-    enemy.hp = 0;
-    spawnExplosion(targetPoint(), 3.2);
-    scene.remove(enemy.mesh);
-    locked = false;
-    lockProgress = 0;
-    lockSearchHold = 0;
+  //  PLUS DE REAPPARITION. Les dix sont dans le monde des le decollage : quand
+  //  le dernier tombe, la mission est finie. L'ennemi qui repoussait 1,8 s plus
+  //  tard devant le nez du joueur n'etait pas une escadrille, c'etait un stand
+  //  de tir — et c'est precisement ce qu'on remplace ici.
+  function destroyEnemy(chasseur) {
+    if (!chasseur?.alive) return;
+    chasseur.alive = false;
+    chasseur.hp = 0;
+    spawnExplosion(chasseur.mesh.position.clone(), 3.2);
+    scene.remove(chasseur.mesh);
     score += 100;
     kills++;
-    radarTarget.style.display = 'none';
-    diamond.className = '';
-    seekerDiamond.className = '';
-    reticle.classList.remove('locked', 'acquiring', 'denied');
+    // Le verrouillage ne tombe que si c'est LA cible qui vient d'exploser : un
+    // chasseur abattu au canon a l'autre bout du ciel ne doit pas lacher le
+    // losange que le joueur tient sur un autre.
+    if (chasseur === cible) {
+      locked = false;
+      lockProgress = 0;
+      lockSearchHold = 0;
+      radarTarget.style.display = 'none';
+      diamond.className = '';
+      seekerDiamond.className = '';
+      reticle.classList.remove('locked', 'acquiring', 'denied');
+    }
+    const restants = vivants();
     lockState.className = 'ok';
     lockState.textContent = `CIBLE DÉTRUITE · ${kills}/${targetKillCount}`;
-    distanceState.textContent = kills >= targetKillCount ? 'Mission aérienne accomplie' : 'Nouvel adversaire en approche';
-    scoreState.textContent = `Score ${score} · chasseurs ${kills}/${targetKillCount}`;
-    if (kills < targetKillCount) {
-      setTimeout(() => {
-        enemy.hp = enemy.maxHp;
-        enemy.alive = true;
-        enemy.phase = 0;
-        scene.add(enemy.mesh);
-        placeTargetAhead(380 + Math.random() * 90);
-        lockState.className = '';
-        lockState.textContent = `CONTACT ${kills + 1}/${targetKillCount} · RECHERCHE RADAR`;
-      }, 1800);
+    if (restants.length) {
+      distanceState.textContent = `${restants.length} chasseur${restants.length > 1 ? 's' : ''} encore en vol`;
+      choisirCible();
+    } else {
+      distanceState.textContent = 'Mission aérienne accomplie';
+      radarTarget.style.display = 'none';
     }
+    scoreState.textContent = `Score ${score} · chasseurs ${kills}/${targetKillCount}`;
   }
 
-  function damageEnemy(amount) {
-    if (!enemy.alive) return;
-    enemy.hp = Math.max(0, enemy.hp - amount);
-    if (enemy.hp <= 0) destroyEnemy();
+  function damageEnemy(chasseur, amount) {
+    if (!chasseur?.alive) return;
+    chasseur.hp = Math.max(0, chasseur.hp - amount);
+    if (chasseur.hp <= 0) destroyEnemy(chasseur);
   }
 
   // Bouche de canon reutilisee : la boucle de tir ne doit rien allouer.
@@ -341,7 +445,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   }
 
   function fireGun() {
-    if (!enemy.alive) return;
+    if (!cible?.alive) return;
     audio.gun();
     const direction = getAimDirection();
     // Les canons sont dans les ailes, a cote des rampes a missiles. Les bouches
@@ -396,7 +500,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   }
 
   function fireMissile(forceGuided) {
-    if (!enemy.alive) return false;
+    if (!cible?.alive) return false;
     const guided = forceGuided ?? locked;
     if (!guided) denyMissile();
     audio.missile();
@@ -413,7 +517,9 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     body.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
     addMissileFlame(body);
     scene.add(body);
-    missiles.push({ mesh: body, velocity: direction.multiplyScalar(125), life: 9, trailClock: 0, guided });
+    // Le missile part avec SA cible en poche. S'il s'en remettait a `cible`,
+    // il changerait d'avis en vol des que le joueur regarde ailleurs.
+    missiles.push({ mesh: body, velocity: direction.multiplyScalar(125), life: 9, trailClock: 0, guided, cible: guided ? cible : null });
     return true;
   }
 
@@ -431,61 +537,94 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
   }
 
   function projectTarget() {
-    if (!enemy.alive) return null;
+    if (!cible?.alive) return null;
     return projectPoint(targetPoint());
   }
 
-  function updateEnemy(dt, elapsed) {
-    if (!enemy.alive) return;
-    enemy.phase += dt;
-    if (performance.now() >= enemy.holdUntil) {
-      const forward = getForward().clone().setY(0).normalize();
-      const right = new THREE.Vector3(-forward.z, 0, forward.x);
-      const forwardDistance = 560 + Math.sin(elapsed * .18) * 65;
-      const lateralDistance = Math.sin(elapsed * .27) * Math.min(42, world.size * .035);
-      const x = player.position.x + forward.x * forwardDistance + right.x * lateralDistance;
-      const z = player.position.z + forward.z * forwardDistance + right.z * lateralDistance;
-      const insideWorld = Math.abs(x) < world.size * .48 && Math.abs(z) < world.size * .48;
-      const ground = insideWorld ? getHeight(x, z) : -999;
-      const y = Math.max(ground + 55, player.position.y - 30 + Math.sin(elapsed * .34) * 12);
-      const previous = enemy.mesh.position.clone();
-      enemy.mesh.position.lerp(new THREE.Vector3(x, y, z), Math.min(1, dt * .9));
-      const direction = enemy.mesh.position.clone().sub(previous);
-      enemy.velocity.copy(direction).multiplyScalar(1 / Math.max(dt, .001));
-      if (direction.lengthSq() > .0001) {
-        const yaw = Math.atan2(-direction.x, -direction.z);
-        enemy.mesh.rotation.set(Math.sin(elapsed * .7) * .07, yaw, Math.sin(elapsed * .45) * .22);
+  //  TOUTE la flotte avance, y compris ce qui est derriere le joueur. Un monde
+  //  qui ne bouge que dans le champ de la camera se trahit au premier demi-tour.
+  //
+  //  L'ancien ennemi etait accroche au joueur : sa position se calculait a
+  //  560 m devant SON nez, il ne se baladait donc nulle part et il etait
+  //  impossible de le semer. C'est cet ancrage qui disparait ici.
+  const deplacement = new THREE.Vector3();
+  function updateFlotte(dt, elapsed) {
+    for (const chasseur of flotte) {
+      if (!chasseur.alive) continue;
+      chasseur.phase += dt;
+      if (performance.now() >= chasseur.holdUntil) {
+        // On rejoint l'orbite en douceur au lieu d'y sauter : apres un
+        // `placeTargetAhead` le chasseur est loin de son cercle, et un
+        // rattrapage instantane le ferait disparaitre d'un coup.
+        deplacement.copy(chasseur.mesh.position);
+        chasseur.mesh.position.lerp(poserSurPatrouille(chasseur, elapsed), Math.min(1, dt * .9));
+        deplacement.subVectors(chasseur.mesh.position, deplacement);
+        chasseur.velocity.copy(deplacement).multiplyScalar(1 / Math.max(dt, .001));
+        if (deplacement.lengthSq() > .0001) {
+          const yaw = Math.atan2(-deplacement.x, -deplacement.z);
+          // L'inclinaison suit le sens de l'orbite : un avion qui tourne en
+          // rond a plat n'a pas l'air de voler.
+          chasseur.mesh.rotation.set(Math.sin(elapsed * .7 + chasseur.index) * .05, yaw, -chasseur.patrouille.sens * .34);
+        }
       }
+      if (performance.now() < chasseur.holdUntil) chasseur.velocity.multiplyScalar(Math.max(0, 1 - dt * 5));
+      (chasseur.mesh.userData.flames || []).forEach((flame, index) => flame.scale.setScalar(.85 + Math.sin(elapsed * 35 + index + chasseur.index) * .08));
     }
-    if (performance.now() < enemy.holdUntil) enemy.velocity.multiplyScalar(Math.max(0, 1 - dt * 5));
-    (enemy.mesh.userData.flames || []).forEach((flame, index) => flame.scale.setScalar(.85 + Math.sin(elapsed * 35 + index) * .08));
+  }
+
+  //  LE RADAR MONTRE LES DIX. Disperser la flotte sur la carte sans l'afficher
+  //  revenait a cacher neuf avions : rien n'aurait dit ou aller. Le losange
+  //  rouge reste LA CIBLE, les autres sont des echos plus discrets.
+  const radarEchoes = flotte.map(() => {
+    const echo = document.createElement('i');
+    echo.className = 'radar-echo';
+    radarTarget.parentElement.insertBefore(echo, radarTarget);
+    return echo;
+  });
+
+  // Vecteurs de travail : la boucle passe dix fois par image, elle n'alloue rien.
+  const radarOffset = new THREE.Vector3();
+  const radarForward = new THREE.Vector3();
+  const radarRight = new THREE.Vector3();
+
+  function poserBlip(element, position, wobbleX = 0, wobbleY = 0) {
+    radarOffset.copy(position).sub(player.position);
+    const distance = Math.hypot(radarOffset.x, radarOffset.z);
+    const maxRange = 1200;
+    const scale = Math.min(1, maxRange / Math.max(1, distance));
+    const rightAmount = radarOffset.dot(radarRight) * scale / maxRange;
+    const forwardAmount = radarOffset.dot(radarForward) * scale / maxRange;
+    element.style.display = 'block';
+    element.style.left = `${50 + THREE.MathUtils.clamp(rightAmount, -.44, .44) * 100 + wobbleX}%`;
+    element.style.top = `${50 - THREE.MathUtils.clamp(forwardAmount, -.44, .44) * 100 + wobbleY}%`;
   }
 
   function updateRadar() {
-    if (!enemy.alive) return;
-    radarTarget.style.display = 'block';
-    const offset = targetPoint().sub(player.position);
-    const distance = Math.hypot(offset.x, offset.z);
-    const forward = getForward().setY(0).normalize();
-    const right = new THREE.Vector3(-forward.z, 0, forward.x);
-    const maxRange = 1200;
-    const scale = Math.min(1, maxRange / Math.max(1, distance));
-    const rightAmount = offset.dot(right) * scale / maxRange;
-    const forwardAmount = offset.dot(forward) * scale / maxRange;
+    radarForward.copy(getForward()).setY(0).normalize();
+    radarRight.set(-radarForward.z, 0, radarForward.x);
+    flotte.forEach((chasseur, index) => {
+      const echo = radarEchoes[index];
+      // La cible est portee par `#radar-target`, pas par son echo : sans ce
+      // retrait les deux pastilles se superposeraient sur le meme avion.
+      if (!chasseur.alive || chasseur === cible) { echo.style.display = 'none'; return; }
+      poserBlip(echo, chasseur.mesh.position);
+    });
+    if (!cible?.alive) { radarTarget.style.display = 'none'; return; }
     const acquiring = lockProgress > 0 && !locked;
-    const wobbleX = acquiring ? Math.sin(performance.now() * .027) * 2.8 : 0;
-    const wobbleY = acquiring ? Math.cos(performance.now() * .021) * 2.2 : 0;
-    radarTarget.style.left = `${50 + THREE.MathUtils.clamp(rightAmount, -.44, .44) * 100 + wobbleX}%`;
-    radarTarget.style.top = `${50 - THREE.MathUtils.clamp(forwardAmount, -.44, .44) * 100 + wobbleY}%`;
+    poserBlip(
+      radarTarget, cible.mesh.position,
+      acquiring ? Math.sin(performance.now() * .027) * 2.8 : 0,
+      acquiring ? Math.cos(performance.now() * .021) * 2.2 : 0
+    );
   }
 
   function updateLock(dt) {
-    if (!enemy.alive) return;
+    if (!cible?.alive) return;
     const aim = projectTarget();
     const forced = performance.now() < forcedLockUntil;
     const insideCapture = !!(aim?.visible && aim.screen <= LOCK_CAPTURE_RADIUS);
     const retain = !!(locked && aim?.visible && aim.screen <= LOCK_RELEASE_RADIUS);
-    if (forced && enemy.alive) {
+    if (forced && cible.alive) {
       locked = true;
       lockProgress = LOCK_ACQUIRE_TIME;
     } else if (retain) {
@@ -560,8 +699,8 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     ammoState.textContent = `Missiles ∞ · Canon ${gunCooldown <= 0 ? 'prêt' : 'recharge'}`;
     if (missileRackState) missileRackState.textContent = 'SOUS AILES  ◆ ∞ ◆';
     if (missileButton) missileButton.textContent = 'MISSILE ∞';
-    healthFill.style.transform = `scaleX(${enemy.hp / enemy.maxHp})`;
-    scoreState.textContent = `Cible aérienne · PV ${enemy.hp} / ${enemy.maxHp} · Score ${score}`;
+    healthFill.style.transform = `scaleX(${cible.hp / cible.maxHp})`;
+    scoreState.textContent = `PV ${cible.hp}/${cible.maxHp} · En vol ${vivants().length}/${targetKillCount} · Score ${score}`;
   }
 
   function updateProjectiles(dt) {
@@ -570,9 +709,15 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
       const previous = bullet.mesh.position.clone();
       bullet.life -= dt;
       bullet.mesh.position.addScaledVector(bullet.velocity, dt);
-      const hit = enemy.alive && segmentDistance(targetPoint(), previous, bullet.mesh.position) <= enemy.radius;
-      if (hit) damageEnemy(10);
-      if (hit || bullet.life <= 0) {
+      // L'obus est teste contre TOUTE la flotte, pas contre la seule cible :
+      // sinon on tire au milieu d'un chasseur non vise sans rien lui faire.
+      let touche = null;
+      for (const chasseur of flotte) {
+        if (!chasseur.alive) continue;
+        if (segmentDistance(chasseur.mesh.position, previous, bullet.mesh.position) <= chasseur.radius) { touche = chasseur; break; }
+      }
+      if (touche) damageEnemy(touche, 10);
+      if (touche || bullet.life <= 0) {
         scene.remove(bullet.mesh);
         bullets.splice(index, 1);
       }
@@ -585,8 +730,8 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
         spawnMissileSmoke(missile.mesh.position);
         missile.trailClock = .035;
       }
-      if (missile.guided && enemy.alive) {
-        const desired = targetPoint().sub(missile.mesh.position).normalize();
+      if (missile.cible?.alive) {
+        const desired = missile.cible.mesh.position.clone().sub(missile.mesh.position).normalize();
         missile.velocity.lerp(desired.multiplyScalar(280), Math.min(1, dt * 3.5));
       }
       missile.mesh.position.addScaledVector(missile.velocity, dt);
@@ -596,9 +741,13 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
       // Tout missile qui touche compte, guide ou non. Le test exigeait
       // `missile.guided` : un missile tire sans verrouillage traversait
       // l'appareil sans rien faire, ce qui n'a aucun sens a l'impact.
-      const hit = enemy.alive && missile.mesh.position.distanceTo(targetPoint()) < enemy.radius + 2;
-      if (hit) damageEnemy(100);
-      if (hit || missile.life <= 0) {
+      let percute = null;
+      for (const chasseur of flotte) {
+        if (!chasseur.alive) continue;
+        if (missile.mesh.position.distanceTo(chasseur.mesh.position) < chasseur.radius + 2) { percute = chasseur; break; }
+      }
+      if (percute) damageEnemy(percute, 100);
+      if (percute || missile.life <= 0) {
       scene.remove(missile.mesh);
         missiles.splice(index, 1);
       }
@@ -621,7 +770,10 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
 
   function update(dt, elapsed, pad, keys, touch) {
     gunCooldown -= dt;
-    updateEnemy(dt, elapsed);
+    updateFlotte(dt, elapsed);
+    // Le choix de cible vient APRES le deplacement et AVANT le radar : sinon le
+    // losange se pose une image en retard sur une position deja perimee.
+    choisirCible();
     updateRadar();
     updateLock(dt);
     updateProjectiles(dt);
@@ -644,18 +796,22 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     previousMissile = missileHeld;
   }
 
+  //  Amene UN chasseur devant le nez et l'y tient 12 s : de quoi verifier le
+  //  cadrage en vol sans courir apres la flotte.
   function placeTargetAhead(distance = 340) {
-    if (!enemy.alive) {
-      enemy.alive = true;
-      enemy.hp = enemy.maxHp;
-      scene.add(enemy.mesh);
+    const chasseur = cible?.alive ? cible : (vivants()[0] || flotte[0]);
+    if (!chasseur.alive) {
+      chasseur.alive = true;
+      chasseur.hp = chasseur.maxHp;
+      scene.add(chasseur.mesh);
     }
+    cible = chasseur;
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
-    enemy.mesh.position.copy(camera.position).addScaledVector(forward.normalize(), distance);
-    enemy.mesh.rotation.y = player.rotation.y;
-    enemy.holdUntil = performance.now() + 12000;
-    return enemy.mesh.position.toArray();
+    chasseur.mesh.position.copy(camera.position).addScaledVector(forward.normalize(), distance);
+    chasseur.mesh.rotation.y = player.rotation.y;
+    chasseur.holdUntil = performance.now() + 12000;
+    return chasseur.mesh.position.toArray();
   }
 
   return {
@@ -665,11 +821,12 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     playExplosionSound: () => audio.explosion(),
     diagnostics: {
       active: true,
-      state: () => ({ hp: enemy.hp, alive: enemy.alive, locked, lockProgress, missileQueued: false, missilesLeft, kills, targetKillCount, mountedMissiles: (player.userData.missileRacks || []).filter(item => item.visible).length, activeMissiles: missiles.length, guidedMissiles: missiles.filter(item => item.guided).length, score, targetPosition: enemy.mesh.position.toArray(), targetDistance: enemy.mesh.position.distanceTo(player.position), bulletSpeed: BULLET_SPEED, aimVerticalRatio: aimVerticalRatio() }),
+      state: () => ({ hp: cible.hp, alive: cible.alive, locked, lockProgress, missileQueued: false, missilesLeft, kills, targetKillCount, flotte: FLOTTE, tailleMonde: world.size, porteePatrouilles: PORTEE, ennemisVivants: vivants().length, cibleIndex: cible.index, positionsFlotte: vivants().map(chasseur => ({ index: chasseur.index, hp: chasseur.hp, position: chasseur.mesh.position.toArray(), distance: chasseur.mesh.position.distanceTo(player.position) })), mountedMissiles: (player.userData.missileRacks || []).filter(item => item.visible).length, activeMissiles: missiles.length, guidedMissiles: missiles.filter(item => item.guided).length, score, targetPosition: cible.mesh.position.toArray(), targetDistance: cible.mesh.position.distanceTo(player.position), bulletSpeed: BULLET_SPEED, aimVerticalRatio: aimVerticalRatio() }),
       placeTargetAhead,
       forceLock: () => { forcedLockUntil = performance.now() + 2500; locked = true; lockProgress = LOCK_ACQUIRE_TIME; return true; },
       fireMissile,
-      destroyTarget: () => destroyEnemy()
+      destroyTarget: () => destroyEnemy(cible),
+      destroyAll: () => { flotte.forEach(chasseur => destroyEnemy(chasseur)); return kills; }
     }
   };
 }

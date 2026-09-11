@@ -6,7 +6,7 @@ import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey }
 import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=biseau-net-20260730';
 import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=biseau-net-20260730';
 import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
-import { createWorldCombat } from './world-combat.js?v=losange-seul-20260908';
+import { createWorldCombat } from './world-combat.js?v=flotte-dix-20260908';
 import { createTargetRange } from './world-targets.js?v=biseau-net-20260730';
 import { createExplosionSystem } from './world-explosion.js?v=sons-reels-20260908';
 import { queryHit, collisionStats } from './world-collision.js?v=biseau-net-20260730';
