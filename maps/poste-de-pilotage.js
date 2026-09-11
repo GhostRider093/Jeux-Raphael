@@ -76,7 +76,33 @@ const VERT_ECRAN = 0x54f6ff;
 //  ELLES SONT D'UN SEUL TENANT. Une coque et un materiau par piece : aucun
 //  bouton, aucune manette detachable. Seule la piece entiere peut bouger.
 const PIECES = {
-  manche:  { url: './assets/cockpit/manche.glb',           hauteur: .36, ancrage: 'pied' },
+  // MANCHE ET BRAS NE FONT QU'UN SEUL OBJET, et c'est voulu. Les versions
+  // precedentes montaient un bras genere separement SUR une poignee generee
+  // ailleurs : les deux ne s'epousaient jamais, la main flottait a cote ou
+  // traversait la poignee, et le poing serrait une barre a embouts dont il
+  // fallait esperer que le manche la recouvre. Modelises ensemble, la prise
+  // est juste par construction et il n'y a plus rien a faire coincider.
+  //
+  // Le groupe `manche` tourne avec les commandes : l'avant-bras suit donc la
+  // poignee sans un seul calcul de plus, comme le bras separe le faisait.
+  //
+  // ALLEGE, ET IL LE FALLAIT. Brut, il pesait 92,5 Mo pour 2 997 044
+  // triangles. Passe par la recette maison — textures en 1024, geometrie a
+  // 1,2 %, meshopt — il tombe a 524 Ko et 35 964 triangles sans difference
+  // visible : la carte de normales rend le detail que la geometrie a perdu.
+  // Le brut reste dans Downloads. Ne jamais reinstaller un fichier de sortie
+  // de generateur tel quel.
+  //
+  // Pas de `rotation` : il est exporte Y vers le haut, manche debout et
+  // avant-bras partant vers le pilote. C'est deja la bonne orientation.
+  //
+  // `reglage` : releve au panneau F2 le 08/09/2026, devant l'ecran. Il prend
+  // le pas sur `hauteur`, `ancrage` et `rotation`, qui ne servent plus que de
+  // secours si on efface le releve.
+  manche:  {
+    url: './assets/cockpit/bras-manche.glb', hauteur: .40, ancrage: 'pied',
+    reglage: { position: [.015, .445, .010], rotation: [-.250, 0, -.010], echelle: .5513 }
+  },
   // `coupeHaute` : la planche de bord est livree avec un cadre de pare-brise
   // ferme par une vitre BLANCHE ET OPAQUE. Posee telle quelle devant l'oeil,
   // c'est un mur. On jette donc tout ce qui depasse 66 % de sa hauteur, cadre
@@ -95,15 +121,249 @@ const PIECES = {
   // l'oeil ; il ne serait visible sous aucun angle, dans aucun des trois
   // niveaux, et couterait 45 000 triangles pour rien. Le fichier reste sous la
   // main pour une vue exterieure ou un pilote a la troisieme personne.
-  siege:   { url: './assets/cockpit/siege.glb',            hauteur: 1.10, ancrage: 'pied', position: [0, -1.05, .30] },
-  // Le bras est enfant du groupe `manche` : il suit la poignee sans un seul
-  // calcul dans la boucle de vol. Genere poing FERME sur un cylindre — il
-  // n'epouse donc pas notre poignee, il l'enveloppe, et un peu
-  // d'interpenetration est normal. Sa `rotation` l'oriente : dans le fichier
-  // l'avant-bras part vers -X a l'horizontale, alors qu'il doit plonger vers
-  // la hanche droite du pilote, donc vers +X, +Z et le bas.
-  bras:    { url: './assets/cockpit/bras-pilote.glb',      hauteur: .30,  ancrage: 'centre', position: [.05, .21, .10], rotation: [.35, -1.25, .30] }
+  siege:   { url: './assets/cockpit/siege.glb',            hauteur: 1.10, ancrage: 'pied', position: [0, -1.05, .30] }
+  // Il n'y a plus de piece `bras` : la main et l'avant-bras sont dans le
+  // manche. `assets/cockpit/bras-pilote.glb` reste sur le disque, inutilise —
+  // c'est celui dont le poing serrait une barre a deux embouts.
 };
+
+// -- LA PLANCHE EN IMAGE -----------------------------------------------------
+//
+//  Une image detouree remplace la planche 3D, les consoles et la verriere. Le
+//  gain n'est pas qu'esthetique : le poste genere pesait plusieurs Mo pour un
+//  rendu plastique, la voici a 122 Ko.
+//
+//  ELLE EST DANS LA SCENE, PAS EN CALQUE HTML. C'est le point a ne pas
+//  retourner. Un calque HTML se pose au-dessus du canevas, donc au-dessus du
+//  manche et du bras : la main disparaitrait derriere la planche. Montee en
+//  panneau 3D a 1,15 m de l'oeil, elle reste DERRIERE le manche pose a 0,80 m,
+//  qui passe devant tout seul, sans une ligne de tri.
+//
+//  ELLE SE RECADRE A CHAQUE IMAGE. La hauteur visible a une distance donnee
+//  depend du champ, qui bouge avec la vitesse ; la largeur depend de la forme
+//  de la fenetre. Une taille figee laisserait des bandes de ciel sur les cotes
+//  en 21/9, et un lisere sous la planche des que le champ change. Trois lignes
+//  de trigonometrie par image reglent les deux cas.
+//
+//  ET ELLE RESTE REGLABLE. Le recadrage automatique ecraserait tout reglage
+//  fait au panneau F2 : l'image est donc portee par un GROUPE, lui seul inscrit
+//  au registre. F2 deplace le porteur, le recadrage travaille sur le panneau
+//  qu'il contient, et les deux se composent au lieu de se battre.
+const IMAGE_POSTE = {
+  url: './assets/cockpit/planche-image.webp',
+  distance: 1.15,
+  hauteurEcran: 1,   // fraction de la hauteur visible occupee par l'image
+  couvrirLargeur: true,
+  // Fraction de la photo, a gauche et a droite, autorisee a s'etirer sur un
+  // ecran plus large que l'image. 14 % de 1672 px = 234 px : la bande de danger
+  // jaune et noire de la console gauche commence a 17 %, elle reste donc dans
+  // la partie protegee. Monter ce chiffre adoucit l'etirement mais y fait
+  // entrer des details reconnaissables — c'est le compromis, et il se regle ici.
+  margeEtirable: .14,
+  ancrage: 'bas',
+  opacite: 1,
+  remontee: 0,       // en fractions de la hauteur visible, 0 = cale sur le bord
+  // Releve au panneau F2 le 08/09/2026, devant l'ecran.
+  reglage: { position: [0, -.285, -.090], rotation: [0, -.010, 0], echelle: 1.08 }
+};
+
+// La verriere separee, EN SOMMEIL depuis le 08/09/2026.
+//
+//  `actif: false` — et ce n'est pas un oubli. La photo du poste porte
+//  desormais sa propre verriere, montants et arceau compris : garder ce calque
+//  par-dessus faisait apparaitre DEUX arceaux qui se croisaient. Rien n'est
+//  supprime pour autant — le fichier reste dans assets, le mecanisme reste
+//  branche, et `actif: true` la rallume. Tant qu'elle dort, sa texture n'est
+//  meme pas telechargee : 365 Ko economises a chaque chargement.
+//
+//  Ce qui suit decrit son fonctionnement, valable le jour ou on la rallume.
+//
+//  SON OPACITE SUIT LA LUMIERE, ce qui n'est pas un detail. Une verriere n'est
+//  pas une decoupe : le verre sombre laisse passer le monde et seuls les
+//  reflets et les ferrures se voient. L'alpha du fichier a donc ete tiree de
+//  la luminance de la photo, en degrade — un decoupage franc aurait pose une
+//  plaque grise en travers du ciel. Les 60 % ci-dessous s'appliquent par
+//  dessus, sur le panneau entier.
+//
+//  ELLE EST PLUS PRES DE L'OEIL QUE LA PLANCHE (1,05 contre 1,15) : la ou les
+//  montants recouvrent les longerons, c'est la verriere qui doit gagner. Le
+//  manche, a 0,78, reste devant les deux.
+const VERRIERE_IMAGE = {
+  actif: false,
+  url: './assets/cockpit/verriere-image.webp',
+  distance: 1.05,
+  hauteurEcran: 1,
+  couvrirLargeur: true,
+  margeEtirable: .14,
+  ancrage: 'haut',
+  opacite: .42,
+  remontee: 0,
+  // Releve au panneau F2 le 08/09/2026, devant l'ecran.
+  reglage: { position: [0, -.355, -.425], rotation: [.100, 0, 0], echelle: 1.35 }
+};
+
+function construirePanneauImage(reglages) {
+  // `transparent` SANS `depthWrite` : un pixel vide ne doit rien ecrire dans le
+  // tampon de profondeur, sinon le ciel s'efface derriere une vitre invisible.
+  // `depthTest` reste actif — c'est lui qui laisse passer le manche devant.
+  // `toneMapped` desactive : la scene est en ACES, qui assombrirait une photo
+  // deja etalonnee.
+  const materiau = new THREE.MeshBasicMaterial({
+    transparent: true, depthWrite: false, depthTest: true, toneMapped: false,
+    opacity: reglages.opacite
+  });
+  // TROIS COLONNES, PAS UN QUAD. Un plan d'un seul tenant ne peut etre elargi
+  // qu'en etirant tout ce qu'il porte : sur un 5120x1440 la planche partait a
+  // 2,00x en largeur, ecrans et manette des gaz compris, pendant que le manche
+  // et l'avant-bras — qui sont en 3D — gardaient leurs vraies proportions. Ce
+  // sont ces deux mesures cote a cote qui trahissaient la deformation.
+  //
+  // Avec quatre colonnes de sommets, la bande centrale porte le tableau de bord
+  // a son rapport exact et ne bouge JAMAIS ; seules les deux bandes exterieures
+  // s'allongent pour rejoindre les bords de l'ecran. Elles ne contiennent que du
+  // fuselage sombre et du vide transparent, ou un etirement ne se lit pas.
+  const panneau = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 3, 1), materiau);
+  panneau.name = reglages.nom + '-image';
+  panneau.frustumCulled = false;
+  const porteur = new THREE.Group();
+  porteur.name = reglages.nom + '-image-porteur';
+  porteur.frustumCulled = false;
+  porteur.visible = false;               // tant que la texture n'est pas la
+  porteur.add(panneau);
+  // Releve du panneau F2, pose sur le PORTEUR et non sur le panneau. C'est
+  // toute la raison d'etre du porteur : le recadrage automatique reecrit la
+  // taille et la position du panneau a chaque image et effacerait un reglage
+  // pose dessus. Sur le porteur, les deux se composent — le recadrage garde le
+  // panneau colle a son bord d'ecran, le releve l'incline, l'eloigne et le
+  // dimensionne par-dessus.
+  if (reglages.reglage) {
+    porteur.position.set(...reglages.reglage.position);
+    porteur.rotation.set(...reglages.reglage.rotation);
+    porteur.scale.setScalar(reglages.reglage.echelle);
+  }
+
+  let rapport = 16 / 9;
+
+  /**
+   * Place les quatre colonnes de sommets dans la TEXTURE : 0, marge, 1-marge, 1.
+   * Les colonnes de la geometrie, elles, seront posees a chaque image par
+   * `cadrer` — c'est la dissociation des deux qui produit l'etirement selectif.
+   *
+   * `PlaneGeometry(1, 1, 3, 1)` engendre ses sommets rangee par rangee, quatre
+   * par rangee : l'indice d'une colonne vaut donc `rangee * 4 + colonne`.
+   */
+  let marge = .14;
+  function poserColonnesUv() {
+    marge = THREE.MathUtils.clamp(reglages.margeEtirable ?? .14, .02, .45);
+    const uv = panneau.geometry.attributes.uv;
+    const colonnes = [0, marge, 1 - marge, 1];
+    for (let colonne = 0; colonne < 4; colonne++) {
+      uv.setX(colonne, colonnes[colonne]);
+      uv.setX(colonne + 4, colonnes[colonne]);
+    }
+    uv.needsUpdate = true;
+  }
+  poserColonnesUv();
+  // En sommeil : aucune requete reseau, aucun panneau a l'image. Resoudre a
+  // `null` suffit — les appelants traitent deja ce cas, qui est celui d'une
+  // texture manquante.
+  const pret = reglages.actif === false ? Promise.resolve(null) : new Promise(resolve => {
+    new THREE.TextureLoader().load(reglages.url, texture => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 4;
+      materiau.map = texture;
+      materiau.needsUpdate = true;
+      rapport = texture.image.width / texture.image.height;
+      resolve(porteur);
+    }, undefined, erreur => {
+      console.warn(`[poste] image « ${reglages.nom} » non chargee`, erreur);
+      resolve(null);
+    });
+  });
+
+  /**
+   * Recale le panneau sur le champ et la forme reelles de la fenetre.
+   *
+   * C'EST LA HAUTEUR QUI COMMANDE, ET C'EST UNE CORRECTION. La premiere
+   * version calait l'image sur la LARGEUR visible et laissait la hauteur
+   * suivre le rapport de l'image. Sur une fenetre 16/9 le resultat tombait
+   * juste, ce qui masquait le defaut ; sur une fenetre large — un ecran
+   * 5120x1305, rapport 3,92, contre 1,78 pour l'image — la hauteur calculee
+   * depassait de plus du double celle de l'ecran. La planche devenait enorme
+   * et le ciel disparaissait. La taille apparente du poste ne doit dependre
+   * que du champ, jamais de la forme de la fenetre.
+   *
+   * LA LARGEUR NE FAIT QUE SUIVRE, et `couvrirLargeur` l'etend au besoin pour
+   * atteindre les bords : laisser l'image plus etroite que l'ecran montrerait du
+   * ciel a gauche et a droite de la planche, la ou le fuselage devrait
+   * continuer, et la ruinerait d'un coup.
+   *
+   * MAIS CE SUPPLEMENT DE LARGEUR NE VA PLUS A TOUT LE MONDE. Il est verse
+   * entierement aux deux bandes exterieures ; la bande centrale garde la largeur
+   * que son rapport lui donne, a n'importe quelle forme de fenetre. Sur un
+   * 1920x1080 les trois bandes retombent exactement sur l'ancien cadrage — le
+   * supplement y est nul — et rien ne change. Sur un 5120x1440, la planche cesse
+   * d'etre etiree 2,00x : elle est intacte, et ce sont les flancs qui s'allongent.
+   */
+  function cadrer(camera) {
+    if (!camera || !camera.isPerspectiveCamera) return;
+    const d = reglages.distance;
+    const hauteurVue = 2 * d * Math.tan(camera.fov * Math.PI / 360);
+    const hauteur = hauteurVue * reglages.hauteurEcran;
+    const largeurNaturelle = hauteur * rapport;
+    let largeur = largeurNaturelle;
+    if (reglages.couvrirLargeur) largeur = Math.max(largeur, hauteurVue * camera.aspect);
+    // Demi-largeur de la bande centrale, mesuree sur l'image SANS etirement.
+    const demiCentre = largeurNaturelle * (.5 - marge);
+    const bords = [-largeur / 2, -demiCentre, demiCentre, largeur / 2];
+    const sommets = panneau.geometry.attributes.position;
+    for (let colonne = 0; colonne < 4; colonne++) {
+      sommets.setX(colonne, bords[colonne]);
+      sommets.setX(colonne + 4, bords[colonne]);
+    }
+    sommets.needsUpdate = true;
+    // La largeur vit desormais dans les sommets : l'echelle ne porte plus que la
+    // hauteur. La laisser porter la largeur re-etirerait d'un coup le centre
+    // qu'on vient de proteger, et tout ce travail ne servirait a rien.
+    panneau.scale.set(1, hauteur, 1);
+    // Cale sur un bord de l'ecran, jamais centre : la planche pousse depuis le
+    // bas, la verriere depuis le haut, et le bord colle quoi qu'il arrive au
+    // champ. Sans ca on verrait passer un lisere de ciel a chaque changement
+    // de vitesse.
+    const bord = reglages.ancrage === 'haut' ? hauteurVue / 2 - hauteur / 2 : -hauteurVue / 2 + hauteur / 2;
+    panneau.position.set(0, bord + hauteurVue * reglages.remontee, -d);
+  }
+
+  /**
+   * Change le cadrage a chaud. Les trois poignees ne font pas la meme chose,
+   * et confondre les deux premieres coute une demi-heure :
+   *
+   *   `hauteurEcran` fraction de la hauteur visible occupee par l'image.
+   *              C'EST LA POIGNEE DE TAILLE. 1 = l'image fait toute la hauteur,
+   *              .7 = la planche est plus petite et le ciel gagne. La largeur
+   *              suit toute seule et ne laisse jamais de trou sur les cotes.
+   *   `remontee` descend ou remonte l'image, en fractions de la hauteur
+   *              visible. C'EST LA BONNE POIGNEE POUR VOIR PLUS DE CIEL :
+   *              une valeur negative fait couler la planche vers le bas, le
+   *              ciel gagne du terrain, et les cotes restent couverts.
+   *   `distance` eloigne le panneau. Ne change RIEN a sa taille apparente,
+   *              puisque le recadrage suit — sert seulement a le garder
+   *              derriere le manche, pose a 0,80 m de l'oeil.
+   *   `margeEtirable` part de la photo, a gauche et a droite, qui a le droit de
+   *              s'etirer sur un ecran large. Ne se voit QUE hors du 16/9.
+   *              Plus grand = etirement plus doux mais reparti sur des details
+   *              reconnaissables ; plus petit = centre mieux protege mais flancs
+   *              plus tires.
+   */
+  function regler(patch = {}) {
+    Object.assign(reglages, patch);
+    if (patch.opacite !== undefined) materiau.opacity = patch.opacite;
+    if (patch.margeEtirable !== undefined) poserColonnesUv();
+    return { ...reglages };
+  }
+
+  return { porteur, pret, cadrer, regler };
+}
 
 /**
  * Jette les triangles situes au-dessus d'une fraction de la hauteur du modele.
@@ -272,13 +532,25 @@ function poserPiece(modele, piece) {
     });
   }
   if (piece.position) modele.position.add(new THREE.Vector3(...piece.position));
+  // RELEVE DU PANNEAU F2. Il ne s'ajoute pas au placement automatique : il le
+  // REMPLACE. C'est la position finale telle qu'elle a ete lue a l'ecran, et
+  // c'est precisement ce qui la rend reproductible — `hauteur`, `ancrage` et
+  // `position` repassent par un recentrage sur la boite englobante, qui
+  // deformerait un chiffre releve a l'oeil. Les deux voies coexistent : une
+  // piece sans `reglage` garde le placement calcule.
+  const facteurFinal = piece.reglage ? piece.reglage.echelle : facteur;
+  if (piece.reglage) {
+    modele.position.set(...piece.reglage.position);
+    modele.rotation.set(...piece.reglage.rotation);
+    modele.scale.setScalar(piece.reglage.echelle);
+  }
   // Collees a l'oeil comme le reste du poste : sans cela Three les retire de
   // l'image des que la camera tourne.
   modele.traverse(objet => { objet.frustumCulled = false; });
   // Retenu pour les ecrans montes DESSUS : un enfant vit dans le repere du
   // modele, donc a son echelle. Sans ce facteur, une dalle de 17 cm arriverait
   // a 33 cm sur une piece reduite de moitie.
-  modele.userData.facteurPoste = facteur;
+  modele.userData.facteurPoste = facteurFinal;
   // La boite mesuree ci-dessus est dans le repere PROPRE du modele : il
   // n'avait alors ni echelle ni position. C'est la seule utilisable pour y
   // accrocher quelque chose. Une `Box3.setFromObject` faite APRES l'ajout au
@@ -587,7 +859,7 @@ function construirePlanche(materiauStructure, materiauCadre) {
   // qui se trouve 0,33 m au-dessus du pied du manche, tombe a -0,29 et se voit.
   // Plus pres ou plus bas, le manche est hors cadre et son animation ne sert a
   // personne — c'est ce que le banc a mesure sur la premiere version.
-  manche.position.set(0, -.62, -.80);
+  manche.position.set(0, -.84, -.78);
   groupe.add(manche);
 
   const gaz = new THREE.Group();
@@ -774,6 +1046,18 @@ export function creerPosteDePilotage({ camera = null, champ = 62, rendu = null }
 
   habiller(groupe, environnementDuPoste(rendu));
   groupe.add(verriere, collimateur, planche);
+
+  // Le manche quitte la planche pour se rattacher au poste. Les deux groupes
+  // sont a l'origine : rien ne bouge a l'image. Mais la planche peut desormais
+  // s'eteindre en entier sans emporter le manche et le bras, c'est-a-dire la
+  // seule chose qui bouge encore une fois l'image posee.
+  groupe.add(manche);
+
+  const { porteur: porteurImage, pret: imagePrete, cadrer: cadrerImage, regler: reglerImage } =
+    construirePanneauImage({ ...IMAGE_POSTE, nom: 'planche' });
+  const { porteur: porteurVerriere, pret: verrierePrete, cadrer: cadrerVerriere, regler: reglerVerriere } =
+    construirePanneauImage({ ...VERRIERE_IMAGE, nom: 'verriere' });
+  groupe.add(porteurImage, porteurVerriere);
   if (camera) camera.add(groupe);
 
   // Entree des quatre pieces (voir PIECES plus haut). Chacune remplace sa
@@ -784,8 +1068,7 @@ export function creerPosteDePilotage({ camera = null, champ = 62, rendu = null }
     { nom: 'manche',  hote: manche,  doublure: doublureManche },
     { nom: 'planche', hote: planche, doublure: doublurePlanche },
     { nom: 'console', hote: planche, doublure: doublureConsole },
-    { nom: 'consoleDroite', hote: planche, doublure: null },
-    { nom: 'bras', hote: manche, doublure: null }
+    { nom: 'consoleDroite', hote: planche, doublure: null }
   ];
   for (const { nom, hote, doublure } of installations) {
     chargerPiece(nom).then(gltf => {
@@ -824,6 +1107,8 @@ export function creerPosteDePilotage({ camera = null, champ = 62, rendu = null }
   // ajoutent a leur arrivee. C'est ce registre que lit le panneau F2.
   const placables = new Map([
     ['manche (groupe)', manche],
+    ['planche image', porteurImage],
+    ['verriere image', porteurVerriere],
     ['gaz', gaz],
     ['ecran vitesse', ecrans[0]],
     ['ecran plan', ecrans[1]],
@@ -835,6 +1120,9 @@ export function creerPosteDePilotage({ camera = null, champ = 62, rendu = null }
   const reglage = () => basculerReglage(placables, etatReglage);
 
   let niveau = 0;
+  // Vrai des que la texture est arrivee. Tant qu'elle n'est pas la, le poste
+  // 3D reste affiche : une image qui manque ne laisse jamais un cockpit vide.
+  let modeImage = false;
   let horlogeEcrans = 0;
   let defilementCode = 0, ligneCode = 0;
   const barreaux = echelle.children;
@@ -844,13 +1132,34 @@ export function creerPosteDePilotage({ camera = null, champ = 62, rendu = null }
   function definirNiveau(valeur) {
     niveau = valeur;
     groupe.visible = valeur > 0;
-    verriere.visible = valeur >= 1;
-    collimateur.visible = valeur >= 1;
-    planche.visible = valeur >= 2;
+    // Les trois pieces que l'image remplace. Elles restent CONSTRUITES et
+    // seulement eteintes : `definirImage(false)` les rallume a l'instant.
+    verriere.visible = valeur >= 1 && !modeImage;
+    collimateur.visible = valeur >= 1 && !modeImage;
+    planche.visible = valeur >= 2 && !modeImage;
+    porteurImage.visible = valeur >= 2 && modeImage;
+    porteurVerriere.visible = valeur >= 1 && modeImage && VERRIERE_IMAGE.actif !== false;
+    // Le manche n'est plus enfant de la planche : sans cette ligne il
+    // apparaitrait au niveau 1, ou seule la verriere doit se voir.
+    manche.visible = valeur >= 2;
     lampe.visible = valeur >= 1;
     return niveau;
   }
   definirNiveau(0);
+
+  imagePrete.then(porteur => {
+    if (!porteur) return;
+    modeImage = true;
+    definirNiveau(niveau);   // relit les visibilites avec le mode a jour
+  });
+  verrierePrete.then(() => definirNiveau(niveau));
+
+  /** Bascule entre la planche en image et les pieces 3D qu'elle remplace. */
+  function definirImage(actif) {
+    modeImage = !!actif;
+    definirNiveau(niveau);
+    return modeImage;
+  }
 
   /**
    * L'assiette n'est PAS demandee a l'appelant : elle est lue sur la camera.
@@ -870,6 +1179,13 @@ export function creerPosteDePilotage({ camera = null, champ = 62, rendu = null }
    */
   function mettreAJour(etat, dt) {
     if (niveau === 0) return;
+
+    // Avant tout le reste : la planche en image suit le champ et la forme de
+    // la fenetre, qui ont pu changer depuis l'image precedente.
+    if (modeImage) {
+      cadrerImage(camera);
+      if (VERRIERE_IMAGE.actif !== false) cadrerVerriere(camera);
+    }
 
     if (camera) assietteDe(camera, assiette);
     const tangage = Number.isFinite(etat.tangage) ? etat.tangage : assiette.tangage;
@@ -937,7 +1253,14 @@ export function creerPosteDePilotage({ camera = null, champ = 62, rendu = null }
 
   const api = {
     groupe, definirNiveau, mettreAJour, dispose, reglage, placables,
+    definirImage,
+    // Reglage a vue depuis la console :
+    //   RaphaelPoste.cadrageImage({ remontee: -.18 })
+    cadrageImage: reglerImage,
+    // RaphaelPoste.cadrageVerriere({ opacite: .4, remontee: .05 })
+    cadrageVerriere: reglerVerriere,
     niveau: () => niveau,
+    image: () => modeImage,
     // Contrat repris de l'ancien `cockpit-view.js`, pour se substituer a lui
     // sans toucher au reste. `ready` est tenue d'avance : ce poste est
     // construit, pas telecharge — il n'y a rien a attendre, et c'est

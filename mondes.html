@@ -232,6 +232,16 @@
     #flight-target-range { position:absolute; left:50%; top:104px; min-width:220px; transform:translateX(-50%); text-align:center; font-size:13px; letter-spacing:1px; }
     .flight-tape { position:absolute; top:26%; width:124px; height:330px; color:rgba(235,247,252,.9); filter:drop-shadow(0 2px 4px rgba(0,0,0,.85)); }
     #speed-tape { left:7%; } #altitude-tape { right:7%; }
+    /* En vue cockpit, les deux bandes se rapprochent du centre pour encadrer le
+       réticule, comme sur un vrai collimateur : on lit la vitesse et l'altitude
+       sans quitter des yeux l'axe de vol. Aux bords, il faut tourner la tête.
+       Les cotes sont prises DEPUIS LE CENTRE et non en pourcentage de largeur :
+       un pourcentage écarterait les bandes sur un écran large, justement là où
+       elles doivent rester groupées. La bande fait 124 px, son bord intérieur
+       tombe donc à 126 px du centre — le réticule en occupe 79, il reste de
+       l'air. `max()` garde le tout à l'écran sur un téléphone. */
+    body.world-cockpit-view #speed-tape { left:max(4px, calc(50% - 250px)); }
+    body.world-cockpit-view #altitude-tape { right:max(4px, calc(50% - 250px)); }
     .flight-tape-title { position:absolute; top:-32px; left:0; right:0; font-size:14px; font-weight:800; letter-spacing:2.2px; }
     #altitude-tape .flight-tape-title { text-align:right; }
     .flight-tape-line { position:absolute; top:0; bottom:0; width:2px; background:linear-gradient(180deg,transparent,rgba(230,246,252,.72) 8% 92%,transparent); }

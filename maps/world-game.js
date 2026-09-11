@@ -14,7 +14,7 @@ import { addBoxFromCenter } from './world-collision.js?v=biseau-net-20260730';
 import { applyEdits, registerAddedCollisions } from './custom-map-format.js?v=biseau-net-20260730';
 import { loadCustomMap } from '../custom-maps.js?v=biseau-net-20260730';
 import { createTwoPlayerMultiplayer } from './world-multiplayer.js?v=biseau-net-20260730';
-import { creerPosteDePilotage } from './poste-de-pilotage.js?v=poste-20260908o';
+import { creerPosteDePilotage } from './poste-de-pilotage.js?v=poste-trois-bandes-20260909';
 
 const params = new URLSearchParams(location.search);
 const requestedMap = params.get('map');
