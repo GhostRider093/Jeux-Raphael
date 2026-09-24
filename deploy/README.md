@@ -1,3 +1,9 @@
+> **Mise en ligne du site : `.github/workflows/deploy.yml`** (depuis le 24/09/2026).
+> Chaque push sur `main` synchronise le VPS **212** (`/opt/raphael-online-site`,
+> conteneur nginx `raphael-online`). Plus de tar ni de scp. Ce document ne concerne
+> que le service FastAPI (SSO + multijoueur), qui n'est pas encore deploye ; les
+> chemins `/home/ubuntu/...` et le VPS 57 qu'il cite sont perimes.
+
 # Publication du service Nova Flight
 
 Objectif : les comptes Ghost Chat deviennent pilotes Nova Flight sans seconde inscription,

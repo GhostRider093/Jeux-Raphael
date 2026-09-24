@@ -26,3 +26,6 @@ assets/*/*-brut.glb
 
 # Maillages intermediaires des figurines 3MF (regenerables par parse_3mf.py)
 scripts/goblins/.cache/
+
+# Fichiers de session Claude Code
+.claude/

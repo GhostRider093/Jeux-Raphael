@@ -1,0 +1,65 @@
+# Mise en ligne de raphael.crea-doc.fr : a chaque push sur main, GitHub
+# synchronise le depot vers le VPS 212. Plus d'archive tar ni de scp depuis
+# le poste : ce qui est en prod est exactement un commit de main, et rien
+# d'autre. Retour arriere = revert + push.
+#
+# Le site est statique (conteneur nginx:alpine `raphael-online`, qui monte
+# /opt/raphael-online-site en lecture seule) : aucun redemarrage n'est
+# necessaire, nginx sert les nouveaux fichiers des qu'ils sont ecrits.
+#
+# Secrets du depot (Settings > Secrets and variables > Actions) :
+#   VPS_HOST         212.227.147.177
+#   VPS_USER         root
+#   VPS_DEPLOY_PATH  /opt/raphael-online-site
+#   VPS_SSH_KEY      cle privee ed25519 dediee (commentaire deploy@raphael-online),
+#                    dont la cle publique est dans /root/.ssh/authorized_keys du VPS.
+
+name: Mise en ligne
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Deux pushes rapproches : le premier envoi est abandonne, seul le dernier compte.
+concurrency:
+  group: mise-en-ligne
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --delete : le serveur devient le miroir exact du depot, les restes des
+      # anciens envois tar disparaissent. Deux dossiers sont proteges parce
+      # qu'ils n'appartiennent pas au depot :
+      #   config/      profils de manette et classements ecrits par app.py
+      #   __pycache__/ produit par Python sur place
+      # Sont exclus a l'envoi : les scripts de fabrication (Blender, IGN, Meshy),
+      # la documentation, les projets d'impression 3D et les fichiers de session.
+      - name: Synchroniser vers le VPS
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: >-
+            -avzr --delete
+            --exclude=".git" --exclude=".github" --exclude=".claude"
+            --exclude="config/" --exclude="__pycache__/"
+            --exclude="scripts/" --exclude="deploy/"
+            --exclude="*.md" --exclude="*.3mf" --exclude="*.bat"
+            --exclude="requirements.txt"
+          path: ./
+          remote_path: ${{ secrets.VPS_DEPLOY_PATH }}
+          remote_host: ${{ secrets.VPS_HOST }}
+          remote_user: ${{ secrets.VPS_USER }}
+          remote_key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Verifier que le site repond
+        run: |
+          set -e
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://raphael.crea-doc.fr/index.html)
+          echo "index.html -> $code"
+          test "$code" = "200"
