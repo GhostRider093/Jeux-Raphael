@@ -102,3 +102,54 @@ aide sans la touche C. Moyen mémorisé au clic. Capestang au niveau mémorisé,
 - Ressources absentes signalées en 404, préexistantes : `assets/sons/trottinette-boucle.*`
   (repli sur la synthèse) et `assets/pub/epicerie-ouverte.jpg`.
 - `mondes.html` garde ses plafonds en dur ; brancher `qualite.js` quand on voudra.
+
+
+---
+
+# Bilan de session — 24/09/2026 (nuit) — Skatepark, sauts et figures
+
+## Demande
+
+Améliorer grandement le skatepark, des sauts nets qui partent plus tôt, une touche pour les
+loopings et les figures.
+
+## Fait
+
+- **Décollage par prédiction de trajectoire** (`vaDecoller`, quatre points sur 0,16 s) au
+  lieu du critère « le sol a fui de 15 cm en une image ». Espace = saut à la demande.
+- **Figures** : F looping (calibré sur le temps de vol restant), G 360, flèches haut / bas
+  en l'air, chute si l'on retombe à l'envers. Bannière au centre de l'écran.
+- **Skatepark** : ligne de vol à l'est (départ déplacé, bande de lancement, tremplin 1,8 m à
+  42°, réception jusqu'à v = 17), tremplin sud relevé (1,6 m, exposant 2), table plus haute à
+  descente courte, bosses plus hautes, copings d'acier, lèvres rouges, trois bandes de
+  lancement bleues à chevrons (41 km/h).
+
+## Mesuré (Chromium, banc `test_skate.py`)
+
+| Situation | Air | Hauteur | Longueur |
+| --- | --- | --- | --- |
+| Ligne est à 41 km/h | 1,54 s | 3,38 m | 16,6 m |
+| Ligne est + F | 1,58 s | 3,57 m | Backflip, réception droite |
+| Ligne est + G | 1,55 s | 3,44 m | 360 |
+| Espace sur le plat à 32 km/h | 0,52 s | 0,38 m | 4,5 m |
+| Table (descente courte) à 33 km/h | 0,43 s | 0,73 m | 3,9 m |
+| Chaque bosse à 33 km/h | 0,20–0,32 s | 0,32–0,36 m | 1,8–2,9 m |
+
+## Trois faux départs, et pourquoi
+
+1. Comparaison d'accélérations (le sol fuit plus vite que g) : physiquement juste, mais la
+   séparation se fait à quelques millimètres → envols d'une image en rafale.
+2. Dégagement testé au seul point d'arrivée : depuis le milieu du tremplin on voit le trou
+   par-dessus la rampe → départ 2 m trop tôt, retombée sur la rampe, élan effacé, vrai saut
+   mou (0,5 s au lieu de 1,5).
+3. Amortissement appliqué à la vitesse de figure : le looping retombait à 260°, chute à
+   chaque fois. La figure tourne rond, seule l'inclinaison libre s'amortit.
+4. Et : la flèche gaz tenue en l'air comptait comme une inclinaison → double backflip
+   involontaire. Une flèche déjà tenue au décollage ne compte plus.
+
+## À voir
+
+- Sans tourner, la trottinette monte sur le relevé du virage et décolle par-dessus (1,7 m,
+  8 m) : c'est le dos du virage. Un joueur tourne ; mais un muret ou une barrière au sommet
+  du dévers éviterait l'envol dans l'herbe.
+- Pas de son de saut ni d'atterrissage, pas de score cumulé.

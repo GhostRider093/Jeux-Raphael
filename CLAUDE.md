@@ -916,9 +916,16 @@ Ce qu'il faut savoir :
 
 ## Le skatepark du stade
 
-`poilhes.html`, mode **Trottinette**, touche **P** — un circuit de 52 × 56 m posé sur le
-terrain de l'Olympique Midi Lirou. Anneau à quatre virages relevés, table et bosses sur la
-droite ouest, slalom de plots au nord, gros saut au sud, half-pipe et plongeoir dans l'infield.
+`poilhes.html` et `rouler.html`, mode **Trottinette**, touche **P** — un circuit de 52 × 56 m
+posé sur le terrain de l'Olympique Midi Lirou. Anneau à quatre virages relevés ; **ligne de
+vol** sur la droite est (départ, bande de lancement, tremplin de 1,8 m à 42°, trou, réception
+en pente jusqu'à l'entrée du virage) ; bande de lancement et gros saut au sud ; table et
+bosses à l'ouest ; slalom au nord ; half-pipe à copings (bande de lancement sur le plat), mur
+nord et plongeoir dans l'infield. Refait le 24/09/2026 pour les sauts et les figures.
+
+**Les bandes de lancement** (béton bleu à chevrons) poussent la trottinette à 41 km/h
+(`turboAt`, lu par le pilote) : à 25 km/h, aucune rampe ne donne le temps d'un looping.
+Mesuré sur la ligne est à 41 km/h : **1,5 s d'air, 3,4 m de haut, 16,6 m de long**.
 
 | Fichier | Rôle |
 | --- | --- |
@@ -984,6 +991,35 @@ seulement en ville :
 
 Mesuré après correction : **2,81 m d'air** sur une transition, là où l'engin ne décollait
 jamais.
+
+### Sauts et figures (24/09/2026)
+
+Commandes en trottinette : **Espace** saute (coup de jambes, 2,6 m/s, qui s'ajoute à ce que
+la rampe donne) ; en l'air, **F** looping (arrière ; avant si l'on tient la flèche bas),
+**G** 360, flèches haut / bas inclinent ; tactile : SAUT, Flip, Vue. Une figure demandée
+dans la demi-seconde avant le bord compte. Bannière `#figure` (Backflip, 360, Gros saut,
+Chute !) mise à jour par `majAuto` depuis `telemetrie().figure`.
+
+4. **On décolle quand la trajectoire libre passe au-dessus du sol** (`vaDecoller`) : lancée
+   avec la vitesse verticale que la rampe a donnée (`elan`), la trottinette serait-elle à
+   4 cm au-dessus du béton dans 0,16 s, **en quatre points le long du chemin** ? Alors elle
+   y est déjà. Ça part au vrai point de séparation — sommet d'une bosse, bord d'une table —
+   et non quand le sol a fui de 15 cm en une image (une falaise). Deux essais ratés avant :
+   une comparaison d'accélérations (le sol fuit plus vite que g) partait trop tôt, envols
+   d'une image à quelques millimètres ; et tester le seul point d'arrivée voyait le trou
+   par-dessus la rampe, deux mètres avant le bord — le faux départ effaçait l'élan, et le
+   vrai saut partait mou (0,5 s au lieu de 1,5). D'où aussi : un contact de moins de
+   0,12 s ne remet pas l'élan à zéro.
+5. **Une figure se calibre sur le temps de vol restant** (`tempsDeVolRestant`, en visant le
+   sol *là où l'on retombe*, pas celui sous les roues, qui est le trou) : un tour par saut,
+   plafonné à 13 rad/s. Sa vitesse (`figureVit`) n'est **pas** amortie — l'amortir la faisait
+   retomber à 260°, chute à chaque looping. L'inclinaison libre (`tangageVit`) l'est.
+6. **Une flèche déjà tenue au décollage ne compte pas** (`cabreTenu`) : plein gaz sur un
+   tremplin donnait un double backflip involontaire. Elle ne compte qu'une fois relâchée.
+7. En l'air, l'assiette n'est pas lissée : `tangage` = trajectoire (cabrée en montant, piquée
+   en descendant) + figure, exactement ; le lissage reprend au sol. Réception à plus de 60°
+   de tangage ou 57° de vrille = chute (vitesse ÷ 4, une seconde de tangage), sinon ce qui
+   reste se résorbe au sol.
 
 ### Ce qui reste à faire
 

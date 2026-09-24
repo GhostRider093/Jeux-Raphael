@@ -535,7 +535,7 @@ function creerSon({ electrique = false } = {}) {
 export function creerPilote({
   scene, camera, renderer = null, solAt, blockedAt = () => false,
   adherenceAt = () => 1, surRoute = null, keys, bounds = 2900, couleur = 0xc21d24,
-  engin = 'voiture',
+  engin = 'voiture', turboAt = null,
 }) {
   // Le pilote mène ce qu'on lui donne : une voiture, ou la trottinette rendue
   // sous la même forme. Tout le reste — suspension, collisions, caméra, son —
@@ -546,8 +546,13 @@ export function creerPilote({
   // ne pouvait littéralement pas décoller, et un tremplin n'était qu'une bosse
   // dont on glissait. Une voiture, elle, ne doit pas s'envoler au moindre
   // trottoir : son seuil ne bouge pas.
-  const SEUIL_ENVOL = surDeuxRoues ? 4.0 : 8;
-  const ENVOL_MAX = 6.5;          // m/s : au-delà, le saut n'est plus un saut mais un lancer
+  const SEUIL_ENVOL = surDeuxRoues ? 1.5 : 8;
+  // Depuis le 24/09/2026, la trottinette ne décolle plus sur un seuil de
+  // hauteur mais sur une comparaison d'accélérations (voir `update`) : le
+  // seuil de vitesse n'est plus qu'un garde-fou contre le sur-place.
+  const ENVOL_MAX = surDeuxRoues ? 7.5 : 6.5;   // m/s : au-delà, le saut n'est plus un saut mais un lancer
+  const IMPULSION = 2.6;          // m/s : le coup de jambes (Espace), 34 cm de haut sur le plat
+  const TURBO_MAX = 11.5;         // m/s sur une bande de lancement (41 km/h), contre 6,9 au moteur seul
   // Inclinaison maximale d'un engin à deux roues, en radians (≈ 31°). Au-delà,
   // un vrai pilote pose le pied : on ne cherche pas l'angle d'une moto de
   // course sur une trottinette de village.
@@ -605,6 +610,11 @@ export function creerPilote({
     // Ce que le sol monte sous les roues, lissé. C'est lui qui devient la
     // vitesse d'envol au bout d'un tremplin (voir `update`).
     montee: 0, elan: 0, appuiPrec: null,
+    // Sauts et figures de la trottinette (voir `decoller`, `figuresEnLair`, `atterrir`).
+    vitesseSol: 0, air: 0, sautLatch: false, sautCooldown: 0,
+    tangageAir: 0, tangageVit: 0, figureVit: 0, spin: 0, spinVit: 0, demandeExpire: 0,
+    flipLatch: false, spinLatch: false, figureDemandee: null, cabreTenu: false,
+    chute: 0, figure: null, figureN: 0, turbo: 0,
     vue: 0, dist: VUES[0].dist, fov: VUES[0].fov,
     choc: 0, vueForcee: false, allumage: 0,
     // **Le moteur est muet tant qu'on ne l'a pas demandé.** Il a été mis à
@@ -695,7 +705,7 @@ export function creerPilote({
   }
 
   // ── commandes ────────────────────────────────────────────────────────────
-  const cmd = { gaz: 0, frein: 0, direction: 0, main: false };
+  const cmd = { gaz: 0, frein: 0, direction: 0, main: false, saut: false, flip: false, spin: false, cabre: 0 };
   let volant = 0;                     // position brute du volant, avant courbe
   const doigt = { x: 0, y: 0 };       // manche tactile : x dirige, y accélère ou freine
   let mainTactile = false;
@@ -741,7 +751,14 @@ export function creerPilote({
     const freinVise = Math.max(recule ? 1 : 0, Math.max(0, doigt.y));
     cmd.gaz += (gazVise - cmd.gaz) * lissage(11, dt);
     cmd.frein += (freinVise - cmd.frein) * lissage(16, dt);
-    cmd.main = tenue('Space') || mainTactile;
+    // À deux roues, Espace n'est pas un frein à main : c'est le coup de jambes
+    // qui fait sauter (`decoller`). F et G lancent les figures en l'air, et les
+    // flèches haut / bas y inclinent l'engin — au sol elles restent gaz et frein.
+    cmd.main = surDeuxRoues ? false : (tenue('Space') || mainTactile);
+    cmd.saut = surDeuxRoues && (tenue('Space') || mainTactile);
+    cmd.flip = surDeuxRoues && tenue('KeyF');
+    cmd.spin = surDeuxRoues && tenue('KeyG');
+    cmd.cabre = surDeuxRoues ? THREE.MathUtils.clamp((avance ? 1 : 0) - (recule ? 1 : 0) - doigt.y, -1, 1) : 0;
   }
 
   // ── entrée, sortie ───────────────────────────────────────────────────────
@@ -785,6 +802,8 @@ export function creerPilote({
     state.elan = 0;
     state.appuiPrec = null;
     state.tangage = state.roulis = 0;
+    state.vitesseSol = 0; state.air = 0; state.tangageAir = 0; state.tangageVit = 0;
+    state.spin = 0; state.spinVit = 0; state.chute = 0; state.figureDemandee = null;
   }
 
   function enter(x, z, yaw = 0) {
@@ -822,6 +841,141 @@ export function creerPilote({
 
   /** Remet la voiture sur la route la plus proche, dans son cap actuel. */
   function redresser() { placer(etat.x, etat.z, etat.yaw); }
+
+  // ── sauts et figures (trottinette) ───────────────────────────────────────
+  /** Quitte le sol à la vitesse verticale donnée ; les figures partent de zéro. */
+  function decoller(vy) {
+    state.enLair = true;
+    state.vy = vy;
+    state.air = 0;
+    state.tangageAir = 0;
+    state.tangageVit = 0;
+    state.figureVit = 0;
+    state.spin = 0;
+    state.spinVit = 0;
+    state.flipLatch = cmd.flip;
+    state.spinLatch = cmd.spin;
+    // Une figure demandée dans la demi-seconde avant le bord compte : on
+    // appuie souvent un peu avant de décoller, pas exactement dessus.
+    if (state.demandeExpire <= 0) state.figureDemandee = null;
+    // Une flèche déjà tenue au décollage (le gaz, presque toujours) ne doit
+    // pas devenir une inclinaison : elle ne compte qu'une fois relâchée puis
+    // reprise. Sans ce verrou, plein gaz sur un tremplin = double backflip
+    // involontaire, mesuré.
+    state.cabreTenu = cmd.cabre !== 0;
+  }
+
+  /**
+   * Temps de vol restant. Le sol d'arrivée n'est pas celui d'en dessous — au
+   * bout d'un tremplin, dessous, c'est le trou — mais celui où l'on va
+   * retomber : on vise, on regarde le sol là-bas, et on recommence une fois.
+   */
+  function tempsDeVolRestant() {
+    const vx = -Math.sin(etat.yaw) * etat.u, vz = -Math.cos(etat.yaw) * etat.u;
+    let solArrivee = solAt(etat.x, etat.z), T = 0;
+    for (let i = 0; i < 2; i++) {
+      const h = Math.max(0, state.y - (solArrivee + GARDE));
+      T = (state.vy + Math.sqrt(Math.max(0, state.vy * state.vy + 2 * GRAVITE * h))) / GRAVITE;
+      const s = solAt(etat.x + vx * T, etat.z + vz * T);
+      if (s > -1e8) solArrivee = s;
+    }
+    return T;
+  }
+
+  /**
+   * Vrai si, laissée à elle-même, la trottinette serait à `marge` au-dessus du
+   * sol dans `tau` secondes : c'est la définition d'un décollage. On regarde
+   * le sol là où l'on sera, pas sous les roues — au sommet d'une bosse le sol
+   * fuit devant, et au bord d'une table il n'y a plus rien.
+   */
+  function vaDecoller(vy, tau, marge) {
+    const vx = -Math.sin(etat.yaw) * etat.u, vz = -Math.cos(etat.yaw) * etat.u;
+    // Quatre points le long du chemin, pas seulement le dernier : depuis le
+    // milieu d'un tremplin, le point d'arrivée est déjà au-dessus du trou alors
+    // que la rampe, entre les deux, est encore au-dessus de la trajectoire. On
+    // partait deux mètres trop tôt, on retombait sur la rampe une image plus
+    // tard, et ce faux départ effaçait l'élan avant le vrai bord.
+    for (let k = 1; k <= 4; k++) {
+      const t = tau * k / 4;
+      const yLibre = state.y + vy * t - 0.5 * GRAVITE * t * t;
+      const solLa = solAt(etat.x + vx * t, etat.z + vz * t);
+      if (solLa < -1e8 || yLibre - (solLa + GARDE) <= marge) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Demande une figure : 'flip' (looping arrière — ou avant si l'on pousse sur
+   * la flèche bas), 'spin' (tour complet). Au sol, la demande attend le prochain
+   * saut ; en l'air, elle part tout de suite. C'est ce que fait le bouton tactile.
+   */
+  function figure(type) { state.figureDemandee = type; }
+
+  /**
+   * En l'air, la trottinette tourne. Une figure demandée est **calibrée pour se
+   * boucler juste avant l'atterrissage** : un looping sur un saut d'une seconde
+   * tourne à un tour par seconde, sur un saut d'une demi-seconde deux fois plus
+   * vite (plafonné : au-delà de deux tours par seconde on ne lit plus rien).
+   * Les flèches haut / bas ajoutent une inclinaison libre, c'est ce qui permet
+   * de rattraper une réception — ou de la rater.
+   */
+  function figuresEnLair(dt) {
+    if (cmd.flip && !state.flipLatch) state.figureDemandee = 'flip';
+    if (cmd.spin && !state.spinLatch) state.figureDemandee = 'spin';
+    state.flipLatch = cmd.flip;
+    state.spinLatch = cmd.spin;
+    if (state.figureDemandee) {
+      const T = Math.max(0.45, tempsDeVolRestant() - 0.06);
+      const omega = Math.min(2 * Math.PI / T, 13);
+      if (state.figureDemandee === 'flip') state.figureVit += omega * (cmd.cabre < -0.3 ? -1 : 1);
+      else state.spinVit += omega * (cmd.direction < -0.2 ? -1 : 1);
+      state.figureDemandee = null;
+    }
+    // L'inclinaison libre s'amortit ; la figure, elle, tourne rond jusqu'au
+    // bout — l'amortir la faisait retomber à 260° : chute à chaque looping.
+    if (cmd.cabre === 0) state.cabreTenu = false;
+    if (!state.cabreTenu) state.tangageVit += cmd.cabre * 5 * dt;
+    state.tangageVit *= Math.max(0, 1 - 0.35 * dt);
+    state.tangageAir += (state.figureVit + state.tangageVit) * dt;
+    state.spin += state.spinVit * dt;
+  }
+
+  /**
+   * Retour au sol : droit, c'est une figure réussie ; à l'envers, c'est une
+   * chute. « Droit » tolère 60° de tangage et 57° de vrille : ce qui reste se
+   * résorbe au sol au lieu de sauter d'un coup, et c'est ce qu'on voit comme
+   * une réception un peu lourde.
+   */
+  function atterrir() {
+    const toursFlip = Math.round(state.tangageAir / (2 * Math.PI));
+    const resteFlip = state.tangageAir - toursFlip * 2 * Math.PI;
+    const toursSpin = Math.round(state.spin / (2 * Math.PI));
+    const resteSpin = state.spin - toursSpin * 2 * Math.PI;
+    const droit = Math.abs(resteFlip) < 1.05 && Math.abs(resteSpin) < 1.0;
+    state.tangageAir = 0;
+    state.tangageVit = 0;
+    state.figureVit = 0;
+    state.spin = resteSpin;
+    state.spinVit = 0;
+    state.tangage += resteFlip;
+    state.vitesseSol = 0;
+    const noms = [];
+    if (toursFlip > 0) noms.push(toursFlip === 1 ? 'Backflip' : toursFlip === 2 ? 'Double backflip' : `${toursFlip} backflips`);
+    if (toursFlip < 0) noms.push(toursFlip === -1 ? 'Frontflip' : toursFlip === -2 ? 'Double frontflip' : `${-toursFlip} frontflips`);
+    if (toursSpin) noms.push(String(Math.abs(toursSpin) * 360));
+    if (!droit) {
+      // Réception à l'envers : on tombe, on perd trois quarts de la vitesse,
+      // et l'engin tangue une seconde le temps de se rasseoir.
+      etat.u *= 0.25;
+      state.chute = 1.0;
+      state.figure = { nom: 'Chute !', detail: noms.join(' + '), n: ++state.figureN };
+    } else if (noms.length) {
+      state.figure = { nom: noms.join(' + '), detail: `${state.air.toFixed(1)} s en l’air`, n: ++state.figureN };
+    } else if (state.air > 0.9) {
+      state.figure = { nom: 'Gros saut', detail: `${state.air.toFixed(1)} s en l’air`, n: ++state.figureN };
+    }
+    if (state.vy < -6) etat.u *= 0.93;
+  }
 
   // ── collisions ───────────────────────────────────────────────────────────
   const normale = new THREE.Vector2();
@@ -989,14 +1143,17 @@ export function creerPilote({
     if (state.enLair) {
       state.vy -= GRAVITE * dt;
       state.y += state.vy * dt;
+      state.air += dt;
+      if (surDeuxRoues) figuresEnLair(dt);
       if (state.y <= appui) {
         // atterrissage : la caisse encaisse, et un gros saut coûte de la vitesse
         state.y = appui;
-        if (state.vy < -6) etat.u *= 0.93;
+        if (surDeuxRoues) atterrir(); else if (state.vy < -6) etat.u *= 0.93;
         state.vy = 0;
         state.enLair = false;
-        state.montee = 0;
-        state.elan = 0;
+        // Un contact d'une ou deux images sur une rampe n'est pas un
+        // atterrissage : l'élan de la rampe reste en mémoire pour le vrai bord.
+        if (!(surDeuxRoues && state.air < 0.12)) { state.montee = 0; state.elan = 0; }
         state.appuiPrec = appui;
       }
     } else {
@@ -1013,15 +1170,51 @@ export function creerPilote({
       // images : sur une rampe, c'est exactement la vitesse verticale que
       // l'engin a prise. On la lui rend au décollage.
       const vitesseSol = (appui - (state.appuiPrec === null ? appui : state.appuiPrec)) / Math.max(dt, 1e-3);
-      state.montee += (vitesseSol - state.montee) * lissage(14, dt);
+      state.vitesseSol = vitesseSol;
+      state.montee += (vitesseSol - state.montee) * lissage(surDeuxRoues ? 24 : 14, dt);
       state.appuiPrec = appui;
       // **L'élan garde le meilleur de la rampe, et l'oublie en une seconde.**
       // Au moment précis où la roue quitte le béton, la montée instantanée est
       // déjà retombée — c'est justement parce que le sol se dérobe qu'on
       // décolle. Lancer avec cette valeur-là revenait à glisser du bout du
       // tremplin. On lance donc avec ce que la rampe a réellement donné.
-      state.elan = Math.max(state.montee, state.elan - dt * 2.2);
-      if (chuteNecessaire < chuteLibre && etat.vitesse > SEUIL_ENVOL) {
+      state.elan = Math.max(state.montee, state.elan - dt * (surDeuxRoues ? 5 : 2.2));
+      if (surDeuxRoues) {
+        if (state.sautCooldown > 0) state.sautCooldown -= dt;
+        // F ou G pressés au sol : la demande vaut une demi-seconde, le temps d'arriver au bord.
+        if (cmd.flip && !state.flipLatch) { state.figureDemandee = 'flip'; state.demandeExpire = 0.5; }
+        if (cmd.spin && !state.spinLatch) { state.figureDemandee = 'spin'; state.demandeExpire = 0.5; }
+        state.flipLatch = cmd.flip;
+        state.spinLatch = cmd.spin;
+        if (state.demandeExpire > 0) state.demandeExpire -= dt;
+        if (cmd.saut && !state.sautLatch && state.sautCooldown <= 0 && etat.vitesse > 0.4) {
+          // Le coup de jambes : on saute quand on le décide, pas quand le sol
+          // veut bien. Au bout d'un tremplin, il s'ajoute à ce que la rampe donne.
+          decoller(Math.max(0, state.elan) + IMPULSION);
+          state.sautCooldown = 0.35;
+        } else if (etat.vitesse > SEUIL_ENVOL
+                   && (vaDecoller(Math.max(0, Math.min(state.elan, ENVOL_MAX)), 0.16, 0.04) || chuteNecessaire < chuteLibre)) {
+          // **On décolle quand la trajectoire libre passe au-dessus du sol.**
+          // Lancée avec la vitesse verticale que la rampe lui a donnée, la
+          // trottinette serait-elle à quatre centimètres au-dessus du béton dans
+          // 0,16 s ? Alors elle y est déjà : c'est un décollage, au sommet d'une
+          // bosse comme au bord d'une table, et il part au vrai point de
+          // séparation. L'ancienne règle attendait que le sol ait fui de quinze
+          // centimètres en une image, c'est-à-dire une falaise : on collait aux
+          // bosses et on décollait trop tard, quand on décollait. Une simple
+          // comparaison d'accélérations (le sol fuit plus vite que g) partait
+          // trop tôt et donnait des envols d'une image, à quelques millimètres.
+          decoller(Math.max(0, Math.min(state.elan, ENVOL_MAX)));
+        } else {
+          state.y += monte * lissage(monte > 0 ? 26 : 22, dt);
+        }
+        state.sautLatch = cmd.saut;
+        // Bande de lancement : le béton bleu pousse jusqu'à 41 km/h.
+        if (turboAt && etat.u > 0.5 && turboAt(etat.x, etat.z)) {
+          etat.u = Math.min(etat.u + 18 * dt, TURBO_MAX);
+          state.turbo = 0.25;
+        }
+      } else if (chuteNecessaire < chuteLibre && etat.vitesse > SEUIL_ENVOL) {
         state.enLair = true;
         // **On est projeté, on ne tombe pas.** Repartir à la vitesse de chute
         // libre revenait à glisser du bout du tremplin : la roue quittait le
@@ -1035,12 +1228,18 @@ export function creerPilote({
         state.y += monte * lissage(monte > 0 ? 26 : 22, dt);
       }
     }
+    if (state.turbo > 0) state.turbo -= dt;
+    if (state.chute > 0) state.chute -= dt;
     position.set(etat.x, state.y, etat.z);
 
     // pente du terrain, lue sur les quatre roues, plus le transfert de charge
     const penteTangage = Math.atan2((solRoue[0] + solRoue[1]) / 2 - (solRoue[2] + solRoue[3]) / 2, EMPATTEMENT);
     const penteRoulis = Math.atan2((solRoue[0] + solRoue[2]) / 2 - (solRoue[1] + solRoue[3]) / 2, VOIE);
-    const tangageVise = state.enLair ? state.vy * 0.02 : penteTangage + THREE.MathUtils.clamp(etat.ax * 0.011, -0.09, 0.09);
+    // En l'air, la trottinette suit sa trajectoire du nez — cabrée en montant,
+    // piquée en descendant — et y ajoute la rotation de ses figures.
+    const tangageVise = state.enLair
+      ? (surDeuxRoues ? Math.atan2(state.vy, Math.max(2.5, Math.abs(etat.u))) * 0.5 + state.tangageAir : state.vy * 0.02)
+      : penteTangage + THREE.MathUtils.clamp(etat.ax * 0.011, -0.09, 0.09);
     // Signes du roulis, vérifiés plutôt que devinés : une rotation positive
     // autour de l'axe arrière lève le côté droit. Un virage à droite penche donc
     // la caisse **vers l'extérieur**, côté droit en l'air (charge positive), et
@@ -1065,13 +1264,19 @@ export function creerPilote({
     const penche = surDeuxRoues && !state.enLair
       ? THREE.MathUtils.clamp(Math.atan2(etat.u * etat.lacet, GRAVITE), -PENCHE_MAX, PENCHE_MAX)
       : THREE.MathUtils.clamp(etat.charge * 0.055, -0.1, 0.1);
-    const roulisVise = (state.enLair ? 0 : -penteRoulis) + penche;
-    state.tangage += (tangageVise - state.tangage) * lissage(9, dt);
+    const roulisVise = (state.enLair ? 0 : -penteRoulis) + penche
+      + (state.chute > 0 ? Math.sin(state.chute * 38) * 0.30 * state.chute : 0);
+    // Un looping ne se lisse pas : en l'air, à deux roues, l'assiette est celle
+    // de la figure, exactement. Le lissage reprend à l'atterrissage.
+    if (surDeuxRoues && state.enLair) state.tangage = tangageVise;
+    else state.tangage += (tangageVise - state.tangage) * lissage(9, dt);
+    // Ce qui reste d'une vrille se résorbe au sol.
+    if (!state.enLair && state.spin) state.spin -= state.spin * lissage(8, dt);
     // Se pencher demande un geste, pas un ressort de suspension : à deux roues
     // le roulis suit un peu plus vite, sinon l'engin part en virage avant d'y
     // être couché.
     state.roulis += (roulisVise - state.roulis) * lissage(surDeuxRoues ? 11 : 9, dt);
-    euler.set(state.tangage, etat.yaw, state.roulis);
+    euler.set(state.tangage, etat.yaw + state.spin, state.roulis);
     root.quaternion.setFromEuler(euler);
     // La caisse se penche **en plus** de la voiture : les roues restent au sol.
     voiture.caisse.rotation.x = THREE.MathUtils.clamp(-etat.ax * 0.004, -0.035, 0.035);
@@ -1144,6 +1349,9 @@ export function creerPilote({
       regimeMax: reglage.regimeMax,
       glisse: Math.min(1, Math.abs(etat.glisseAr) / 0.35),
       enLair: state.enLair,
+      air: state.air,
+      figure: state.figure,
+      turbo: state.turbo > 0,
     };
   }
 
@@ -1175,7 +1383,7 @@ export function creerPilote({
 
   return {
     root, state, etat, voiture, son,
-    enter, exit, update, basculerVue, basculerSon, redresser, commande, setMain, setNuit,
+    enter, exit, update, basculerVue, basculerSon, redresser, commande, setMain, setNuit, figure,
     choisirVoiture, voitureChoisie: () => choix,
     telemetrie, placer,
     get position() { return position; },

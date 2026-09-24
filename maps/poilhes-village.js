@@ -15,7 +15,7 @@ import { construireVillage } from './poilhes-scene.js?v=qualite-20260924';
 import { createRobot } from './poilhes-robot.js?v=voiture-20260921';
 import { createEnemies } from './poilhes-enemies.js?v=voiture-20260921';
 import { createJet } from './poilhes-jet.js?v=voiture-20260921';
-import { creerPilote, creerAdherence } from './voiture-pilote.js?v=moteur-muet-20260922';
+import { creerPilote, creerAdherence } from './voiture-pilote.js?v=figures-20260924';
 import { poserEpicerie, poserBlasonClub, EPICERIE } from './poilhes-commerces.js?v=voiture-20260921';
 import { construireTrottinette } from './trottinette.js?v=pilote-20260922';
 
@@ -262,6 +262,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       scene, camera, renderer, keys, engin: 'trottinette',
       solAt: walkableAt, blockedAt, adherenceAt: routes.adherenceAt, surRoute: routes.surRoute,
       bounds: decor.bounds - 60,
+      turboAt: decor.parc ? decor.parc.turboAt : null,   // les bandes bleues du skatepark
     });
     return deuxRoues;
   }
@@ -296,7 +297,8 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   // --------------------------------------------------------------------- HUD de la voiture
   const autoEl = $('auto'), kmhEl = $('kmh'), rapportEl = $('rapport');
   const regimeEl = $('regime').firstElementChild;
-  let kmhVu = -1, rapportVu = '';
+  const figureEl = $('figure');            // bannière des figures (facultative dans la page)
+  let kmhVu = -1, rapportVu = '', figureVue = -1;
   /** Compteur, rapport engagé et barre de régime — relus, jamais réécrits pour rien. */
   function majAuto(qui = auto) {
     const t = qui.telemetrie();
@@ -305,6 +307,16 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     regimeEl.style.width = `${Math.min(100, (t.regime / t.regimeMax) * 100)}%`;
     autoEl.classList.toggle('rouge', t.regime > t.regimeMax - 700);
     autoEl.classList.toggle('glisse', t.glisse > 0.5);
+    // Une figure réussie (ou une chute) : la bannière repart de zéro à chaque fois.
+    if (figureEl && t.figure && t.figure.n !== figureVue) {
+      figureVue = t.figure.n;
+      figureEl.innerHTML = `<b>${t.figure.nom}</b>${t.figure.detail ? `<small>${t.figure.detail}</small>` : ''}`;
+      figureEl.classList.toggle('chute', t.figure.nom === 'Chute !');
+      figureEl.hidden = false;
+      figureEl.classList.remove('vue');
+      void figureEl.offsetWidth;             // relance l'animation CSS
+      figureEl.classList.add('vue');
+    }
   }
 
   // --------------------------------------------------------------------- HUD de combat
@@ -383,8 +395,9 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       : isTouch
       ? 'Pouce gauche : avancer · glisser à droite : regarder'
       : mode === 'trottinette'
-        ? 'Flèches ou <b>ZQSD</b> : conduire · <b>V</b> caméra · <b>R</b> se remettre en selle · '
-          + '<b>P</b> au skatepark (sur le stade) · 25 km/h en pointe, elle tourne court'
+        ? 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> sauter · en l’air : <b>F</b> looping, <b>G</b> 360, '
+          + 'flèches haut / bas pour incliner · <b>V</b> caméra · <b>R</b> se remettre en selle · '
+          + '<b>P</b> au skatepark · bandes bleues = lancement à 41 km/h'
       : mode === 'voiture'
         ? (voitureUnique ? '' : '<b>C</b> : changer de voiture · ')
           + 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> frein à main · '
@@ -713,15 +726,26 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     el.addEventListener('contextmenu', (ev) => ev.preventDefault());
   };
   presser(btnFeu,
-    () => { if (mode === 'robot') robot.setTrigger(true); else if (mode === 'voiture') auto.setMain(true); },
-    () => { if (mode === 'robot') robot.setTrigger(false); else if (mode === 'voiture') auto.setMain(false); });
+    () => {
+      if (mode === 'robot') robot.setTrigger(true);
+      else if (mode === 'voiture') auto.setMain(true);
+      else if (mode === 'trottinette') deuxRoues.setMain(true);      // SAUT
+    },
+    () => {
+      if (mode === 'robot') robot.setTrigger(false);
+      else if (mode === 'voiture') auto.setMain(false);
+      else if (mode === 'trottinette') deuxRoues.setMain(false);
+    });
   btnCourse.addEventListener('click', () => {
+    // En trottinette, ce bouton demande un looping (au prochain saut, ou en l'air).
+    if (mode === 'trottinette') { deuxRoues.figure('flip'); return; }
     touchMove.run = !touchMove.run;
     btnCourse.classList.toggle('on', touchMove.run);
   });
   btnVue.addEventListener('click', () => {
     if (mode === 'chasseur') jet.basculerVue();
     else if (mode === 'voiture') auto.basculerVue();
+    else if (mode === 'trottinette') deuxRoues.basculerVue();
     else if (mode === 'robot') robot.zoom(robot.state.dist > 22 ? -4000 : 4000);
   });
 
@@ -732,10 +756,12 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     if (tactileEl.hidden === actif) tactileEl.hidden = !actif;
     // En voiture, le gros bouton devient le frein à main : c'est la commande
     // qu'on garde sous le pouce, comme le tir en robot.
-    btnFeu.style.display = (mode === 'robot' || mode === 'voiture') ? '' : 'none';
-    btnFeu.textContent = mode === 'voiture' ? 'MAIN' : 'TIR';
-    btnCourse.style.display = (mode === 'robot' || mode === 'balade' || mode === 'drone') ? '' : 'none';
-    btnVue.style.display = (mode === 'robot' || mode === 'chasseur' || mode === 'voiture') ? '' : 'none';
+    btnFeu.style.display = (mode === 'robot' || mode === 'voiture' || mode === 'trottinette') ? '' : 'none';
+    btnFeu.textContent = mode === 'voiture' ? 'MAIN' : mode === 'trottinette' ? 'SAUT' : 'TIR';
+    btnCourse.style.display = (mode === 'robot' || mode === 'balade' || mode === 'drone' || mode === 'trottinette') ? '' : 'none';
+    btnCourse.textContent = mode === 'trottinette' ? 'Flip' : 'Cours';
+    btnCourse.classList.toggle('on', mode !== 'trottinette' && touchMove.run);
+    btnVue.style.display = (mode === 'robot' || mode === 'chasseur' || mode === 'voiture' || mode === 'trottinette') ? '' : 'none';
     if (!actif) rangerManche();
   }
 
@@ -1062,6 +1088,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     meta, scene, camera, controls, renderer, decor, sun, setMode, goTo, setTime, groundAt, walker,
     blockedAt, walkableAt, surfaceAt, keys, step: stepWalker, startTour, stopTour, tick, robot, ennemis, jet,
     get voiture() { return auto; },
+    get trottinette() { return deuxRoues; },
     get mode() { return mode; },
   };
   return window.RaphaelPoilhes;

@@ -7,7 +7,7 @@
  * Aucune allocation dans la boucle d'animation : vecteurs et tableaux réutilisés.
  */
 import * as THREE from 'three';
-import { construireSkatepark } from './poilhes-skatepark.js?v=skatepark-20260922';
+import { construireSkatepark } from './poilhes-skatepark.js?v=figures-20260924';
 
 import {
   facadeMaterial, roofMaterial, groundMaterial, waterMaterial, foliageMaterial, stoneMaterial, skyMaterial,
