@@ -132,9 +132,27 @@
     else charger().then(jouer);
   }
 
+  /**
+   * Coupe le souffle. Baisser le gain ne suffit pas : `setTargetAtTime` est
+   * une approche exponentielle, elle n'atteint jamais zero, et la boucle
+   * continuait donc de tourner en fond pour le reste de la partie — un
+   * reacteur a -60 dB reste un reacteur qui tourne. On demonte la source, et
+   * `start()` la reconstruira a la prochaine poussee.
+   */
   function stop() {
     if (!context || !running) return;
-    masterGain.gain.setTargetAtTime(0, context.currentTime, .14);
+    const now = context.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setTargetAtTime(0, now, .14);
+    const source = souffleSource;
+    souffleSource = null;
+    running = false;
+    // On laisse la descente s'entendre, puis on arrete pour de bon.
+    setTimeout(() => {
+      if (!source) return;
+      try { source.stop(); } catch (e) { /* deja arretee */ }
+      try { source.disconnect(); } catch (e) { /* deja detachee */ }
+    }, 450);
   }
 
   document.addEventListener('keydown', ensure, { passive: true, once: false });

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Aperçu d'un GLB</title>
+<!--
+  Voir un modèle seul, sur fond neutre, avant de le poser dans le village.
+
+  Chercher à quoi ressemble un GLB en le plaçant d'abord dans la maquette fait
+  perdre un temps fou : on ne sait jamais si ce qu'on voit est le modèle, un
+  bâtiment du village ou un arbre devant. Ici il n'y a rien d'autre que lui.
+
+      apercu-glb.html?src=assets/pub/ostal-louis.glb
+
+  Souris : tourner, molette : approcher. La taille réelle est affichée en bas.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #20242a; color: #e8ecf1;
+               font: 13px/1.5 system-ui, sans-serif; overflow: hidden; }
+  #info { position: absolute; left: 12px; bottom: 12px; padding: 8px 12px; border-radius: 10px;
+          background: rgba(12,15,20,.78); border: 1px solid rgba(255,255,255,.14); white-space: pre; }
+  #axes { position: absolute; right: 12px; bottom: 12px; padding: 8px 12px; border-radius: 10px;
+          background: rgba(12,15,20,.78); border: 1px solid rgba(255,255,255,.14); }
+</style>
+</head>
+<body>
+<div id="info">chargement…</div>
+<div id="axes">rouge = +x · vert = +y · bleu = +z</div>
+<script type="importmap">
+{ "imports": { "three": "./libs/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './libs/OrbitControls.module.js';
+import { GLTFLoader } from './libs/GLTFLoader.js';
+import { MeshoptDecoder } from './libs/meshopt_decoder.module.js';
+
+const src = new URLSearchParams(location.search).get('src') || 'assets/pub/ostal-louis.glb';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x20242a);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.05, 400);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xdfe9f5, 0x40423f, 2.2));
+const soleil = new THREE.DirectionalLight(0xfff3dd, 2.6);
+soleil.position.set(4, 7, 5);
+scene.add(soleil);
+// un sol et des axes : sans repère, on ne sait ni l'échelle ni l'orientation
+const sol = new THREE.Mesh(new THREE.CircleGeometry(30, 48),
+  new THREE.MeshStandardMaterial({ color: 0x555b62, roughness: 1 }));
+sol.rotation.x = -Math.PI / 2;
+scene.add(sol);
+scene.add(new THREE.GridHelper(20, 20, 0x8a929c, 0x3a4048));
+scene.add(new THREE.AxesHelper(3));
+
+// ?assemblage=trottinette : on ne regarde plus un fichier mais un montage —
+// la trottinette ET son pilote riggé, tels qu'ils apparaissent dans le village.
+// Régler une pose d'os dans la rue, entre deux platanes, est impossible ; ici il
+// n'y a que le montage, et la console pour le corriger sans recharger.
+const assemblage = new URLSearchParams(location.search).get('assemblage');
+let objet;
+if (assemblage === 'trottinette') {
+  const { construireTrottinette } = await import('./maps/trottinette.js?v=pilote-20260922');
+  // ?pilote=chevalier|titan|costume, ou un chemin de GLB : de quoi essayer un
+  // pilote sur la trottinette sans toucher au code du village.
+  const qui = new URLSearchParams(location.search).get('pilote');
+  const kit = await construireTrottinette({ scene, x: 0, z: 0, cap: 0, pilote: qui || undefined });
+  objet = kit.root;
+} else {
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(src);
+  objet = gltf.scene;
+  scene.add(objet);
+}
+objet.updateMatrixWorld(true);
+const boite = new THREE.Box3().setFromObject(objet);
+const taille = boite.getSize(new THREE.Vector3());
+const centre = boite.getCenter(new THREE.Vector3());
+objet.position.sub(new THREE.Vector3(centre.x, boite.min.y, centre.z));  // posé au sol, centré
+let triangles = 0;
+objet.traverse((o) => { if (o.isMesh && o.geometry.index) triangles += o.geometry.index.count / 3; });
+
+const rayon = Math.max(taille.x, taille.y, taille.z);
+camera.position.set(rayon * 1.6, rayon * 0.9, rayon * 1.9);
+controls.target.set(0, taille.y * 0.45, 0);
+document.getElementById('info').textContent =
+  `${src}\ntaille : ${taille.x.toFixed(2)} × ${taille.y.toFixed(2)} × ${taille.z.toFixed(2)} m`
+  + `\ntriangles : ${Math.round(triangles).toLocaleString('fr-FR')}`;
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+window.RaphaelApercu = { scene, camera, controls, renderer, objet, taille };
+</script>
+</body>
+</html>

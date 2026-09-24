@@ -5,9 +5,9 @@ import { GAMEPAD_PROFILE_KEY, loadMergedProfile, readLocalProfile } from '../gam
 import { createStickShaper, createTriggerShaper, shapeAxis, smoothing, rampKey } from '../input-shaping.js?v=biseau-net-20260730';
 import { fetchLeaderboard, submitRaceResult } from '../race-leaderboard.js?v=biseau-net-20260730';
 import { creerReglageSensibilite } from './reglage-sensibilite.js?v=sensibilite-20260911a';
-import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=biseau-net-20260730';
+import { WORLD_MAPS, PLAYER_MODES, getWorld, getMode, getPortalRoute } from './world-catalog.js?v=voiture-20260921';
 import { buildWorld, animateWorld } from './world-builder.js?v=biseau-net-20260730';
-import { createWorldCombat } from './world-combat.js?v=flotte-dix-20260908';
+import { createWorldCombat } from './world-combat.js?v=riposte-20260916';
 import { createTargetRange } from './world-targets.js?v=biseau-net-20260730';
 import { createExplosionSystem } from './world-explosion.js?v=sons-reels-20260908';
 import { queryHit, collisionStats } from './world-collision.js?v=biseau-net-20260730';
@@ -216,6 +216,7 @@ async function loadOriginalChasseurInto(player) {
   const appareil = await window.RaphaelChasseur.construire({
     longueur: 16,
     reacteurs: true,
+    effets: true,
     missiles: true,
     // Texture d'origine du modele, assombrie. Les Mondes affichaient un gris
     // uni parce que leur ancien chargeur jetait les coordonnees de texture :
@@ -445,7 +446,25 @@ async function startWorld() {
   let pilotMessage = mode.type === 'flight' ? 'chargement du chasseur original…' : 'chargement du personnage…';
   const renderLoadStatus = () => { status.textContent = `${assetMessage} · ${pilotMessage}`; };
   const portalRoute = getPortalRoute(world.id);
-  const built = buildWorld(scene, world, message => { assetMessage = message; renderLoadStatus(); }, portalRoute);
+  // Un monde « relevé » n'est pas engendré par une graine : son relief et ses
+  // bâtiments viennent des données IGN. Un village (Poilhes, Capestang) ou un
+  // pays qui en réunit plusieurs dans la même carte se construit par son
+  // adaptateur, mais rend exactement le même objet — le reste du moteur ne voit
+  // aucune différence.
+  const releve = message => {
+    assetMessage = message;
+    renderLoadStatus();
+    // Le village pèse 21 Mo, un pays quatre fois plus : sans compte rendu,
+    // l'écran de chargement reste figé pendant qu'on entend déjà le réacteur.
+    const ligne = document.getElementById('world-loading-text');
+    if (ligne) ligne.textContent = message;
+  };
+  const chargeurReleve = { village: ['./poilhes-world.js?v=voiture-20260921', 'buildPoilhesWorld'],
+                           pays: ['./pays-world.js?v=voiture-20260921', 'buildPaysWorld'] }[world.terrainSource];
+  const built = chargeurReleve
+    ? await (await import(chargeurReleve[0]))[chargeurReleve[1]](
+        scene, world, releve, { renderer, camera, leger: isMobileDevice })
+    : buildWorld(scene, world, message => { assetMessage = message; renderLoadStatus(); }, portalRoute);
   const player = mode.type === 'flight' ? buildJet() : buildGroundPlaceholder(mode.id);
   const spawn = mode.type === 'flight' ? world.spawn.air : world.spawn.ground;
   const spawnX = spawn[0], spawnZ = spawn[2];
@@ -472,6 +491,10 @@ async function startWorld() {
       pilotMessage = 'chasseur simplifié actif';
       renderLoadStatus();
     });
+  } else if (mode.type === 'drive') {
+    // Rien à charger ici : la carrosserie vient avec le pilote de voiture.
+    pilotPromise = Promise.resolve();
+    pilotMessage = 'chargement de la voiture…';
   } else {
     pilotPromise = loadGroundCharacter(mode.id, player, mixers).then(() => {
       pilotMessage = 'personnage prêt';
@@ -497,6 +520,45 @@ async function startWorld() {
   const keys = {};
   const touch = { x: 0, y: 0, boost: false, acro: false, jump: false, portal: false, fire: false, missile: false };
   const motion = { enabled: false, x: 0, y: 0, neutralBeta: 0, neutralGamma: 0, hasSample: false };
+
+  // ── mode Voiture ─────────────────────────────────────────────────────────
+  // Le pilote de voiture est le MÊME fichier que celui de la page du village
+  // (`maps/voiture-pilote.js`) : même physique, même son, même caméra. Il ne
+  // demande au monde que trois fonctions — le sol, les murs, l'adhérence — et
+  // les mondes relevés les fournissent (`poilhes-world.js`, `pays-world.js`).
+  let auto = null;
+  const tactileAuto = { x: 0, y: 0, active: false };
+  if (mode.type === 'drive') {
+    const { creerPilote, creerAdherence } = await import('./voiture-pilote.js?v=moteur-muet-20260922');
+    // Les rubans de chaussée du village donnent la grille d'adhérence : du
+    // bitume sous les roues, de la terre à côté. Hors monde relevé, on s'en
+    // passe et tout le sol se vaut.
+    const routes = built.villages
+      ? creerAdherence(built.villages)
+      : { adherenceAt: () => 0.88, surRoute: null };
+    auto = creerPilote({
+      scene, camera, renderer,
+      // Le catalogue dit quel engin : la voiture, ou la trottinette.
+      engin: mode.engin || 'voiture',
+      // `keys` est ici un objet, pas un Set : on lui prête la même question.
+      keys: { has: code => !!keys[code] },
+      solAt: built.solAt || built.getHeight,
+      blockedAt: built.blockedAt || (() => false),
+      adherenceAt: routes.adherenceAt,
+      surRoute: routes.surRoute,
+      bounds: built.bounds,
+    });
+    player.visible = false;          // la voiture est le corps du joueur ; la silhouette ne sert plus
+    // Le mode dit quelle voiture : « Voiture GT » la rouge, « Berline bleue » la
+    // traction. La touche C continue de basculer en roulant.
+    if (mode.voiture) auto.choisirVoiture(mode.voiture);
+    auto.enter(spawnX, spawnZ, 0);
+    auto.voiture.pret.then(() => { pilotMessage = 'voiture prête'; renderLoadStatus(); });
+    // Poignée de console sur l'engin en cours : `RaphaelVoiture.son.diagnostic()`
+    // dit ce que la chaîne audio fait réellement, et `roues()` ce que la découpe
+    // a trouvé. Sans elle, un son de travers se discute au lieu de se mesurer.
+    window.RaphaelVoiture = auto;
+  }
   // Tous les points de départ sont placés au sud de la zone jouable : le pilote
   // doit donc regarder vers le centre de la carte au lancement.
   let yaw = 0, pitch = mode.type === 'flight' ? .12 : 0, flightVisualPitch = pitch, speed = mode.type === 'flight' ? 72 : 0, verticalVelocity = 0, cameraWide = mode.type === 'flight', cockpitView = false, lastView = false;
@@ -563,6 +625,7 @@ async function startWorld() {
 
   const clock = new THREE.Clock();
   const cycleCameraView = () => {
+    if (mode.type === 'drive') { auto?.basculerVue(); return; }
     if (mode.type !== 'flight') {
       cameraWide = !cameraWide;
       return;
@@ -599,7 +662,10 @@ async function startWorld() {
     getHeight: built.getHeight,
     getForward: getFlightForward,
     getSpeed: () => speed,
-    explosionSystem: explosions
+    explosionSystem: explosions,
+    // Les missiles ennemis frappent la MEME coque que les immeubles : un seul
+    // compteur de degats, un seul jeu de pastilles, une seule destruction.
+    onPlayerHit: encaisserMissile
   });
   // Cibles fixes : elles fonctionnent meme quand le combat est desactive,
   // c'est tout l'interet d'un module separe.
@@ -740,7 +806,9 @@ async function startWorld() {
   }
 
   const raceGates = built.raceGates || [];
-  const raceEnabled = mode.type === 'flight' && raceGates.length > 0;
+  // La course n'est plus réservée au vol : une route entre deux villages se
+  // court très bien au volant, et les portes sont faites pour cela.
+  const raceEnabled = (mode.type === 'flight' || mode.type === 'drive') && raceGates.length > 0;
   const racePanel = document.getElementById('race-panel');
   const raceGateText = document.getElementById('race-gate');
   const raceTimeLabel = document.getElementById('race-time-label');
@@ -754,7 +822,9 @@ async function startWorld() {
   const raceDistanceText = document.getElementById('race-distance-text');
   const raceAward = document.getElementById('race-award');
   const raceStorageKey = `raphael.race.best.${world.id}`;
-  const raceTimeLimit = 210;
+  // Le temps imparti appartient au monde : 210 s conviennent à un circuit
+  // aérien, pas à quatre kilomètres de campagne au volant.
+  const raceTimeLimit = world.courseTemps || 210;
   let raceIndex = 0;
   let raceStartElapsed = null;
   let raceElapsed = 0;
@@ -898,7 +968,56 @@ async function startWorld() {
     raceAward.classList.add('show');
   }
 
+  // ── guidage GPS ────────────────────────────────────────────────────────
+  // Au volant, la petite flèche du panneau de course est illisible : on roule
+  // en regardant la route, pas un coin de l'écran. Un vrai guidage dit trois
+  // choses, grandes et au centre : **où tourner, dans combien de mètres, et
+  // quelle porte**. C'est ce que fait n'importe quel GPS, et pour la même raison.
+  const gpsPanneau = document.getElementById('gps');
+  const gpsFleche = document.getElementById('gps-fleche');
+  const gpsOrdre = document.getElementById('gps-ordre');
+  const gpsDistance = document.getElementById('gps-distance');
+  const gpsPorte = document.getElementById('gps-porte');
+
+  /** Le mot qui va avec l'angle : ce qu'on dirait à voix haute à un conducteur. */
+  function ordreDeRoute(angle, distance) {
+    const a = Math.abs(angle);
+    if (distance < 45) return a < 35 ? 'PASSEZ' : (angle > 0 ? 'SERREZ À DROITE' : 'SERREZ À GAUCHE');
+    if (a < 12) return 'TOUT DROIT';
+    if (a < 40) return angle > 0 ? 'LÉGÈREMENT À DROITE' : 'LÉGÈREMENT À GAUCHE';
+    if (a < 110) return angle > 0 ? 'À DROITE' : 'À GAUCHE';
+    if (a < 150) return angle > 0 ? 'FRANCHEMENT À DROITE' : 'FRANCHEMENT À GAUCHE';
+    return 'DEMI-TOUR';
+  }
+
+  function majGps(gate) {
+    if (!gpsPanneau) return;
+    const actif = raceEnabled && mode.type === 'drive' && !!gate && !raceFinished;
+    if (gpsPanneau.hidden === actif) gpsPanneau.hidden = !actif;
+    if (!actif) return;
+    const dx = gate.position.x - player.position.x;
+    const dz = gate.position.z - player.position.z;
+    const distance = Math.hypot(dx, dz);
+    // Angle **relatif au cap** : un GPS ne montre pas le nord, il montre le
+    // virage qu'on va prendre. Positif = à droite.
+    let angle = THREE.MathUtils.radToDeg(Math.atan2(-dx, -dz) - yaw);
+    angle = ((angle + 540) % 360) - 180;
+    // Une rotation CSS positive tourne **dans le sens des aiguilles**, comme un
+    // angle positif ici veut dire « à droite » : les deux vont donc dans le même
+    // sens, et inverser le signe faisait pointer la flèche à gauche pendant que
+    // le texte disait « à droite ».
+    gpsFleche.style.transform = `rotate(${angle.toFixed(1)}deg)`;
+    gpsOrdre.textContent = ordreDeRoute(angle, distance);
+    gpsDistance.textContent = distance > 950
+      ? `${(distance / 1000).toFixed(1).replace('.', ',')} km`
+      : `${Math.round(distance / 5) * 5} m`;
+    gpsPorte.textContent = `PORTE ${raceIndex + 1} / ${raceGates.length}`;
+    gpsPanneau.classList.toggle('proche', distance < 120);
+    gpsPanneau.classList.toggle('demi-tour', Math.abs(angle) > 150);
+  }
+
   function updateRaceRadar(gate) {
+    majGps(gate);
     if (!gate) return;
     const dx = gate.position.x - player.position.x;
     const dz = gate.position.z - player.position.z;
@@ -926,16 +1045,27 @@ async function startWorld() {
       const isCurrent = !raceFinished && index === raceIndex;
       const isPassed = data.passed;
       const isMissed = data.missed;
-      const color = isPassed ? 0xffc928 : isMissed ? 0x8f1d2c : isCurrent ? 0xa52cff : 0x30233f;
-      const intensity = isPassed ? 2.2 : isMissed ? .8 : isCurrent ? 3.15 : .35;
+      // Sur route, les portes à venir restent **allumées** : on court sur un
+      // itinéraire qu'on doit voir se dérouler devant soi. En vol, elles
+      // s'éteignent pour ne pas encombrer le ciel — les deux ont raison chez
+      // elles.
+      const aVenirSurRoute = mode.type === 'drive';
+      const color = isPassed ? 0xffc928 : isMissed ? 0x8f1d2c : isCurrent ? 0xa52cff
+        : aVenirSurRoute ? 0x2bd66a : 0x30233f;
+      const intensity = isPassed ? 2.2 : isMissed ? .8 : isCurrent ? 3.15
+        : aVenirSurRoute ? 1.1 : .35;
       data.material.color.setHex(color);
       data.material.emissive.setHex(color);
       data.material.emissiveIntensity = intensity;
       data.markerMaterial.color.setHex(color);
       data.markerMaterial.opacity = isCurrent || isPassed ? .82 : .22;
       data.beacon.color.setHex(color);
-      data.beacon.intensity = isCurrent ? 38 : isPassed ? 22 : 5;
-      gate.children[0].userData.raceGateRing.baseIntensity = intensity;
+      data.beacon.intensity = isCurrent ? 38 : isPassed ? 22 : (mode.type === 'drive' ? 14 : 5);
+      // Toutes les portes n'ont pas la forme d'un anneau : celles de la course
+      // sur route sont des portiques. On ne suppose donc plus que le premier
+      // enfant porte le repère — l'absence ne doit pas interrompre la course.
+      const repere = gate.children[0]?.userData?.raceGateRing;
+      if (repere) repere.baseIntensity = intensity;
       gate.visible = true;
       gate.scale.setScalar(isCurrent ? 1.12 : 1);
     });
@@ -1025,6 +1155,7 @@ async function startWorld() {
     updateRaceRadar(gate);
     if (raceStartElapsed !== null && remaining <= 0) {
       raceFinished = true;
+      if (gpsPanneau) gpsPanneau.hidden = true;
       raceGateText.textContent = 'TEMPS ÉCOULÉ · COURSE TERMINÉE';
       raceTimeLabel.textContent = 'TEMPS RESTANT';
       raceTimeText.textContent = '00:00.000';
@@ -1051,7 +1182,46 @@ async function startWorld() {
     if (crossedPlane && nearGate) completeRaceGate(elapsed, false);
   }
 
+  // Diagnostic : de quoi regarder la course depuis la console sans rien deviner
+  // — le tracé est-il chargé, combien de portes, où en est-on, et une caméra
+  // qu'on peut poser au-dessus du parcours pour le voir en entier.
+  window.RaphaelCourse = {
+    scene, camera, player,
+    // La voiture elle-même : de quoi se replacer sur le parcours pour voir ce
+    // qu'un joueur voit, au lieu de poser une caméra que la boucle réécrit
+    // aussitôt.
+    get voiture() { return auto; },
+    portes: raceGates,
+    trace: () => scene.getObjectByName('trace-gps'),
+    etat: () => ({ active: raceEnabled, porte: raceIndex + 1, total: raceGates.length,
+                   finie: raceFinished, chrono: raceElapsed }),
+    /**
+     * Pose la voiture devant une porte, tournée vers la suivante.
+     *
+     * Déplacer la caméra ne sert à rien : la boucle la remet derrière la voiture
+     * à l'image suivante. Pour voir le parcours, il faut donc **déplacer la
+     * voiture**, ce qui est de toute façon le point de vue qui compte.
+     */
+    allerA: (index = 0) => {
+      const p = raceGates[Math.min(Math.max(0, index), raceGates.length - 1)];
+      if (!p || !auto) return null;
+      auto.enter(p.position.x, p.position.z, p.rotation.y);
+      return [Math.round(p.position.x), Math.round(p.position.z)];
+    },
+  };
+
   racePanel.hidden = !raceEnabled;
+  if (raceEnabled && mode.type === 'drive') {
+    // Le panneau annonçait « COURSE AÉRIENNE » au volant : le titre et les
+    // objectifs suivent maintenant ce qu'on pilote réellement.
+    const titre = document.getElementById('race-title');
+    if (titre) titre.textContent = 'COURSE SUR ROUTE';
+    document.getElementById('mission-title').textContent = `Course ${world.name}`;
+    document.getElementById('mission-list').innerHTML =
+      `<li>Franchir les ${raceGates.length} portes dans l'ordre</li>`
+      + `<li>Boucler le parcours en moins de ${Math.round(raceTimeLimit / 60)} minutes</li>`
+      + '<li>Battre son propre record</li>';
+  }
   if (raceEnabled) {
     raceTimeText.textContent = formatRaceTime(raceTimeLimit);
     raceBestText.textContent = `Record : ${raceBest ? formatRaceTime(raceBest) : '--:--.---'}`;
@@ -1075,6 +1245,15 @@ async function startWorld() {
     if (label) keys[label] = true;
     if (event.code === 'Escape') location.href = `mondes.html?mode=${mode.id}`;
     if (event.code === 'KeyV') cycleCameraView();
+    // Au volant, R remet la voiture sur la chaussée la plus proche : une carte
+    // de village finit toujours par coincer quelqu'un entre deux murs.
+    if (event.code === 'KeyR' && mode.type === 'drive') auto?.redresser();
+    // Le son du moteur est muet par défaut ; M l'allume, et le coupe à nouveau.
+    if (event.code === 'KeyM' && mode.type === 'drive') auto?.basculerSon();
+    // C : GT rouge (propulsion) ↔ berline bleue (traction), la seconde pardonne tout.
+    if (event.code === 'KeyC' && mode.type === 'drive') {
+      auto?.choisirVoiture(auto.voitureChoisie() === 'rouge' ? 'bleue' : 'rouge');
+    }
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
   });
   window.addEventListener('keyup', event => {
@@ -1448,6 +1627,24 @@ async function startWorld() {
     updateHullHud();
   }
 
+  //  UN MISSILE ENNEMI DANS LA COQUE. Il coute DEUX points la ou un mur en
+  //  coute un : se prendre un missile doit se payer plus cher que de raser un
+  //  toit, sinon plus personne ne manoeuvre. Le delai de grace des collisions
+  //  ne s'applique pas — un missile ne touche qu'une fois, il n'a pas besoin
+  //  d'etre protege contre lui-meme.
+  function encaisserMissile(impact) {
+    if (wreckTimer > 0) return;
+    collisionsTaken += 2;
+    if (collisionsTaken > MAX_COLLISIONS) {
+      destroyFighter();
+      return;
+    }
+    speed *= .55;
+    collisionGrace = Math.max(collisionGrace, COLLISION_GRACE);
+    if (impact) explosions.spawn(impact, 1.4, built.getHeight(impact.x, impact.z));
+    updateHullHud();
+  }
+
   function destroyFighter() {
     if (wreckTimer > 0) return;
     wreckTimer = WRECK_DURATION;
@@ -1455,7 +1652,11 @@ async function startWorld() {
     player.visible = false;
     speed = 0;
     aerobatic = null;
-    window.RaphaelFighterEngine?.update(0, false);
+    // `update(0)` **rallumerait** le reacteur au ralenti : le module part d'un
+    // regime plancher de 0,12, un chasseur detruit se mettrait donc a ronronner.
+    // Une epave ne fait pas de bruit.
+    window.RaphaelFighterEngine?.stop();
+    window.RaphaelBoostAudio?.stop();
     updateHullHud();
   }
 
@@ -1503,6 +1704,26 @@ async function startWorld() {
     const desired = player.position.clone().addScaledVector(forward, -distance).add(new THREE.Vector3(0, height, 0));
     camera.position.lerp(desired, smoothing(12, dt));
     camera.lookAt(player.position.clone().add(new THREE.Vector3(0, mode.id === 'robot' ? 4 : 2.5, 0)));
+  }
+
+  /**
+   * Une image au volant.
+   *
+   * Le pilote de voiture fait tout le travail — physique, suspension, caméra,
+   * son. Ce qui reste ici tient en trois lignes : le joueur « officiel » du
+   * moteur suit la voiture, pour que le portail, les objectifs, la mini-carte
+   * et le multijoueur continuent de voir un joueur là où il est réellement.
+   */
+  function updateDrive(dt, pad) {
+    tactileAuto.x = touch.x + (pad.x || 0);
+    tactileAuto.y = touch.y + (pad.y || 0);
+    tactileAuto.active = Math.abs(tactileAuto.x) > .02 || Math.abs(tactileAuto.y) > .02;
+    auto.update(dt, tactileAuto);
+    const e = auto.etat;
+    player.position.set(e.x, auto.state.y, e.z);
+    player.rotation.y = e.yaw;
+    yaw = e.yaw;
+    speed = e.vitesse;
   }
 
   function updateHud(pad) {
@@ -1611,6 +1832,7 @@ async function startWorld() {
       // s'arrete : le poste continue de se rafraichir plus bas, donc on voit
       // l'effet de chaque cran.
     } else if (mode.type === 'flight') updateFlight(dt, pad);
+    else if (mode.type === 'drive') updateDrive(dt, pad);
     else updateGround(dt, pad);
     if (!window.__postePause) updateRace(elapsed);
     // Le poste est anime ici, et il ne l'etait pas : il etait construit, rendu
@@ -1654,6 +1876,7 @@ async function startWorld() {
     updatePortal(dt, pad);
     mixers.forEach(item => item.mixer.update(dt));
     animateWorld(built.root, elapsed);
+    built.tick?.(dt);            // horloge propre aux mondes relevés (eau, feuillage, ciel)
     updateHud(pad);
     renderer.render(scene, camera);
   }
@@ -1735,7 +1958,7 @@ async function startWorld() {
   const loading = document.getElementById('world-loading');
   const loadingText = document.getElementById('world-loading-text');
   try {
-    loadingText.textContent = 'Chargement complet de la ville et des appareilsâ€¦';
+    loadingText.textContent = 'Chargement complet de la ville et des appareils…';
     await Promise.all([built.assetsPromise, pilotPromise, combat.ready || Promise.resolve()]);
 
     // Carte perso : le monde de base est deja construit, on n'applique que le
@@ -1757,10 +1980,10 @@ async function startWorld() {
     // Les immeubles n'existent qu'ici : c'est le seul moment ou l'on peut
     // verifier que le circuit reste franchissable.
     clearRaceGatesFromBuildings();
-    assetMessage = 'Tous les objets 3D sont prÃªts';
+    assetMessage = 'Tous les objets 3D sont prêts';
   } catch (error) {
     console.warn('[mondes] chargement partiel', error);
-    assetMessage = 'Chargement terminÃ© avec modÃ¨le de secours';
+    assetMessage = 'Chargement terminé avec modèle de secours';
   }
   renderLoadStatus();
   renderer.render(scene, camera);

@@ -172,43 +172,268 @@
   // son appareil dans `userData.regime`, ecrit par la boucle de vol.
   const tuyeres = new Set();
   let boucleTuyeres = false;
+  let dernierTemps = performance.now();
+
+  // -- EFFETS DE JET -------------------------------------------------------
+  // Lampe et etincelles. Poses uniquement sur l'appareil du joueur, par
+  // l'option `effets` : une lampe par tuyere sur les dix ennemis en patrouille
+  // ferait vingt lumieres dynamiques dans la scene, et le shader s'effondre.
+
+  // Sprite rond des etincelles, peint une fois dans un canvas : l'effet ne
+  // depend ainsi d'aucun fichier a telecharger.
+  let spriteEtincelle = null;
+  function textureEtincelle() {
+    if (spriteEtincelle) return spriteEtincelle;
+    const toile = document.createElement('canvas');
+    toile.width = toile.height = 64;
+    const pinceau = toile.getContext('2d');
+    const degrade = pinceau.createRadialGradient(32, 32, 0, 32, 32, 32);
+    degrade.addColorStop(0, 'rgba(255,255,255,1)');
+    degrade.addColorStop(.35, 'rgba(255,201,110,.85)');
+    degrade.addColorStop(1, 'rgba(255,120,20,0)');
+    pinceau.fillStyle = degrade;
+    pinceau.fillRect(0, 0, 64, 64);
+    spriteEtincelle = new THREE.CanvasTexture(toile);
+    return spriteEtincelle;
+  }
+
+  // Bruit nuageux, peint une fois et raccorde sur ses bords : c'est lui qui
+  // casse l'aplat. Sans texture, un cone additif reste un cone — de pres on
+  // voit le polygone et la coupure nette a la bouche.
+  let bruitPlume = null;
+  function textureBruit() {
+    if (bruitPlume) return bruitPlume;
+    const N = 128;
+    const toile = document.createElement('canvas');
+    toile.width = toile.height = N;
+    const p = toile.getContext('2d');
+    p.fillStyle = '#202020';
+    p.fillRect(0, 0, N, N);
+    p.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 90; i++) {
+      const x = Math.random() * N, y = Math.random() * N;
+      const r = 6 + Math.random() * 26;
+      const force = .25 + Math.random() * .55;
+      // Neuf fois, decale d'une tuile : les taches qui debordent reviennent de
+      // l'autre cote, et la texture se raccorde sans couture visible.
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const g = p.createRadialGradient(x + dx * N, y + dy * N, 0, x + dx * N, y + dy * N, r);
+          g.addColorStop(0, `rgba(255,255,255,${force})`);
+          g.addColorStop(1, 'rgba(255,255,255,0)');
+          p.fillStyle = g;
+          p.beginPath();
+          p.arc(x + dx * N, y + dy * N, r, 0, Math.PI * 2);
+          p.fill();
+        }
+      }
+    }
+    bruitPlume = new THREE.CanvasTexture(toile);
+    bruitPlume.wrapS = bruitPlume.wrapT = THREE.RepeatWrapping;
+    return bruitPlume;
+  }
+
+  // Deux matieres pour toutes les tuyeres du jeu : meme texture, deux vitesses
+  // de defilement. La couleur et l'extinction sont peintes dans les sommets,
+  // donc une seule matiere suffit pour les trois couches du jet.
+  let plumeLente = null, plumeRapide = null;
+  function matieresPlume() {
+    if (plumeLente) return;
+    const faire = (repeatY) => {
+      const carte = textureBruit().clone();
+      carte.needsUpdate = true;
+      carte.wrapS = carte.wrapT = THREE.RepeatWrapping;
+      carte.repeat.set(2, repeatY);
+      return new THREE.MeshBasicMaterial({
+        map: carte, vertexColors: true, color: 0xffffff,
+        transparent: true, blending: THREE.AdditiveBlending,
+        depthWrite: false, side: THREE.DoubleSide
+      });
+    };
+    plumeLente = faire(1.4);
+    plumeRapide = faire(2.2);
+  }
+
+  function defilerPlume(t) {
+    if (!plumeLente) return;
+    // Vers -Y : la texture remonte du cote de la bouche vers la pointe, donc
+    // le jet a l'air de fuir vers l'arriere.
+    plumeLente.map.offset.y = (-t * 1.15) % 1;
+    plumeRapide.map.offset.y = (-t * 2.45) % 1;
+  }
+
+  const ETINCELLES = 110;
+
+  /**
+   * Lampe + trainee d'etincelles pour une tuyere. L'effet est pose a cote du
+   * groupe `reacteurs` et non dedans : ce groupe est mis a l'echelle a chaque
+   * image pour faire respirer les cones, et la lampe serait etiree avec.
+   */
+  function fabriquerEffets(longueur, rayon) {
+    const effet = new THREE.Group();
+    effet.name = 'reacteur-effets';
+
+    const lampe = new THREE.PointLight(0xff8c3a, 1, rayon * 20, 2);
+    lampe.position.z = longueur * .35;
+    effet.add(lampe);
+
+    const graineX = new Float32Array(ETINCELLES);
+    const graineY = new Float32Array(ETINCELLES);
+    const ages = new Float32Array(ETINCELLES);
+    const vies = new Float32Array(ETINCELLES);
+    for (let i = 0; i < ETINCELLES; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Math.sqrt(Math.random()) * rayon * .5;
+      graineX[i] = Math.cos(angle) * distance;
+      graineY[i] = Math.sin(angle) * distance;
+      ages[i] = Math.random();          // desynchronise : la trainee est pleine des la premiere image
+      vies[i] = .35 + Math.random() * .45;
+    }
+    const geometrie = new THREE.BufferGeometry();
+    geometrie.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ETINCELLES * 3), 3));
+    const nuage = new THREE.Points(geometrie, new THREE.PointsMaterial({
+      map: textureEtincelle(),
+      size: rayon * 1.4,
+      sizeAttenuation: true,
+      color: 0xffb257,
+      transparent: true,
+      opacity: .85,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    }));
+    nuage.frustumCulled = false;        // les points sortent de leur boite d'origine
+    effet.add(nuage);
+
+    // Disque de bouche : un panneau toujours face camera, donc sans silhouette.
+    // C'est le point chaud que l'oeil cherche quand on regarde une tuyere de pres.
+    const bouche = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: textureEtincelle(), color: 0xffd9a8,
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    bouche.scale.setScalar(rayon * 3);
+    effet.add(bouche);
+
+    // Diamants de choc : les noeuds brillants alignes dans le jet. C'est le
+    // detail qui distingue une postcombustion d'un cone orange.
+    const diamants = [];
+    [.16, .30, .46, .64].forEach(part => {
+      const d = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: textureEtincelle(), color: 0xdff0ff,
+        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+      }));
+      d.userData.part = part;
+      d.visible = false;
+      effet.add(d);
+      diamants.push(d);
+    });
+
+    effet.userData = { lampe, nuage, graineX, graineY, ages, vies, longueur, rayon, bouche, diamants };
+    return effet;
+  }
+
+  function animerEffets(liste, regime, postcombustion, vacillement, dt) {
+    for (const effet of liste) {
+      const { lampe, nuage, graineX, graineY, ages, vies, longueur, rayon, bouche, diamants } = effet.userData;
+
+      // Eclairage physique (three r158) : l'intensite suit le carre de la
+      // portee, sans quoi le meme reglage eblouit l'avion de la ville et reste
+      // invisible sur celui des Mondes, trois fois plus grand.
+      const portee = rayon * (14 + regime * 18);
+      lampe.distance = portee;
+      lampe.intensity = portee * portee * (.05 + regime * .06 + postcombustion * .09) * vacillement;
+      lampe.color.setHex(postcombustion > .3 ? 0xffd9a0 : 0xff8c3a);
+
+      const allonge = longueur * (1.5 + regime * 2.2);
+      const tableau = nuage.geometry.attributes.position.array;
+      for (let i = 0; i < ETINCELLES; i++) {
+        ages[i] += dt / vies[i];
+        if (ages[i] >= 1) {             // l'etincelle s'eteint : elle renait dans la buse
+          ages[i] -= 1;
+          vies[i] = .35 + Math.random() * .45;
+          const angle = Math.random() * Math.PI * 2;
+          const distance = Math.sqrt(Math.random()) * rayon * .5;
+          graineX[i] = Math.cos(angle) * distance;
+          graineY[i] = Math.sin(angle) * distance;
+        }
+        const age = ages[i];
+        const evasement = 1 + age * 1.8;   // le jet s'ouvre en s'eloignant
+        tableau[i * 3] = graineX[i] * evasement;
+        tableau[i * 3 + 1] = graineY[i] * evasement;
+        tableau[i * 3 + 2] = age * allonge;
+      }
+      nuage.geometry.attributes.position.needsUpdate = true;
+      nuage.material.opacity = (.35 + regime * .5) * vacillement;
+      nuage.material.size = rayon * (1.2 + postcombustion * .9);
+
+      bouche.scale.setScalar(rayon * (2.4 + regime * 1.6) * vacillement);
+      bouche.material.opacity = .55 + regime * .45;
+
+      // Les diamants ne sortent qu'en postcombustion, et se resserrent vers la
+      // bouche quand la poussee monte.
+      for (const d of diamants) {
+        d.visible = postcombustion > .02;
+        if (!d.visible) continue;
+        d.position.z = allonge * d.userData.part * (1 - postcombustion * .18);
+        const pulse = .85 + Math.sin(d.userData.part * 30 + vacillement * 9) * .15;
+        d.scale.setScalar(rayon * (1.5 - d.userData.part) * postcombustion * 2.2 * pulse);
+        d.material.opacity = postcombustion * (1 - d.userData.part * .6);
+      }
+    }
+  }
 
   function animerTuyeres() {
-    const t = performance.now() * .001;
+    const maintenant = performance.now();
+    const dt = Math.min(.05, (maintenant - dernierTemps) * .001);   // borne : un retour d'onglet ne teleporte pas la trainee
+    dernierTemps = maintenant;
+    const t = maintenant * .001;
     const vacillement = .9 + Math.sin(t * 45) * .07 + Math.sin(t * 27) * .05;
+    defilerPlume(t);                  // une seule matiere partagee : un appel suffit
     for (const groupe of tuyeres) {
       if (!groupe.parent) { tuyeres.delete(groupe); continue; }
       const regime = Math.max(.25, Math.min(1, groupe.userData.regime ?? .45));
+      // Au-dela de 80% de regime, la postcombustion : le jet blanchit et s'allonge.
+      const postcombustion = Math.max(0, (regime - .8) / .2);
       groupe.children.forEach(tuyere => {
         tuyere.scale.z = (.6 + regime * .8) * vacillement;
         tuyere.scale.x = tuyere.scale.y = .9 + (vacillement - .9);
       });
+      if (groupe.userData.effets) animerEffets(groupe.userData.effets, regime, postcombustion, vacillement, dt);
     }
     if (tuyeres.size) requestAnimationFrame(animerTuyeres);
     else boucleTuyeres = false;
   }
 
   function fabriquerTuyere(longueur, rayon) {
+    matieresPlume();
     const groupe = new THREE.Group();
     groupe.add(new THREE.Mesh(
       new THREE.TorusGeometry(rayon * 1.05, rayon * .14, 10, 24),
       new THREE.MeshStandardMaterial({ color: 0x14181c, roughness: .42, metalness: .7 })
     ));
-    const cone = (r, h, couleur, opacite) => {
-      const maille = new THREE.Mesh(
-        new THREE.ConeGeometry(r, h, 18, 1, true),
-        new THREE.MeshBasicMaterial({
-          color: couleur, transparent: true, opacity: opacite,
-          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
-        })
-      );
+    const cone = (r, h, couleur, intensite, matiere) => {
+      const geometrie = new THREE.ConeGeometry(r, h, 28, 1, true);
+      // Couleur ET extinction peintes dans les sommets. En melange additif le
+      // noir n'ajoute rien : un degrade vers le noir eteint la pointe sans
+      // aucun canal alpha, et la silhouette du cone disparait.
+      const pos = geometrie.attributes.position;
+      const teintes = new Float32Array(pos.count * 3);
+      const c = new THREE.Color(couleur);
+      for (let i = 0; i < pos.count; i++) {
+        const versLaPointe = (pos.getY(i) + h / 2) / h;   // 0 a la bouche, 1 a la pointe
+        const f = Math.pow(1 - versLaPointe, 1.7) * intensite;
+        teintes[i * 3] = c.r * f;
+        teintes[i * 3 + 1] = c.g * f;
+        teintes[i * 3 + 2] = c.b * f;
+      }
+      geometrie.setAttribute('color', new THREE.BufferAttribute(teintes, 3));
+      const maille = new THREE.Mesh(geometrie, matiere);
       maille.rotation.x = -Math.PI / 2;   // apex vers +Z, donc vers l'arriere
       maille.position.z = h / 2;
       return maille;
     };
-    groupe.add(cone(rayon, longueur, 0xff6a10, .5));
-    groupe.add(cone(rayon * .6, longueur * .78, 0xffae2e, .7));
-    groupe.add(cone(rayon * .3, longueur * .5, 0xfff3b0, .95));
+    groupe.add(cone(rayon, longueur, 0xff6a10, 1.1, plumeLente));
+    groupe.add(cone(rayon * .6, longueur * .78, 0xffae2e, 1.5, plumeRapide));
+    groupe.add(cone(rayon * .3, longueur * .5, 0xfff3b0, 2.0, plumeRapide));
     return groupe;
   }
 
@@ -244,6 +469,8 @@
    * @param {number} options.longueur longueur nez-queue voulue, en unites de
    *   monde. L'envergure vaut environ 1,03 fois cette valeur.
    * @param {boolean} options.reacteurs pose les tuyeres et leur animation.
+   * @param {boolean} options.effets ajoute la lampe de jet et les etincelles.
+   *   Reserve a l'appareil du joueur : c'est une lumiere dynamique par tuyere.
    * @param {boolean} options.missiles pose les quatre rampes sous les ailes.
    * @param {THREE.Material} options.materiau remplace la finition texturee.
    * @param {number} options.teinte couleur multipliant la texture, pour
@@ -252,7 +479,7 @@
    *   pendant le premier chargement du modele, et lui seul.
    * @returns {Promise<THREE.Group>} l'appareil, ancrages compris.
    */
-  async function construire({ longueur = 5, reacteurs = true, missiles = false, materiau = null, teinte = null, onProgress = null } = {}) {
+  async function construire({ longueur = 5, reacteurs = true, effets = false, missiles = false, materiau = null, teinte = null, onProgress = null } = {}) {
     const gabarit = await chargerGabarit(onProgress);
     const cellule = gabarit.clone(true);
     // Une matiere fournie remplace tout ; sinon on garde la texture et on ne
@@ -307,14 +534,22 @@
       const rayon = Math.max(.06, cotes.envergure * .04);
       const ecartement = cotes.envergure * .15;
       const hauteur = -cotes.hauteur * .05;
+      const effetsPoses = [];
       [-ecartement, ecartement].forEach(dx => {
         const tuyere = fabriquerTuyere(longueurTuyere, rayon);
         tuyere.position.set(dx, hauteur, arriere - cotes.longueur * .005);
         groupe.add(tuyere);
         tuyeresPosees.push(tuyere);
+        if (effets) {
+          const effet = fabriquerEffets(longueurTuyere, rayon);
+          effet.position.copy(tuyere.position);
+          appareil.add(effet);           // frere du groupe, donc hors de sa mise a l'echelle
+          effetsPoses.push(effet);
+        }
       });
       appareil.add(groupe);
       groupe.userData.regime = .45;
+      if (effetsPoses.length) groupe.userData.effets = effetsPoses;
       tuyeres.add(groupe);
       if (!boucleTuyeres) { boucleTuyeres = true; requestAnimationFrame(animerTuyeres); }
       appareil.userData.reacteurs = groupe;

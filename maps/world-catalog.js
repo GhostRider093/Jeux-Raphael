@@ -2,7 +2,20 @@ import { KENNEY_ROAD_LIBRARY, KENNEY_ROAD_PLACEMENTS } from './kenney-road-asset
 
 export const PLAYER_MODES = [
   { id: 'chasseur', name: 'Chasseur', icon: '✈', type: 'flight', description: 'Vol rapide, exploration aérienne et rase-mottes.' },
-  { id: 'robot', name: 'Robot Titan', icon: '◆', type: 'ground', description: 'Exploration terrestre lourde et franchissement.' }
+  { id: 'robot', name: 'Robot Titan', icon: '◆', type: 'ground', description: 'Exploration terrestre lourde et franchissement.' },
+  // La voiture n'existe que là où il y a de vraies rues : les villages relevés
+  // et le pays qui les réunit. Sur un monde procédural, elle roulerait sur un
+  // relief sans chaussée, ce qui n'a aucun intérêt — d'où le champ `modes`.
+  { id: 'voiture', name: 'Voiture GT', icon: '▰', type: 'drive', description: 'Sportive de route : rues du village, glissades et frein à main.' },
+  // Même pilote, même physique, autre engin : 110 kg, 25 km/h, et elle passe
+  // dans des ruelles où la GT ne tient pas.
+  { id: 'trottinette', name: 'Trottinette', icon: '⌇', type: 'drive', engin: 'trottinette',
+    description: 'Trottinette électrique : lente, maniable, elle passe partout.' },
+  // La même voiture, l'autre mécanique : traction avant, 5,7° de dérive à fond
+  // de volant contre 22 pour la GT. C'est elle qu'on prend pour courir, et elle
+  // se choisit ici plutôt que par une touche découverte en roulant.
+  { id: 'berline', name: 'Berline bleue', icon: '▱', type: 'drive', voiture: 'bleue',
+    description: 'Traction avant : elle élargit son virage au lieu de partir. La plus facile.' }
 ];
 
 export const ASSET_LIBRARY = {
@@ -576,6 +589,70 @@ export const WORLD_MAPS = [
     spawn: { ground: [0, 0, 760], air: [0, 120, 760] }, mission: 'Ascension du massif des Titans',
     objectives: ['Slalomer entre les sapins de la vallée', 'Franchir les couloirs de parois', 'Enchaîner les quatre tunnels'],
     modes: ['chasseur']
+  },
+  {
+    // Monde « relevé » : ni graine ni générateur. Son relief, ses toits et ses
+    // arbres viennent du LiDAR et de la BD TOPO ; `maps/poilhes-world.js` le
+    // construit et le rend au moteur sous la forme d'un monde ordinaire.
+    id: 'poilhes', name: 'Poilhes', icon: '⌂', category: 'Village réel · Hérault', seed: 0, size: 5800,
+    terrainSource: 'village', village: 'poilhes',
+    tagline: 'Un vrai village du Languedoc, relevé au laser et rebâti pierre à pierre.',
+    description: "593 bâtiments aux toits reconstruits depuis le LiDAR, 2 641 arbres réels, 1 241 rangs de vigne, le canal du Midi et 54 rues nommées — le tout à partir des données publiques IGN et OpenStreetMap. On le survole au chasseur, on l'arpente à pied, ou on y pilote le Titan contre les gobelins.",
+    sky: 0x9fc4e4, fog: 0xc9dcec, fogDensity: 0.00015, waterLevel: 0,
+    terrain: { kind: 'plains', base: 0, amplitude: 0, scale: 0.001, low: 0x6b7a52, mid: 0x8a9463, high: 0xb9b48c },
+    layout: 'village', population: { trees: 0, rocks: 0, buildings: 0, towers: 0, crystals: 0 },
+    spawn: { ground: [-60, 0, 120], air: [40, 230, 620] }, mission: 'Visite du village',
+    objectives: ['Survoler le canal du Midi', 'Se poser place de la Mairie', 'Nettoyer le village des gobelins'],
+    modes: ['chasseur', 'voiture', 'berline', 'trottinette', 'robot']
+  },
+  {
+    id: 'capestang', name: 'Capestang', icon: '⛪', category: 'Village réel · Hérault', seed: 0, size: 7000,
+    terrainSource: 'village', village: 'capestang',
+    tagline: 'Le grand village du canal, et sa collégiale qui se voit à dix kilomètres.',
+    description: "Capestang, quatre fois plus peuplé que Poilhes, relevé de la même façon : toits reconstruits au LiDAR, arbres réels, vignes, et la collégiale Saint-Étienne dont la nef inachevée domine l'étang asséché. Le canal du Midi y passe par le pont-canal et l'ancienne maison du garde.",
+    sky: 0x9fc4e4, fog: 0xc9dcec, fogDensity: 0.00015, waterLevel: 0,
+    terrain: { kind: 'plains', base: 0, amplitude: 0, scale: 0.001, low: 0x6b7a52, mid: 0x8a9463, high: 0xb9b48c },
+    layout: 'village', population: { trees: 0, rocks: 0, buildings: 0, towers: 0, crystals: 0 },
+    spawn: { ground: [-40, 0, 90], air: [60, 240, 700] }, mission: 'Reconnaissance du canal',
+    objectives: ['Passer au ras de la collégiale', 'Suivre le canal du Midi', 'Se poser sur la place'],
+    modes: ['chasseur', 'voiture', 'berline', 'trottinette', 'robot']
+  },
+  {
+    // Un « pays » : les deux villages relevés dans la même carte, à leur écart
+    // réel (4 022 m). Rien n'est dupliqué — `maps/pays-world.js` pose chacun
+    // dans un groupe décalé et leur prête un seul ciel, un seul soleil et le
+    // relief de 8 km qui les relie (`scripts/poilhes/build_pays.py`).
+    id: 'pays-canal', name: 'Poilhes et Capestang', icon: '⛵', category: 'Pays réel · Hérault',
+    seed: 0, size: 4000, terrainSource: 'pays', pays: 'canal',
+    tagline: 'Les deux villages du canal dans la même carte, à leur vraie distance.',
+    description: "Poilhes et Capestang réunis sur 8 km de Languedoc relevé : 2 241 bâtiments aux toits reconstruits au LiDAR, le canal du Midi qui va de l'un à l'autre, l'étang asséché de Montady et l'oppidum d'Ensérune à l'horizon. Quarante secondes de vol séparent les deux clochers.",
+    sky: 0x9fc4e4, fog: 0xc9dcec, fogDensity: 0.00015, waterLevel: 0,
+    terrain: { kind: 'plains', base: 0, amplitude: 0, scale: 0.001, low: 0x6b7a52, mid: 0x8a9463, high: 0xb9b48c },
+    layout: 'village', population: { trees: 0, rocks: 0, buildings: 0, towers: 0, crystals: 0 },
+    // Départ au-dessus de Poilhes, cap au nord : on décolle sur un village et on
+    // voit l'autre droit devant à gauche, à 4 km — c'est tout l'intérêt de la carte.
+    // Attention : `size` et les `spawn` sont doublés plus bas (WORLD_LINEAR_SCALE),
+    // on les écrit donc à la moitié de leur valeur réelle — (827, 572) devient
+    // (1 654, 1 144), la place de Poilhes.
+    spawn: { ground: [827, 0, 572], air: [827, 380, 572] }, mission: 'Liaison Poilhes — Capestang',
+    objectives: ['Décoller au-dessus du canal', 'Passer au ras de la collégiale de Capestang',
+                 'Revenir se poser sur la place de Poilhes'],
+    // La voiture rejoint le chasseur : quatre kilomètres de campagne entre les
+    // deux villages, c'est une route, pas seulement un couloir aérien.
+    modes: ['chasseur', 'voiture', 'berline', 'trottinette'],
+    // ── La course Poilhes → Capestang ──────────────────────────────────────
+    // Onze portes au sol, 3 561 m de parcours, un S léger pour que ce soit un
+    // tracé et non une ligne droite. Les pentes relevées sur le relief du pays
+    // ne dépassent pas 3,6 % : ça se court en voiture comme en trottinette.
+    // Coordonnées de carte (doublées au chargement comme le reste).
+    courseRoute: [
+      { x: 739, z: 488 }, { x: 607, z: 367 }, { x: 471, z: 253 }, { x: 328, z: 148 },
+      { x: 178, z: 54 }, { x: 22, z: -31 }, { x: -139, z: -111 }, { x: -300, z: -188 },
+      { x: -460, z: -268 }, { x: -616, z: -354 }, { x: -765, z: -450 },
+    ],
+    // 4 minutes : large pour la GT (3 min à 70 km/h de moyenne), juste pour la
+    // trottinette, qui a tout intérêt à couper au plus court.
+    courseTemps: 240
   }
 ];
 
@@ -597,6 +674,7 @@ WORLD_MAPS.forEach(world => {
   (world.landmarks || []).forEach(scaleXZ);
   (world.assets || []).forEach(scaleXZ);
   (world.raceCourse || []).forEach(scaleXZ);
+  (world.courseRoute || []).forEach(scaleXZ);
   ['ground', 'air'].forEach(kind => {
     const spawn = world.spawn?.[kind];
     if (spawn) { spawn[0] *= WORLD_LINEAR_SCALE; spawn[2] *= WORLD_LINEAR_SCALE; }

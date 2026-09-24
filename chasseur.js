@@ -42,7 +42,7 @@ function poserAppareilVille(etiquette, materiau, recevoir) {
   }
   // La longueur nez-queue vaut 5 unites : c'est la cote de reference de la
   // ville depuis toujours, elle est simplement nommee maintenant.
-  window.RaphaelChasseur.construire({ longueur: 5, reacteurs: true, missiles: true, materiau })
+  window.RaphaelChasseur.construire({ longueur: 5, reacteurs: true, effets: true, missiles: true, materiau })
     .then(appareil => {
       recevoir(appareil);
       player.add(appareil);

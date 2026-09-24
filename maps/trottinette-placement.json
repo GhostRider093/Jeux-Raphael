@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "placements": {
+    "assets/perso/pilote.glb": {
+      "x": 0.0,
+      "y": 0.15,
+      "z": -0.033,
+      "rx": 0.0,
+      "ry": 0.0,
+      "rz": 0.0,
+      "taille": 1.483
+    }
+  }
+}

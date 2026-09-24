@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+<script src="./son-silence.js?v=coupe-son-20260922"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Raphael — Les Mondes</title>
@@ -218,6 +219,15 @@
     #combat-lock-state { color:#ffcf55; font-size:11px; font-weight:900; line-height:1.35; }
     #combat-lock-state.locked { color:#ff6350; }
     #combat-lock-state.ok { color:#a5ed78; }
+    /* ALERTE MISSILE. Plein centre, au-dessus du viseur : c'est la seule
+       information qui a le droit de couper la lecture du reste du HUD. Le
+       texte dit QUOI FAIRE, pas ce qui arrive — « MISSILE » tout seul laisse
+       le pilote regarder au lieu de manoeuvrer. */
+    #missile-alert { position:fixed; left:50%; top:20%; z-index:28; transform:translateX(-50%); display:none; padding:7px 17px; border:1px solid rgba(255,45,28,.75); background:rgba(28,3,3,.55); color:#ff3322; font:900 15px/1.2 Consolas,monospace; letter-spacing:2px; text-align:center; text-shadow:0 0 12px rgba(255,45,28,.8); pointer-events:none; }
+    #missile-alert.on { display:block; animation:missile-alert-flash .5s steps(2) infinite; }
+    #missile-alert.dodged { display:block; border-color:rgba(165,237,120,.7); color:#a5ed78; text-shadow:0 0 12px rgba(165,237,120,.7); }
+    #missile-alert.hit { display:block; border-color:rgba(255,193,76,.8); color:#ffc14c; text-shadow:0 0 12px rgba(255,193,76,.75); }
+    @keyframes missile-alert-flash { 0%,100% { opacity:1 } 50% { opacity:.28 } }
     #combat-distance,#combat-ammo,#combat-audio-state { margin-top:3px; color:rgba(220,242,252,.72); font:10px/1.35 Consolas,monospace; }
     #missile-rack-status { margin-top:5px; color:#ffda69; font:800 9px/1.25 Consolas,monospace; letter-spacing:.5px; }
     #target-health-bar { height:5px; margin-top:8px; overflow:hidden; border-radius:0; background:rgba(255,255,255,.12); }
@@ -328,6 +338,28 @@
        centre de l'ecran. Seule subsiste une fleche en ligne, qui garde la
        direction de la prochaine porte sans encombrer la vue. */
     #race-radar-distance { display:flex; align-items:center; justify-content:center; gap:6px; margin-top:4px; color:#dca9ff; font:800 10px Consolas,monospace; }
+    /* GPS : posé en haut au centre, au-dessus de tout, jamais cliquable. */
+    #gps { position:absolute; z-index:40; left:50%; top:112px; transform:translateX(-50%);
+           display:flex; align-items:center; gap:16px; padding:12px 22px 12px 16px;
+           border:1px solid rgba(122,237,255,.45); border-radius:14px;
+           background:rgba(3,12,20,.82); box-shadow:0 0 34px rgba(53,205,255,.18);
+           backdrop-filter:blur(9px); pointer-events:none; }
+    #gps[hidden] { display:none; }
+    #gps-fleche { width:76px; height:76px; fill:#7ef7a8; filter:drop-shadow(0 0 10px rgba(80,255,150,.55));
+                  transition:transform .12s linear, fill .25s linear; }
+    #gps.proche #gps-fleche { fill:#ffd15c; filter:drop-shadow(0 0 12px rgba(255,200,80,.6)); }
+    #gps.demi-tour #gps-fleche { fill:#ff7a7a; filter:drop-shadow(0 0 12px rgba(255,110,110,.6)); }
+    #gps-texte { display:flex; flex-direction:column; line-height:1.15; }
+    #gps-ordre { color:#effcff; font:800 20px/1.1 Consolas,monospace; letter-spacing:1px; }
+    #gps-distance { margin-top:2px; color:#7ef7a8; font:700 30px/1 Consolas,monospace; }
+    #gps.proche #gps-distance { color:#ffd15c; }
+    #gps-porte { margin-top:4px; color:rgba(222,242,252,.62); font:9px Consolas,monospace; letter-spacing:1.4px; }
+    @media (max-width: 820px) {
+      #gps { top:74px; gap:10px; padding:8px 14px 8px 10px; }
+      #gps-fleche { width:52px; height:52px; }
+      #gps-ordre { font-size:14px; }
+      #gps-distance { font-size:21px; }
+    }
     #race-heading-arrow { display:inline-block; width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:13px solid #c56cff; filter:drop-shadow(0 0 5px #a52cff); transform:rotate(0deg); }
     /* Vitesse lumiere : stries radiales en CSS pur. Aucun cout GPU cote 3D,
        et l'effet se declenche par une simple classe sur le body. */
@@ -451,7 +483,7 @@
         <a class="back-link" href="test_manette.html">Configurer la manette</a>
       </nav>
       <div class="hero-kicker">Raphael · Atlas jouable</div>
-      <h1>Vingt-deux mondes.<br>Deux façons de les vivre.</h1>
+      <h1>Vingt-six mondes.<br>Deux façons de les vivre.</h1>
       <p class="hero-copy">Chaque monde possède son relief, son réseau de circulation, ses monuments, ses objets 3D et une mission d’exploration. Choisissez le chasseur ou le robot, puis entrez dans la map. Le chasseur est sélectionné par défaut.</p>
       <div class="mode-label">Choisir le pilote</div>
       <div id="mode-picker"></div>
@@ -466,7 +498,7 @@
       <div id="multiplayer-status">MULTIJOUEUR · CONNEXION…</div>
       <div id="multiplayer-health">INTÉGRITÉ 100</div>
     </aside>
-    <div id="world-loading" role="status" aria-live="polite"><div class="world-loading-card"><div class="world-loading-title">NOVA FLIGHT</div><div id="world-loading-text">PrÃ©paration de la missionâ€¦</div><div class="world-loading-bar"></div></div></div>
+    <div id="world-loading" role="status" aria-live="polite"><div class="world-loading-card"><div class="world-loading-title">NOVA FLIGHT</div><div id="world-loading-text">Préparation de la mission…</div><div class="world-loading-bar"></div></div></div>
     <div class="game-topbar">
       <div class="game-actions">
         <a id="back-catalog" class="game-button" href="mondes.html">← Mondes</a>
@@ -500,6 +532,18 @@
       <div id="race-board" hidden></div>
       <div id="race-score">SCORE : 0 POINTS</div>
     </aside>
+    <!-- Guidage façon GPS : une grosse flèche, un mot, une distance. Le petit
+         triangle du panneau de course se lit mal à 90 km/h dans un virage. -->
+    <div id="gps" hidden>
+      <svg id="gps-fleche" viewBox="0 0 100 100" aria-hidden="true">
+        <path d="M50 8 L84 62 L57 52 L57 92 L43 92 L43 52 L16 62 Z"/>
+      </svg>
+      <div id="gps-texte">
+        <b id="gps-ordre">TOUT DROIT</b>
+        <span id="gps-distance">--- m</span>
+        <small id="gps-porte">PORTE 1 / 11</small>
+      </div>
+    </div>
     <div id="race-award" aria-live="polite">+50</div>
     <div id="world-touch" aria-hidden="true">
       <div id="world-stick"><div id="world-knob"></div></div>
@@ -546,6 +590,7 @@
       </div>
       <div id="target-diamond" aria-hidden="true"></div>
       <div id="missile-seeker-diamond" aria-hidden="true"><div class="cadre"></div><div class="point"></div></div>
+      <div id="missile-alert" role="status" aria-live="assertive"></div>
       <aside id="combat-panel">
         <div id="radar-scope"><div id="radar-sweep"></div><div id="radar-player"></div><div id="radar-target"></div></div>
         <div id="combat-lock-state">RECHERCHE RADAR</div>
@@ -578,11 +623,11 @@
   <script src="./chasseur-model.js?v=explosion-filmee-20260908"></script>
   <script src="./flight-model.js?v=sensibilite-baissee-20260911"></script>
   <script src="./speed-gauge.js?v=jauge-vitesse-20260907"></script>
-  <script src="./fighter-engine-audio.js?v=fighter-engine-20260719"></script>
-  <script src="./boost-audio.js?v=poussee-enregistree-20260908"></script>
-  <script src="./background-ambience.js?v=background-20260719"></script>
+  <script src="./fighter-engine-audio.js?v=reacteur-coupe-20260922"></script>
+  <script src="./boost-audio.js?v=poussee-coupee-20260922"></script>
+  <script src="./background-ambience.js?v=ambiance-muette-20260922"></script>
   <script src="./fighter-cannon-audio.js?v=canon-lent-20260908"></script>
   <script src="./fighter-missile-audio.js?v=impact-sync-20260719"></script>
-  <script type="module" src="./maps/world-game.js?v=sensibilite-baissee-20260911"></script>
+  <script type="module" src="./maps/world-game.js?v=voiture-20260921"></script>
 </body>
 </html>

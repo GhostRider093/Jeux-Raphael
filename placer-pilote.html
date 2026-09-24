@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Placer le pilote sur la trottinette</title>
+<!--
+  Régler à la main où se tient le bonhomme sur la trottinette.
+
+  L'alignement automatique (`alignerSansOs` dans maps/trottinette.js) mesure les
+  poings d'un pilote pour les poser sur les poignées. Cela suppose un modèle
+  dont les bras sont tendus vers l'avant : le pilote livré n'a AUCUN os et ses
+  mains ne sont pas là où la mesure les cherche — d'où un bonhomme de travers.
+
+  Ici, on le place soi-même, on voit le résultat en temps réel, et on enregistre.
+  Le jeu relit exactement le même fichier (`maps/trottinette-placement.json`) :
+  ce qu'on voit ici est ce qu'on aura dans le village et dans les Mondes.
+
+      placer-pilote.html                  (le pilote livré)
+      placer-pilote.html?pilote=chevalier (un autre modèle, réglé à part)
+-->
+<style>
+  :root { --fond: #20242a; --panneau: rgba(12,15,20,.86); --trait: rgba(255,255,255,.14);
+          --texte: #e8ecf1; --doux: #9aa4b1; --vif: #6cc6ff; }
+  html, body { margin: 0; height: 100%; background: var(--fond); color: var(--texte);
+               font: 13px/1.5 system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; touch-action: none; }
+
+  #panneau { position: absolute; top: 0; right: 0; width: 310px; max-height: 100%; overflow-y: auto;
+             padding: 14px 16px 20px; box-sizing: border-box;
+             background: var(--panneau); border-left: 1px solid var(--trait); }
+  h1 { margin: 0 0 2px; font-size: 15px; letter-spacing: .02em; }
+  h2 { margin: 16px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+       color: var(--doux); border-bottom: 1px solid var(--trait); padding-bottom: 4px; }
+  .sous { color: var(--doux); font-size: 11.5px; margin: 0 0 4px; }
+
+  .ligne { display: grid; grid-template-columns: 74px 1fr 58px; align-items: center; gap: 7px;
+           margin: 5px 0; }
+  .ligne label { color: var(--doux); font-size: 12px; }
+  .ligne input[type=range] { width: 100%; accent-color: var(--vif); }
+  .ligne input[type=number] { width: 100%; box-sizing: border-box; background: #171b21;
+           color: var(--texte); border: 1px solid var(--trait); border-radius: 5px;
+           padding: 3px 5px; font: inherit; font-size: 12px; text-align: right; }
+
+  .boutons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  button, select { background: #2b323b; color: var(--texte); border: 1px solid var(--trait);
+           border-radius: 7px; padding: 6px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  button:hover, select:hover { background: #353d48; }
+  button.fort { background: #1d5e88; border-color: #2e86c0; }
+  button.fort:hover { background: #226fa0; }
+
+  #mesures { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: #171b21;
+             border: 1px solid var(--trait); white-space: pre; font-size: 11.5px; color: var(--doux); }
+  #etat { margin-top: 8px; min-height: 18px; font-size: 12px; color: var(--vif); }
+  #aide { position: absolute; left: 12px; bottom: 12px; padding: 8px 12px; border-radius: 10px;
+          background: var(--panneau); border: 1px solid var(--trait); color: var(--doux);
+          font-size: 11.5px; white-space: pre; }
+  kbd { background: #2b323b; border: 1px solid var(--trait); border-radius: 4px;
+        padding: 0 4px; color: var(--texte); font: inherit; font-size: 11px; }
+</style>
+</head>
+<body>
+<div id="aide">Souris : tourner · molette : approcher
+<kbd>←</kbd><kbd>→</kbd> latéral · <kbd>↑</kbd><kbd>↓</kbd> avance
+<kbd>A</kbd><kbd>E</kbd> hauteur · <kbd>Q</kbd><kbd>D</kbd> pivoter
+<kbd>Maj</kbd> = pas fin (millimètre)</div>
+
+<div id="panneau">
+  <h1>Placer le pilote</h1>
+  <p class="sous" id="modele">chargement…</p>
+
+  <h2>Vue</h2>
+  <div class="boutons">
+    <button data-vue="cote">Côté</button>
+    <button data-vue="face">Face</button>
+    <button data-vue="arriere">Arrière</button>
+    <button data-vue="dessus">Dessus</button>
+    <button data-vue="troisquart">3/4</button>
+  </div>
+  <div class="boutons">
+    <button id="reperes">Repères : oui</button>
+    <button id="engin">Trottinette : pleine</button>
+  </div>
+
+  <h2>Position (mètres)</h2>
+  <div id="curseurs"></div>
+
+  <h2>Enregistrer</h2>
+  <div class="boutons">
+    <button class="fort" id="sauver">Enregistrer pour le jeu</button>
+    <button id="copier">Copier</button>
+  </div>
+  <div class="boutons">
+    <button id="auto">Alignement auto</button>
+    <button id="defaut">Valeurs de départ</button>
+    <button id="pieds">Poser les pieds</button>
+  </div>
+  <div id="etat"></div>
+  <div id="mesures"></div>
+
+  <h2>Pilote</h2>
+  <div class="boutons">
+    <select id="qui">
+      <option value="">ado (livré)</option>
+      <option value="chevalier">chevalier</option>
+      <option value="titan">titan</option>
+      <option value="costume">costume (duo)</option>
+    </select>
+  </div>
+  <p class="sous">Chaque modèle garde son propre réglage.</p>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./libs/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './libs/OrbitControls.module.js';
+import { construireTrottinette, PLACEMENT_DEFAUT } from './maps/trottinette.js?v=pilote-20260922';
+
+const params = new URLSearchParams(location.search);
+const qui = params.get('pilote') || '';
+
+// ── la scène : rien d'autre que l'engin et son pilote ───────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x20242a);
+const camera = new THREE.PerspectiveCamera(38, 1, 0.02, 200);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 0.9, 0);
+
+scene.add(new THREE.HemisphereLight(0xdfe9f5, 0x40423f, 2.0));
+const soleil = new THREE.DirectionalLight(0xfff3dd, 2.4);
+soleil.position.set(4, 7, 5);
+scene.add(soleil);
+// Une seconde lampe à contre-jour : sans elle, le côté opposé au soleil est un
+// aplat noir, et c'est justement de ce côté qu'on cherche à voir les mains.
+const appoint = new THREE.DirectionalLight(0xbcd4ef, 0.9);
+appoint.position.set(-5, 3, -4);
+scene.add(appoint);
+
+const damier = new THREE.Mesh(new THREE.CircleGeometry(12, 48),
+  new THREE.MeshStandardMaterial({ color: 0x555b62, roughness: 1 }));
+damier.rotation.x = -Math.PI / 2;
+scene.add(damier);
+// Grille au décimètre : le repère qui manque pour juger deux centimètres.
+const grille = new THREE.GridHelper(4, 40, 0x8a929c, 0x3a4048);
+grille.position.y = 0.001;
+scene.add(grille);
+
+function redimensionner() {
+  const large = innerWidth - (innerWidth > 620 ? 310 : 0);
+  camera.aspect = large / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(large, innerHeight);
+}
+addEventListener('resize', redimensionner);
+redimensionner();
+
+// ── le montage ──────────────────────────────────────────────────────────────
+const kit = await construireTrottinette({ scene, x: 0, z: 0, cap: 0, pilote: qui || undefined });
+document.getElementById('modele').textContent =
+  `${kit.modelePilote}\n${Object.keys(kit.os).length} os` +
+  (Object.keys(kit.os).length ? '' : ' — maillage figé, tout se règle ici');
+document.getElementById('qui').value = qui;
+document.getElementById('qui').onchange = (e) => {
+  location.search = e.target.value ? `?pilote=${encodeURIComponent(e.target.value)}` : '';
+};
+
+// ── les repères : là où sont vraiment les poignées et le plateau ────────────
+// On ne place pas des mains « à peu près sur le guidon » : on affiche les deux
+// points que le code a mesurés sur le maillage, et on vient dessus. Sans eux on
+// règle à l'estime, en tournant autour du modèle pour deviner si ça touche.
+const reperes = new THREE.Group();
+if (kit.poignees) {
+  const bille = new THREE.SphereGeometry(0.035, 16, 12);
+  const matiere = new THREE.MeshBasicMaterial({ color: 0x6cc6ff, transparent: true, opacity: 0.85 });
+  for (const cote of [-1, 1]) {
+    const m = new THREE.Mesh(bille, matiere);
+    m.position.set(cote * kit.poignees.demi, kit.poignees.y, kit.poignees.z);
+    reperes.add(m);
+  }
+  // Le plan du plateau : la hauteur où les semelles doivent tomber.
+  const plateau = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.36, 0.7),
+    new THREE.MeshBasicMaterial({ color: 0xffc46b, transparent: true, opacity: 0.35,
+                                  side: THREE.DoubleSide, depthWrite: false }),
+  );
+  plateau.rotation.x = -Math.PI / 2;
+  plateau.position.y = 0.151;
+  reperes.add(plateau);
+}
+kit.root.add(reperes);
+
+// ── les curseurs ────────────────────────────────────────────────────────────
+// Un curseur pour approcher, un champ chiffré pour finir : les deux écrivent le
+// même réglage, et le modèle bouge à chaque frappe.
+const AXES = [
+  { cle: 'z',      nom: 'avance',   min: -0.8, max: 0.8,  pas: 0.005, unite: 'm', signe: -1 },
+  { cle: 'x',      nom: 'latéral',  min: -0.6, max: 0.6,  pas: 0.005, unite: 'm', signe: 1 },
+  { cle: 'y',      nom: 'hauteur',  min: -0.3, max: 1.4,  pas: 0.005, unite: 'm', signe: 1 },
+  { cle: 'ry',     nom: 'cap',      min: -180, max: 180,  pas: 1,     unite: '°', deg: true },
+  { cle: 'rx',     nom: 'penché',   min: -60,  max: 60,   pas: 1,     unite: '°', deg: true },
+  { cle: 'rz',     nom: 'roulis',   min: -45,  max: 45,   pas: 1,     unite: '°', deg: true },
+  { cle: 'taille', nom: 'taille',   min: 0.8,  max: 2.6,  pas: 0.01,  unite: 'm' },
+];
+const R2D = 180 / Math.PI;
+const champs = {};
+const hote = document.getElementById('curseurs');
+for (const axe of AXES) {
+  const ligne = document.createElement('div');
+  ligne.className = 'ligne';
+  ligne.innerHTML = `<label for="c-${axe.cle}">${axe.nom}</label>`
+    + `<input type="range" id="c-${axe.cle}" min="${axe.min}" max="${axe.max}" step="${axe.pas}">`
+    + `<input type="number" id="n-${axe.cle}" step="${axe.pas}">`;
+  hote.appendChild(ligne);
+  const curseur = ligne.querySelector('input[type=range]');
+  const chiffre = ligne.querySelector('input[type=number]');
+  champs[axe.cle] = { axe, curseur, chiffre };
+  const ecrire = (v) => {
+    // `avance` est comptée vers l'avant du jeu (−z) : un curseur qui pousse le
+    // pilote vers l'arrière quand on va vers la droite se corrige au doigt
+    // pendant cinq minutes, puis on s'en agace.
+    const brut = axe.deg ? Number(v) / R2D : Number(v) * (axe.signe === -1 ? -1 : 1);
+    appliquer({ [axe.cle]: brut });
+  };
+  curseur.oninput = () => ecrire(curseur.value);
+  chiffre.oninput = () => { if (chiffre.value !== '' && !isNaN(chiffre.value)) ecrire(chiffre.value); };
+}
+
+/** Recopie le placement dans les curseurs (après un auto, un défaut, un raccourci). */
+function rafraichir(p) {
+  for (const axe of AXES) {
+    const affiche = axe.deg ? p[axe.cle] * R2D : p[axe.cle] * (axe.signe === -1 ? -1 : 1);
+    const arrondi = axe.deg ? Math.round(affiche * 10) / 10 : Math.round(affiche * 1000) / 1000;
+    champs[axe.cle].curseur.value = arrondi;
+    if (document.activeElement !== champs[axe.cle].chiffre) champs[axe.cle].chiffre.value = arrondi;
+  }
+  const m = kit.mesures();
+  document.getElementById('mesures').textContent =
+    `semelles : ${m.pieds.toFixed(3)} m  (plateau ${m.plateau.toFixed(2)})\n`
+    + `écart    : ${(m.ecartPlateau >= 0 ? '+' : '') + m.ecartPlateau.toFixed(3)} m`
+    + `${Math.abs(m.ecartPlateau) < 0.02 ? '  ✓ posé' : ''}\n`
+    + `sommet   : ${m.tete.toFixed(3)} m\n`
+    + (m.guidon ? `poignées : y ${m.guidon.y.toFixed(3)}  z ${m.guidon.z.toFixed(3)}` : '');
+}
+
+function appliquer(modif) {
+  rafraichir(kit.placerPilote(modif));
+  etat('');
+}
+rafraichir(kit.placement());
+
+// ── les raccourcis : déplacer sans viser un curseur ─────────────────────────
+// Placer quelque chose se fait à deux mains — une sur la souris pour tourner
+// autour, l'autre sur le clavier pour pousser d'un centimètre. Aller chercher
+// un curseur à la souris fait perdre l'angle de vue qu'on venait de trouver.
+const TOUCHES = {
+  ArrowLeft:  ['x', -1], ArrowRight: ['x', 1],
+  ArrowUp:    ['z', -1], ArrowDown:  ['z', 1],
+  a: ['y', -1], e: ['y', 1], A: ['y', -1], E: ['y', 1],
+  q: ['ry', 1], d: ['ry', -1], Q: ['ry', 1], D: ['ry', -1],
+};
+addEventListener('keydown', (ev) => {
+  if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+  const t = TOUCHES[ev.key];
+  if (!t) return;
+  ev.preventDefault();
+  const [cle, sens] = t;
+  const pas = (cle === 'ry' ? (ev.shiftKey ? 0.005 : 0.02) : (ev.shiftKey ? 0.001 : 0.01)) * sens;
+  appliquer({ [cle]: kit.placement()[cle] + pas });
+});
+
+// ── vues, repères, transparence ─────────────────────────────────────────────
+const VUES = {
+  cote:       [2.6, 1.0, 0.0],
+  face:       [0.0, 1.0, -2.6],
+  arriere:    [0.0, 1.0, 2.6],
+  dessus:     [0.001, 3.2, 0.0],
+  troisquart: [1.9, 1.4, 2.0],
+};
+function vue(nom) {
+  const [x, y, z] = VUES[nom];
+  // Sur une fenêtre étroite (le panneau prend 310 px), un recul fixe met le
+  // pilote hors champ : on recule de ce qui manque en largeur. Sans cela, « Côté »
+  // cadre un genou.
+  const recul = Math.max(1, 1.05 / Math.max(0.35, camera.aspect));
+  camera.position.set(x * recul, 0.45 + (y - 0.45) * recul, z * recul);
+  controls.target.set(0, nom === 'dessus' ? 0.4 : 0.9, 0);
+  controls.update();
+}
+document.querySelectorAll('[data-vue]').forEach((b) => { b.onclick = () => vue(b.dataset.vue); });
+vue('troisquart');
+
+document.getElementById('reperes').onclick = (ev) => {
+  reperes.visible = !reperes.visible;
+  ev.target.textContent = `Repères : ${reperes.visible ? 'oui' : 'non'}`;
+};
+let transparent = false;
+document.getElementById('engin').onclick = (ev) => {
+  // La trottinette cache les pieds et les mains dès qu'on cherche le contact :
+  // on la rend translucide au lieu de tourner autour en espérant un jour.
+  transparent = !transparent;
+  kit.engin.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    o.material.transparent = transparent;
+    o.material.opacity = transparent ? 0.35 : 1;
+    o.material.depthWrite = !transparent;
+    o.material.needsUpdate = true;
+  });
+  ev.target.textContent = `Trottinette : ${transparent ? 'translucide' : 'pleine'}`;
+};
+
+// ── remettre à un point connu ───────────────────────────────────────────────
+document.getElementById('defaut').onclick = () => { appliquer(PLACEMENT_DEFAUT); etat('valeurs de départ'); };
+document.getElementById('auto').onclick = () => { rafraichir(kit.aligner()); etat('alignement automatique'); };
+document.getElementById('pieds').onclick = () => {
+  // Poser les pieds est le seul geste qui se calcule mieux qu'il ne se règle :
+  // on descend le pilote de l'écart mesuré entre ses semelles et le plateau.
+  const m = kit.mesures();
+  appliquer({ y: kit.placement().y - m.ecartPlateau });
+  etat('pieds posés sur le plateau');
+};
+
+// ── enregistrer ─────────────────────────────────────────────────────────────
+const CLE = String(kit.modelePilote).split('?')[0];
+function etat(texte, erreur = false) {
+  const e = document.getElementById('etat');
+  e.textContent = texte;
+  e.style.color = erreur ? '#ff9a8a' : 'var(--vif)';
+}
+
+/** Le fichier tel qu'il est sur le disque : on n'écrase pas le réglage des autres pilotes. */
+async function fichierActuel() {
+  try {
+    const r = await fetch('maps/trottinette-placement.json', { cache: 'no-store' });
+    if (!r.ok) return {};
+    const j = await r.json();
+    return (j && j.placements) || {};
+  } catch (err) { return {}; }
+}
+
+function arrondi(p) {
+  const out = {};
+  for (const k of Object.keys(p)) out[k] = Math.round(p[k] * 10000) / 10000;
+  return out;
+}
+
+document.getElementById('sauver').onclick = async () => {
+  const placements = await fichierActuel();
+  placements[CLE] = arrondi(kit.placement());
+  etat('enregistrement…');
+  try {
+    const r = await fetch('api/placement-pilote', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ placements }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || r.status);
+    etat(`enregistré dans ${j.fichier} — le jeu le prend au prochain chargement`);
+  } catch (err) {
+    // Le serveur n'écrit que depuis la machine locale : ailleurs, on repart
+    // avec le réglage dans le presse-papier plutôt qu'avec rien.
+    etat(`échec (${err.message}) — utilise « Copier »`, true);
+  }
+};
+
+document.getElementById('copier').onclick = async () => {
+  const texte = JSON.stringify({ version: 1, placements: { [CLE]: arrondi(kit.placement()) } }, null, 2);
+  try { await navigator.clipboard.writeText(texte); etat('réglage copié dans le presse-papier'); }
+  catch (err) { etat('copie refusée par le navigateur', true); }
+  console.log(texte);
+};
+
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+window.RaphaelPlacement = { kit, scene, camera, controls, appliquer, rafraichir };
+</script>
+</body>
+</html>

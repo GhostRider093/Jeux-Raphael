@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { WORLD_MAPS, getPortalRoute } from './world-catalog.js?v=biseau-net-20260730';
+import { WORLD_MAPS, getPortalRoute } from './world-catalog.js?v=voiture-20260921';
 import { buildWorld } from './world-builder.js?v=biseau-net-20260730';
 import { OBJECT_FAMILIES, OBJECT_LIBRARY, createLibraryObject, libraryKeysByFamily } from './object-library.js?v=biseau-net-20260730';
 import { captureBaseline, serializeEdits, applyEdits } from './custom-map-format.js?v=biseau-net-20260730';

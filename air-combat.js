@@ -4,7 +4,11 @@
   'use strict';
 
   const CFG = {
-    enemyCount: 10, radarRange: 650, lockRange: 480, lockCone: 0.92,
+    // lockCone est le cosinus du demi-angle du cone d'accroche : 0.92 = 23,1 deg,
+    // 0.866 = 30 deg, soit 30 % d'ouverture en plus (16/09/2026). Cote mondes,
+    // la meme demande se regle en pixels d'ecran dans maps/world-combat.js —
+    // les deux verrouillages sont independants.
+    enemyCount: 10, radarRange: 650, lockRange: 480, lockCone: 0.866,
     lockSeconds: 1.9, lockDecay: 1.1, missileSpeed: 185,
     missileLife: 7, missileTurn: 2.25, enemyFireDelay: 7,
     respawnDelay: 12, maxParticles: 180,

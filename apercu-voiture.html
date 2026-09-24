@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Aperçu de la voiture</title>
+<!--
+  La voiture seule, telle que le jeu la monte — pas le GLB brut.
+
+  `apercu-glb.html` montre un fichier ; ici on montre le résultat de
+  `construireVoiture()` : carrosserie remise d'aplomb, **roues détachées du
+  maillage**, matières réglées, phares posés. C'est la seule façon de voir ce
+  que la découpe des roues a réellement emporté — dans le village, un pneu
+  déchiqueté se confond avec l'ombre d'un platane.
+
+      apercu-voiture.html            la GT rouge
+      apercu-voiture.html?teinte=bleu
+
+  Souris : tourner, molette : approcher.
+  R : roues en couleur (corps en gris) · T : faire tourner les roues
+  B : braquer · N : nuit · C : changer de teinte
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #20242a; color: #e8ecf1;
+               font: 13px/1.5 system-ui, sans-serif; overflow: hidden; }
+  #info { position: absolute; left: 12px; bottom: 12px; padding: 8px 12px; border-radius: 10px;
+          background: rgba(12,15,20,.78); border: 1px solid rgba(255,255,255,.14); white-space: pre; }
+  #aide { position: absolute; right: 12px; bottom: 12px; padding: 8px 12px; border-radius: 10px;
+          background: rgba(12,15,20,.78); border: 1px solid rgba(255,255,255,.14); }
+</style>
+</head>
+<body>
+<div id="info">chargement…</div>
+<div id="aide">R roues · T tourner · B braquer · N nuit · C teinte · 1-4 vues</div>
+<script type="importmap">
+{ "imports": { "three": "./libs/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './libs/OrbitControls.module.js';
+import { construireVoiture } from './maps/voiture-model.js?v=roues-entieres-20260922c';
+
+const params = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x20242a);
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.05, 200);
+camera.position.set(4.2, 1.9, 4.6);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 0.7, 0);
+
+scene.add(new THREE.HemisphereLight(0xdfe9f5, 0x40423f, 1.9));
+const soleil = new THREE.DirectionalLight(0xfff3dd, 2.4);
+soleil.position.set(4, 7, 5);
+scene.add(soleil);
+const sol = new THREE.Mesh(new THREE.CircleGeometry(20, 48),
+  new THREE.MeshStandardMaterial({ color: 0x555b62, roughness: 1 }));
+sol.rotation.x = -Math.PI / 2;
+scene.add(sol);
+scene.add(new THREE.GridHelper(12, 24, 0x8a929c, 0x3a4048));
+
+const voiture = construireVoiture({ renderer });
+scene.add(voiture.root);
+if (params.get('teinte')) voiture.setTeinte(params.get('teinte'));
+
+const info = document.getElementById('info');
+let mesures = null;
+voiture.pret.then((m) => {
+  mesures = m;
+  if (!m) { info.textContent = 'modèle indisponible : coque de secours'; return; }
+  const l = m.taille ? `${m.taille.longueur.toFixed(2)} × ${m.taille.largeur.toFixed(2)} × ${m.taille.hauteur.toFixed(2)} m` : '?';
+  const essieux = (m.essieux || []).map((a, i) =>
+    `  roue ${i} : x ${a.x.toFixed(3)}  y ${a.y.toFixed(3)}  z ${a.z.toFixed(3)}  rayon ${a.rayon.toFixed(3)}`).join('\n');
+  info.textContent = `roues détachées : ${m.roues}\ntaille : ${l}\n${essieux}`;
+});
+
+// ── surlignage : le corps en gris, chaque roue d'une couleur ───────────────
+// Une roue mal découpée ne se voit pas sur une voiture rouge uniforme : elle se
+// voit d'un coup dès que la gomme restée sur la caisse garde la couleur du corps.
+const COULEURS = [0x36d17a, 0x3fa9f5, 0xf5a623, 0xe0457b];
+let surligne = false;
+const originaux = new Map();
+function basculerSurlignage() {
+  surligne = !surligne;
+  voiture.root.traverse((o) => {
+    if (!o.isMesh) return;
+    if (!originaux.has(o)) originaux.set(o, o.material);
+  });
+  if (!surligne) { for (const [o, m] of originaux) o.material = m; return; }
+  const corps = new THREE.MeshStandardMaterial({ color: 0x9aa1a9, roughness: .75, metalness: .05 });
+  for (const [o] of originaux) o.material = corps;
+  voiture.roues.forEach((r, i) => {
+    const m = new THREE.MeshStandardMaterial({ color: COULEURS[i], roughness: .6, metalness: .05 });
+    r.tourne.traverse((o) => { if (o.isMesh) o.material = m; });
+  });
+}
+
+let tourne = false, braque = false, nuit = false, angle = 0;
+addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (k === 'r') basculerSurlignage();
+  if (k === 't') tourne = !tourne;
+  if (k === 'b') braque = !braque;
+  if (k === 'n') { nuit = !nuit; voiture.setNuit(nuit); scene.background.set(nuit ? 0x0b0f15 : 0x20242a); }
+  if (k === 'c') voiture.setTeinte(voiture.teinte() === 'bleu' ? 'rouge' : 'bleu');
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const horloge = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = horloge.getDelta();
+  if (tourne) angle += dt * 6;
+  voiture.majRoues(braque ? 0.42 : 0, angle);
+  controls.update();
+  renderer.render(scene, camera);
+});
+// Points de vue fixes : on compare deux réglages en revenant au même angle,
+// sinon on croit voir une différence qui n'est qu'un changement de lumière.
+function vue(p, c) {
+  camera.position.set(p[0], p[1], p[2]);
+  controls.target.set(c[0], c[1], c[2]);
+  controls.update();
+}
+addEventListener('keydown', (e) => {
+  if (e.key === '1') vue([7.4, 1.1, 0], [0, 0.6, 0]);        // flanc droit
+  if (e.key === '2') vue([0, 1.2, -7.4], [0, 0.6, 0]);       // face
+  if (e.key === '3') vue([4.4, 2.0, -4.6], [0, 0.6, 0]);     // trois quarts avant
+  if (e.key === '4') vue([2.1, 0.75, -2.4], [0.8, 0.35, -1.25]); // roue avant droite
+});
+window.RaphaelApercuVoiture = { voiture, scene, camera, controls, renderer, vue, mesures: () => mesures };
+</script>
+</body>
+</html>

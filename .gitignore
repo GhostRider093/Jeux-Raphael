@@ -15,3 +15,14 @@ nova-deploy.tgz
 # texture, que le jeu ne lit jamais. Un seul en pesait 6,2 Mo. Une piece qui
 # doit servir dans le jeu entre par assets/, convertie en GLB.
 *.3mf
+
+# Cache des téléchargements IGN / OSM de la maquette de Poilhes (~40 Mo, régénérable)
+scripts/poilhes/.cache/
+
+# Lots Meshy bruts : un fichier complet par animation (94 Mo pour le chevalier).
+# Seul le GLB fusionne et compresse entre dans le jeu, via assets/.
+perso/Meshy_AI_Inferno_Knight_biped/
+assets/*/*-brut.glb
+
+# Maillages intermediaires des figurines 3MF (regenerables par parse_3mf.py)
+scripts/goblins/.cache/

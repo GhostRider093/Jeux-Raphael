@@ -452,9 +452,86 @@ def remove_custom_map(map_id: str, slot: str = Depends(resolve_slot)):
     return remove_map_in(CUSTOM_MAPS_FIELD, slot, map_id)
 
 
+# --- Placement du pilote sur la trottinette -----------------------------------
+# L'outil `placer-pilote.html` regle a la main ou se tient le bonhomme, puis
+# ecrit le resultat ici. Le jeu relit le meme fichier : pas de copier-coller
+# dans le code, donc pas d'ecart entre ce qu'on voit dans l'outil et ce qu'on
+# voit dans le village.
+PLACEMENT_FILE = ROOT / "maps" / "trottinette-placement.json"
+PLACEMENT_KEYS = ("x", "y", "z", "rx", "ry", "rz", "taille")
+LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
+def clean_placement(raw: dict) -> dict:
+    """Ne garde que sept nombres finis et raisonnables.
+
+    Ce qui arrive par le reseau va etre ecrit sur le disque : on recopie champ
+    par champ plutot que de faire confiance au corps recu.
+    """
+    out = {}
+    for key in PLACEMENT_KEYS:
+        if key not in raw:
+            continue
+        try:
+            value = float(raw[key])
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"Valeur non numerique pour {key}")
+        if value != value or abs(value) > 100:      # NaN, inf, valeurs absurdes
+            raise HTTPException(400, f"Valeur hors limites pour {key}")
+        out[key] = round(value, 4)
+    if not out:
+        raise HTTPException(400, "Placement vide")
+    return out
+
+
+@app.post("/api/placement-pilote")
+async def save_placement(request: Request):
+    """Ecrit `maps/trottinette-placement.json`. Outil de developpement.
+
+    **Reserve a la machine locale.** C'est la seule route du service qui ecrit
+    dans le depot lui-meme : ouverte au reseau, elle laisserait n'importe qui
+    modifier un fichier du jeu. Le site publie, lui, est statique et n'a pas ce
+    service du tout.
+    """
+    client = request.client.host if request.client else ""
+    if client not in LOCAL_HOSTS:
+        raise HTTPException(403, "Reglage possible seulement depuis la machine locale")
+    body = await request.json()
+    recus = body.get("placements") if isinstance(body, dict) else None
+    if not isinstance(recus, dict) or not 1 <= len(recus) <= 20:
+        raise HTTPException(400, "Attendu : { placements: { <modele>: {...} } }")
+    placements = {}
+    for modele, valeurs in recus.items():
+        nom = str(modele)[:160]
+        if not isinstance(valeurs, dict) or ".." in nom:
+            raise HTTPException(400, f"Placement invalide pour {nom}")
+        placements[nom] = clean_placement(valeurs)
+    PLACEMENT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PLACEMENT_FILE.write_text(
+        json.dumps({"version": 1, "placements": placements}, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return {"ok": True, "fichier": str(PLACEMENT_FILE.relative_to(ROOT)), "count": len(placements)}
+
+
 @app.exception_handler(HTTPException)
 async def api_error(_request: Request, error: HTTPException):
     return JSONResponse({"detail": error.detail}, status_code=error.status_code)
 
 
-app.mount("/", StaticFiles(directory=ROOT, html=True), name="frontend")
+class StatiqueSansCache(StaticFiles):
+    """Fichiers statiques, jamais mis en cache.
+
+    En developpement, le cache du navigateur est un piege permanent : on modifie
+    un shader ou un module, on recharge, et le navigateur ressert l'ancien. Les
+    estampilles `?v=` protegent la PRODUCTION ; ici on coupe court. Le serveur
+    de production (nginx, serveur 2) n'est pas concerne par ce fichier.
+    """
+
+    async def get_response(self, path, scope):
+        reponse = await super().get_response(path, scope)
+        reponse.headers["Cache-Control"] = "no-store, must-revalidate"
+        return reponse
+
+
+app.mount("/", StatiqueSansCache(directory=ROOT, html=True), name="frontend")

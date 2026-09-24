@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-fighter-model.js?v=poursuite-20260907';
+// La flotte vole en Rafale depuis le 16/09/2026. Le Kawasaki Ki-61 reste
+// dans enemy-fighter-model.js : c'est un import a changer, rien de plus.
+import { createEnemyFighterModel, preloadEnemyFighterModel } from './enemy-rafale-model.js?v=rafale-20260916';
 import { createExplosionSystem } from './world-explosion.js?v=sons-reels-20260908';
 
 preloadEnemyFighterModel().catch(() => {});
@@ -9,13 +11,59 @@ preloadEnemyFighterModel().catch(() => {});
 // pas seulement l'acquisition — c'est le delai ressenti qui compte.
 const LOCK_SEARCH_DELAY = .42;
 const LOCK_ACQUIRE_TIME = 1.8;
-const LOCK_CAPTURE_RADIUS = 60;
-const LOCK_RELEASE_RADIUS = 92;
+// Zone d'accroche elargie de 30 % le 16/09/2026 : a 60 px le losange se
+// derobait des qu'un chasseur manoeuvrait, le verrouillage etait un exercice
+// d'adresse au lieu d'une intention de tir. 60 -> 78 et 92 -> 120, meme facteur
+// sur les deux rayons pour garder l'hysteresis (on lache plus loin qu'on ne prend).
+const LOCK_CAPTURE_RADIUS = 78;
+const LOCK_RELEASE_RADIUS = 120;
+//  L'ENNEMI RIPOSTE — niveau 1.
+//  Les dix Rafale tirent, mais le premier niveau doit se franchir sans
+//  connaitre le jeu : leur missile vire MOU, et il se laisse berner par une
+//  manoeuvre franche. Une vrille ou un gros break a gauche ou a droite suffit
+//  a le semer — regle posee par Arnaud le 16/09/2026.
+const RIPOSTE_PORTEE = 620;
+const RIPOSTE_DISTANCE_MINI = 90;     // trop pres, le missile n'a pas le temps de s'armer
+const RIPOSTE_CONE = .55;             // cosinus : le joueur doit etre dans les 57 degres devant le nez
+const RIPOSTE_DELAI = 7.5;            // secondes entre deux tirs d'un meme chasseur
+const RIPOSTE_PREMIER_DELAI = 10;     // le decollage se fait en paix
+const RIPOSTE_MAX_EN_VOL = 1;         // un seul missile ennemi en l'air au niveau 1
+const MISSILE_ENNEMI_VITESSE = 150;
+const MISSILE_ENNEMI_VIRAGE = 1.1;    // mou : c'est exactement ce qui rend l'esquive possible
+const MISSILE_ENNEMI_VIE = 8;
+const MISSILE_ENNEMI_RAYON = 11;      // fusee de proximite
+//  ESQUIVE. Le missile ne perd sa proie qu'en approche finale : manoeuvrer
+//  trop tot ne sert a rien, il aurait le temps de se recaler. Les seuils sont
+//  larges — une vrille franche depasse les 2 rad/s de roulis, un break serre
+//  les 0,8 rad/s de changement de cap — et la memoire de 0,7 s pardonne au
+//  pilote d'avoir commence son tonneau une demi-seconde trop tot.
+const ESQUIVE_DISTANCE = 260;
+const ESQUIVE_ROULIS = 2.0;
+const ESQUIVE_VIRAGE = .8;
+const ESQUIVE_MEMOIRE = .7;
+
 const BULLET_SPEED = 560;
 const AIM_DISTANCE = 1800;
 
+// Le canon et la zone d'accroche doivent viser LA OU LE VISEUR EST DESSINE.
+// Cette hauteur n'est pas une constante : le CSS de mondes.html pose le
+// reticule a 48 %, la vue cockpit a 50 %, les media queries a 46 ou 48 %.
+// La valeur recopiee en dur (.44) tirait donc quatre points d'ecran au-dessus
+// du reticule — les obus passaient au-dessus de la cible, et le losange
+// d'accroche etait decale d'autant. On mesure l'element plutot que de le
+// deviner ; le cache evite un getBoundingClientRect par ennemi et par image.
+let aimRatioCache = { cle: '', valeur: .48 };
 function aimVerticalRatio() {
-  return innerWidth <= 720 ? .48 : .44;
+  const cle = `${innerWidth}x${innerHeight}|${document.body.className}`;
+  if (aimRatioCache.cle === cle) return aimRatioCache.valeur;
+  let valeur = .48;
+  const viseur = document.getElementById('flight-reticle');
+  if (viseur) {
+    const rect = viseur.getBoundingClientRect();
+    if (rect.height > 0 && innerHeight > 0) valeur = (rect.top + rect.height / 2) / innerHeight;
+  }
+  aimRatioCache = { cle, valeur };
+  return valeur;
 }
 
 function segmentDistance(point, start, end) {
@@ -188,7 +236,7 @@ function createAudioSystem(audioStateElement) {
   return { ensure, updateEngine, gun, missile, explosion, lock, acquire, setLockContinuous, isActive: () => !!context };
 }
 
-export function createWorldCombat({ scene, camera, player, world, mode, getHeight, getForward, getSpeed, explosionSystem: sharedExplosions }) {
+export function createWorldCombat({ scene, camera, player, world, mode, getHeight, getForward, getSpeed, explosionSystem: sharedExplosions, onPlayerHit }) {
   const ui = document.getElementById('combat-ui');
   const combatButtons = Array.from(document.querySelectorAll('[data-world-touch="fire"],[data-world-touch="missile"]'));
   if (mode.type !== 'flight' || world.combat === false) {
@@ -283,15 +331,21 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
       // cela les obus traverseraient les ailes du Kawasaki, plus large que
       // l'ancien appareil.
       radius: 15, phase: 0, holdUntil: 0, velocity: new THREE.Vector3(),
+      // Decale d'un chasseur a l'autre : sans ce `index * .8`, dix appareils
+      // armes en meme temps tirent en meme temps.
+      riposteDelai: RIPOSTE_PREMIER_DELAI + index * .8,
       patrouille: {
         centreX: Math.cos(angle) * distance,
         centreZ: Math.sin(angle) * distance,
         rayon,
         altitude: world.spawn.air[1] + 4 + (index % 5) * 28,
-        // La vitesse angulaire se DEDUIT d'une vitesse au sol de 48 a 80 m/s.
+        // La vitesse angulaire se DEDUIT d'une vitesse au sol de 72 a 120 m/s.
         // Fixer l'angle directement donnait un grand cercle parcouru au pas et
         // un petit cercle parcouru en trombe : la meme flotte, deux allures.
-        vitesse: (48 + (index % 3) * 16) / rayon,
+        // 16/09/2026 : +50 % sur les trois allures (48-80 -> 72-120 m/s). La
+        // flotte passe du chasseur a helice au jet ; l'ecart entre allures est
+        // majore du meme facteur pour que la flotte garde son etalement.
+        vitesse: (72 + (index % 3) * 24) / rayon,
         sens: index % 2 ? 1 : -1,
         phase0: angle
       }
@@ -322,6 +376,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
 
   const bullets = [];
   const missiles = [];
+  const missilesEnnemis = [];
   const missileSmoke = [];
   // Le pilote et les ennemis partagent le meme pool d'explosions lorsqu'il est
   // fourni par le monde ; sinon le module en cree un pour lui seul.
@@ -521,6 +576,164 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     // il changerait d'avis en vol des que le joueur regarde ailleurs.
     missiles.push({ mesh: body, velocity: direction.multiplyScalar(125), life: 9, trailClock: 0, guided, cible: guided ? cible : null });
     return true;
+  }
+
+  //  -- L'ENNEMI RIPOSTE ---------------------------------------------------
+  //
+  //  Jusqu'ici la flotte se promenait et se laissait descendre. Elle tire
+  //  depuis le 16/09/2026, mais le premier niveau reste franchissable : un
+  //  seul missile en l'air a la fois, un cone de tir etroit, et surtout un
+  //  autodirecteur qui se laisse semer par une manoeuvre franche.
+
+  const alerteMissile = document.getElementById('missile-alert');
+  let alerteTenueJusqua = 0;
+
+  //  MESURE DE LA MANOEUVRE DU JOUEUR. Les figures ne sont plus
+  //  preprogrammees dans ce jeu — le pilote fait ses tonneaux au manche — il
+  //  n'y a donc aucun drapeau « vrille en cours » a lire quelque part. On
+  //  mesure ce que l'appareil FAIT, image par image : de combien son cap
+  //  tourne, et de combien il roule autour de son propre axe.
+  const avantJoueur = new THREE.Vector3();
+  const hautJoueur = new THREE.Vector3();
+  const avantPrecedent = new THREE.Vector3(0, 0, -1);
+  const hautPrecedent = new THREE.Vector3(0, 1, 0);
+  const hautProjete = new THREE.Vector3();
+  const hautProjetePrecedent = new THREE.Vector3();
+  let tauxVirage = 0;
+  let tauxRoulis = 0;
+  let manoeuvreMemoire = 0;
+
+  function mesurerManoeuvre(dt) {
+    if (dt <= 0) return;
+    avantJoueur.set(0, 0, -1).applyQuaternion(player.quaternion).normalize();
+    hautJoueur.set(0, 1, 0).applyQuaternion(player.quaternion).normalize();
+    tauxVirage = avantPrecedent.angleTo(avantJoueur) / dt;
+    //  Le roulis se mesure sur la composante du HAUT perpendiculaire a l'axe
+    //  de vol. Sans cette projection, un simple virage compterait comme un
+    //  tonneau et le missile se ferait semer par n'importe quoi.
+    hautProjete.copy(hautJoueur).projectOnPlane(avantJoueur);
+    hautProjetePrecedent.copy(hautPrecedent).projectOnPlane(avantJoueur);
+    tauxRoulis = hautProjete.lengthSq() > 1e-6 && hautProjetePrecedent.lengthSq() > 1e-6
+      ? hautProjetePrecedent.normalize().angleTo(hautProjete.normalize()) / dt
+      : 0;
+    avantPrecedent.copy(avantJoueur);
+    hautPrecedent.copy(hautJoueur);
+    //  La memoire pardonne au pilote d'avoir commence sa figure un peu trop
+    //  tot : ce qui compte est d'avoir manoeuvre, pas d'etre encore en train
+    //  de le faire a l'image exacte ou le missile arrive.
+    manoeuvreMemoire = tauxRoulis >= ESQUIVE_ROULIS || tauxVirage >= ESQUIVE_VIRAGE
+      ? ESQUIVE_MEMOIRE
+      : Math.max(0, manoeuvreMemoire - dt);
+  }
+
+  const joueurEsquive = () => manoeuvreMemoire > 0;
+
+  function annoncerMissile(texte, classe, duree = 0) {
+    if (!alerteMissile) return;
+    alerteMissile.textContent = texte;
+    alerteMissile.className = classe;
+    alerteTenueJusqua = duree ? performance.now() + duree : 0;
+  }
+
+  function majAlerteMissile() {
+    if (!alerteMissile || performance.now() < alerteTenueJusqua) return;
+    const menace = missilesEnnemis.some(missile => !missile.perdu);
+    if (menace) annoncerMissile('MISSILE — VRILLE OU BREAK !', 'on');
+    else annoncerMissile('', '');
+  }
+
+  function tirerMissileEnnemi(chasseur) {
+    const depart = chasseur.mesh.position.clone();
+    const direction = player.position.clone().sub(depart).normalize();
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(.24, .15, 4.2, 10),
+      new THREE.MeshStandardMaterial({ color: 0x8f6a52, roughness: .42, metalness: .55 })
+    );
+    body.geometry.rotateX(Math.PI / 2);
+    //  Le missile nait DEVANT le chasseur : ne sur son nez, il traverserait
+    //  son propre tireur a la premiere image.
+    body.position.copy(depart).addScaledVector(direction, 14);
+    body.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
+    addMissileFlame(body);
+    scene.add(body);
+    missilesEnnemis.push({
+      mesh: body,
+      velocity: direction.multiplyScalar(MISSILE_ENNEMI_VITESSE),
+      life: MISSILE_ENNEMI_VIE,
+      trailClock: 0,
+      perdu: false,
+      tireur: chasseur.index
+    });
+    audio.missile();
+    annoncerMissile('MISSILE — VRILLE OU BREAK !', 'on');
+    return true;
+  }
+
+  function updateRiposte(dt) {
+    //  Le plafond de missiles en l'air se lit AVANT les delais : tant que le
+    //  precedent vole, la flotte attend. C'est ce qui fait le niveau 1.
+    if (missilesEnnemis.length >= RIPOSTE_MAX_EN_VOL) return;
+    for (const chasseur of flotte) {
+      if (!chasseur.alive) continue;
+      chasseur.riposteDelai -= dt;
+      if (chasseur.riposteDelai > 0) continue;
+      const versJoueur = player.position.clone().sub(chasseur.mesh.position);
+      const distance = versJoueur.length();
+      if (distance > RIPOSTE_PORTEE || distance < RIPOSTE_DISTANCE_MINI) continue;
+      //  Un chasseur tire de l'avant, jamais par la queue : son axe de vol
+      //  est la direction dans laquelle son orbite l'emmene.
+      if (chasseur.velocity.lengthSq() < .01) continue;
+      if (chasseur.velocity.clone().normalize().dot(versJoueur.normalize()) < RIPOSTE_CONE) continue;
+      tirerMissileEnnemi(chasseur);
+      chasseur.riposteDelai = RIPOSTE_DELAI;
+      return;
+    }
+  }
+
+  function updateMissilesEnnemis(dt) {
+    for (let index = missilesEnnemis.length - 1; index >= 0; index--) {
+      const missile = missilesEnnemis[index];
+      missile.life -= dt;
+      missile.trailClock -= dt;
+      if (missile.trailClock <= 0) {
+        spawnMissileSmoke(missile.mesh.position);
+        missile.trailClock = .035;
+      }
+      //  L'ESQUIVE, et c'est tout le niveau 1 : le missile ne se laisse
+      //  berner qu'en approche finale, et UNE SEULE FOIS. Perdu, il file tout
+      //  droit et ne se recale jamais — un break franc suffit donc, il n'y a
+      //  pas de deuxieme passe a subir.
+      if (!missile.perdu && missile.mesh.position.distanceTo(player.position) < ESQUIVE_DISTANCE && joueurEsquive()) {
+        missile.perdu = true;
+        annoncerMissile('MISSILE ESQUIVÉ', 'dodged', 1400);
+      }
+      if (!missile.perdu) {
+        const desired = player.position.clone().sub(missile.mesh.position).normalize();
+        missile.velocity.lerp(desired.multiplyScalar(MISSILE_ENNEMI_VITESSE), Math.min(1, dt * MISSILE_ENNEMI_VIRAGE));
+      }
+      missile.mesh.position.addScaledVector(missile.velocity, dt);
+      if (missile.velocity.lengthSq() > 1) {
+        missile.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), missile.velocity.clone().normalize());
+      }
+      const flame = missile.mesh.userData.missileFlame;
+      if (flame) flame.scale.set(1 + Math.sin(performance.now() * .05) * .12, 1 + Math.sin(performance.now() * .066) * .18, 1);
+      const touche = missile.mesh.position.distanceTo(player.position) < MISSILE_ENNEMI_RAYON;
+      if (touche) {
+        const impact = missile.mesh.position.clone();
+        explosionSystem.spawn(impact, 1.7, getHeight(impact.x, impact.z));
+        audio.explosion();
+        annoncerMissile('TOUCHÉ', 'hit', 1200);
+        //  Les degats ne sont pas ecrits ici : la coque, ses pastilles et la
+        //  destruction appartiennent au monde. Le combat se contente de dire
+        //  ou le missile a frappe.
+        onPlayerHit?.(impact);
+      }
+      if (touche || missile.life <= 0) {
+        scene.remove(missile.mesh);
+        missilesEnnemis.splice(index, 1);
+      }
+    }
+    majAlerteMissile();
   }
 
   function projectPoint(position) {
@@ -752,6 +965,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
         missiles.splice(index, 1);
       }
     }
+    updateMissilesEnnemis(dt);
     for (let index = missileSmoke.length - 1; index >= 0; index--) {
       const smoke = missileSmoke[index];
       smoke.life -= dt;
@@ -770,6 +984,9 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
 
   function update(dt, elapsed, pad, keys, touch) {
     gunCooldown -= dt;
+    // La manoeuvre du joueur se mesure AVANT tout le reste : les missiles
+    // ennemis liront le taux de roulis de CETTE image, pas de la precedente.
+    mesurerManoeuvre(dt);
     updateFlotte(dt, elapsed);
     // Le choix de cible vient APRES le deplacement et AVANT le radar : sinon le
     // losange se pose une image en retard sur une position deja perimee.
@@ -777,6 +994,7 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     updateRadar();
     updateLock(dt);
     updateProjectiles(dt);
+    updateRiposte(dt);
     audio.updateEngine(getSpeed());
     if (pad.fire || pad.missile || pad.boost || pad.throttle > .08) audio.ensure();
 
@@ -821,10 +1039,18 @@ export function createWorldCombat({ scene, camera, player, world, mode, getHeigh
     playExplosionSound: () => audio.explosion(),
     diagnostics: {
       active: true,
-      state: () => ({ hp: cible.hp, alive: cible.alive, locked, lockProgress, missileQueued: false, missilesLeft, kills, targetKillCount, flotte: FLOTTE, tailleMonde: world.size, porteePatrouilles: PORTEE, ennemisVivants: vivants().length, cibleIndex: cible.index, positionsFlotte: vivants().map(chasseur => ({ index: chasseur.index, hp: chasseur.hp, position: chasseur.mesh.position.toArray(), distance: chasseur.mesh.position.distanceTo(player.position) })), mountedMissiles: (player.userData.missileRacks || []).filter(item => item.visible).length, activeMissiles: missiles.length, guidedMissiles: missiles.filter(item => item.guided).length, score, targetPosition: cible.mesh.position.toArray(), targetDistance: cible.mesh.position.distanceTo(player.position), bulletSpeed: BULLET_SPEED, aimVerticalRatio: aimVerticalRatio() }),
+      state: () => ({ hp: cible.hp, alive: cible.alive, locked, lockProgress, missileQueued: false, missilesLeft, kills, targetKillCount, flotte: FLOTTE, tailleMonde: world.size, porteePatrouilles: PORTEE, ennemisVivants: vivants().length, cibleIndex: cible.index, positionsFlotte: vivants().map(chasseur => ({ index: chasseur.index, hp: chasseur.hp, position: chasseur.mesh.position.toArray(), distance: chasseur.mesh.position.distanceTo(player.position) })), mountedMissiles: (player.userData.missileRacks || []).filter(item => item.visible).length, activeMissiles: missiles.length, guidedMissiles: missiles.filter(item => item.guided).length, score, targetPosition: cible.mesh.position.toArray(), targetDistance: cible.mesh.position.distanceTo(player.position), bulletSpeed: BULLET_SPEED, aimVerticalRatio: aimVerticalRatio(), missilesEnnemis: missilesEnnemis.length, missilesEnnemisPerdus: missilesEnnemis.filter(missile => missile.perdu).length, tauxRoulis: +tauxRoulis.toFixed(2), tauxVirage: +tauxVirage.toFixed(2), esquive: joueurEsquive() }),
       placeTargetAhead,
       forceLock: () => { forcedLockUntil = performance.now() + 2500; locked = true; lockProgress = LOCK_ACQUIRE_TIME; return true; },
       fireMissile,
+      //  Fait tirer le chasseur vise sur-le-champ : verifier une esquive en
+      //  vol ne doit pas dependre du hasard d'une patrouille bien orientee.
+      forcerRiposte: () => {
+        const chasseur = cible?.alive ? cible : vivants()[0];
+        if (!chasseur) return false;
+        chasseur.riposteDelai = RIPOSTE_DELAI;
+        return tirerMissileEnnemi(chasseur);
+      },
       destroyTarget: () => destroyEnemy(cible),
       destroyAll: () => { flotte.forEach(chasseur => destroyEnemy(chasseur)); return kills; }
     }

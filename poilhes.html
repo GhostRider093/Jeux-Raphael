@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<script src="./son-silence.js?v=coupe-son-20260922"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Poilhes en 3D</title>
+<link rel="icon" href="favicon.svg">
+<style>
+  :root { --panel: rgba(14, 18, 26, .72); --line: rgba(255, 255, 255, .14); --ink: #eef2f7; --dim: #a9b3c1; --accent: #ffcf4a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14; color: var(--ink);
+               font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+               /* téléphone : le doigt pilote le jeu, il ne fait pas défiler la page */
+               overscroll-behavior: none; -webkit-user-select: none; user-select: none;
+               -webkit-tap-highlight-color: transparent; touch-action: none; }
+  #scene canvas { display: block; }
+  .panel { position: absolute; background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+           border: 1px solid var(--line); border-radius: 12px; }
+  #hud { top: 14px; left: 14px; padding: 12px 14px; width: 300px; max-width: calc(100vw - 28px); }
+  #hud h1 { margin: 0; font-size: 18px; letter-spacing: .3px; }
+  #hud h1 small { font-weight: 400; color: var(--dim); font-size: 13px; }
+  #stats { color: var(--dim); font-size: 12px; margin: 2px 0 10px; }
+  /* `flex` sans retour à la ligne : le sixième mode (Voiture) poussait
+     « Chasseur » hors du panneau. Les boutons s'empilent désormais. */
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+  /* `hidden` seul ne suffit pas : il pose `display: none`, qu'une règle
+     `display: flex` écrase aussitôt. La rangée restait visible dans tous les modes. */
+  .row[hidden] { display: none; }
+  .row button { min-width: 64px; }
+  button { flex: 1; cursor: pointer; border: 1px solid var(--line); background: rgba(255,255,255,.06); color: var(--ink);
+           border-radius: 8px; padding: 7px 6px; font: inherit; font-size: 13px; }
+  button:hover { background: rgba(255,255,255,.12); }
+  button.on { background: var(--accent); color: #1b1600; border-color: var(--accent); font-weight: 600; }
+  #search { width: 100%; border: 1px solid var(--line); background: rgba(0,0,0,.3); color: var(--ink);
+            border-radius: 8px; padding: 7px 9px; font: inherit; }
+  .time { display: flex; gap: 8px; align-items: center; }
+  .time input { flex: 1; accent-color: var(--accent); }
+  .chips button { padding: 5px 4px; font-size: 12px; }
+  #clock { font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; color: var(--accent); }
+  #sources { color: var(--dim); font-size: 11px; margin-top: 10px; }
+  .mini { flex: none; padding: 2px 8px; font-size: 12px; margin-left: 2px; }
+  /* `nowrap` faisait sortir de l'écran les boutons ajoutés en bout de ligne
+     (choix de la voiture, son du moteur) : on les cherchait sans les voir. */
+  #help-walk { bottom: 16px; left: 50%; transform: translateX(-50%); padding: 8px 14px; font-size: 13px;
+               white-space: normal; max-width: min(1180px, calc(100vw - 28px)); text-align: center; }
+  #help-walk .mini { margin: 2px 2px 0; }
+  #minimap { position: absolute; right: 14px; bottom: 14px; width: 200px; height: 200px; border-radius: 12px;
+             border: 1px solid var(--line); cursor: crosshair; box-shadow: 0 6px 24px rgba(0,0,0,.45); }
+  /* combat : jauge de coque et compte des gobelins, mode Robot seulement */
+  #combat { left: 14px; bottom: 14px; padding: 9px 12px; width: 210px; display: flex; flex-direction: column; gap: 6px; }
+  #combat[hidden] { display: none; }
+  #combat .ligne { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); }
+  #combat .ligne b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  #jauge { height: 7px; border-radius: 4px; background: rgba(255,255,255,.14); overflow: hidden; }
+  #jauge i { display: block; height: 100%; width: 100%; border-radius: 4px; background: linear-gradient(90deg,#39d1a6,#7ee4c4);
+             transition: width .18s ease, background .3s ease; }
+  #combat.mal #jauge i { background: linear-gradient(90deg,#e0603f,#ffa46b); }
+  #combat.touche { box-shadow: 0 0 0 2px rgba(255,90,60,.65); }
+  /* viseur : le laser rejoint exactement son centre, qui reste vide */
+  #viseur { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+            pointer-events: none; filter: drop-shadow(0 0 3px rgba(0,0,0,.85)); }
+  #viseur[hidden] { display: none; }
+  #viseur svg { width: 100%; height: 100%; fill: none; stroke: rgba(255,255,255,.82); stroke-width: 1.5;
+                stroke-linecap: round; transition: stroke .12s linear, stroke-width .12s linear; }
+  #viseur circle { transition: r .12s ease; }
+  #viseur.lock svg { stroke: #ff7a52; stroke-width: 2.2; }
+  #viseur.lock circle { r: 7; }
+  /* vol : vitesse et hauteur, mode Chasseur seulement */
+  #vol { left: 14px; bottom: 14px; padding: 9px 12px; width: 190px; display: flex; flex-direction: column; gap: 3px; }
+  #vol[hidden] { display: none; }
+  #vol .ligne { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); }
+  #vol .ligne b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  #vol.rase .ligne b { color: #ffb36b; }
+  /* Compteur de la voiture : un gros chiffre, le rapport engagé, une barre de
+     régime qui rougit au rupteur. Il se lit sans quitter la route des yeux. */
+  /* Choix de la voiture au départ : au centre, on ne peut pas le rater. */
+  #depart-auto { left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 18px 20px 14px;
+                 width: min(560px, calc(100vw - 32px)); text-align: center; z-index: 6; }
+  #depart-auto[hidden] { display: none; }
+  #depart-auto h2 { margin: 0 0 14px; font-size: 18px; font-weight: 600; }
+  #depart-auto .choix { display: flex; gap: 12px; }
+  #depart-auto .choix button { flex: 1; display: flex; flex-direction: column; gap: 6px; align-items: center;
+                               padding: 14px 12px; line-height: 1.45; }
+  #depart-auto .choix b { font-size: 15px; }
+  #depart-auto .choix span { color: var(--dim); font-size: 12px; font-weight: 400; }
+  #depart-auto .note { margin: 12px 0 0; color: var(--dim); font-size: 12px; }
+  #auto { left: 14px; bottom: 14px; padding: 9px 13px 11px; width: 190px; }
+  #auto[hidden] { display: none; }
+  #auto .compteur { display: flex; align-items: baseline; gap: 6px; }
+  #auto .compteur b { font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+  #auto .compteur span { font-size: 12px; color: var(--dim); }
+  #auto .compteur i { margin-left: auto; font-style: normal; font-size: 18px; font-weight: 700; color: var(--accent); }
+  #regime { margin-top: 8px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.14); overflow: hidden; }
+  #regime i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg,#4fd0ff,#8be9ff);
+              transition: width .06s linear; }
+  #auto.rouge #regime i { background: linear-gradient(90deg,#ff7a3d,#ff3d3d); }
+  #auto.glisse .compteur b { color: #ffb36b; }
+  #combat.ko #coque::after { content: " · redéploiement"; color: var(--dim); font-size: 11px; font-weight: 400; }
+  #card { right: 14px; top: 14px; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; max-width: 280px; }
+  #card small { color: var(--dim); }
+  #card[hidden] { display: none; }
+  #hud h1 { cursor: pointer; user-select: none; }
+  #hud h1::after { content: "▾"; float: right; color: var(--dim); font-size: 14px; margin-top: 3px; }
+  #hud.collapsed h1::after { content: "▸"; }
+  #hud.collapsed > :not(h1) { display: none; }
+  #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .label { position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform; }
+  .label.poi { background: rgba(14,18,26,.82); border: 1px solid rgba(255,207,74,.6); color: #fff; padding: 3px 9px;
+               border-radius: 8px; font-size: 13px; display: flex; flex-direction: column; align-items: center; }
+  .label.poi small { color: var(--accent); font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }
+  .label.poi::after { content: ""; position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%);
+                      border: 6px solid transparent; border-top-color: rgba(255,207,74,.8); border-bottom: 0; }
+  .label.street { color: #fff; font-size: 12px; font-weight: 600; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,.8); letter-spacing: .3px; }
+  #vignette { position: absolute; inset: 0; pointer-events: none;
+              background: radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,.28) 100%); }
+  #loader { position: absolute; inset: 0; display: grid; place-items: center; background: #0b0e14; transition: opacity .8s; z-index: 10; }
+  #loader.done { opacity: 0; pointer-events: none; }
+  #loader .box { width: min(420px, 80vw); text-align: center; }
+  #loader h2 { font-weight: 600; margin: 0 0 4px; }
+  #loader p { color: var(--dim); margin: 0 0 16px; }
+  .track { height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; }
+  #load-bar { height: 100%; width: 0; background: linear-gradient(90deg, #ffb347, var(--accent)); transition: width .2s; }
+  #load-msg { margin-top: 10px; color: var(--dim); font-size: 12px; }
+  /* ─────────────────────────────── COMMANDES TACTILES ──────────────────────
+     Un manche qui naît sous le pouce et trois boutons à droite. Tout est posé
+     au-dessus du rendu mais ne prend le doigt que sur les pastilles elles-mêmes :
+     le reste de l'écran doit rester libre pour faire tourner la caméra. */
+  #tactile { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+  #tactile[hidden] { display: none; }
+  #manche { position: absolute; width: 132px; height: 132px; margin: -66px 0 0 -66px; opacity: 0;
+            border-radius: 50%; border: 2px solid rgba(255,255,255,.28); background: rgba(10,14,20,.30);
+            transition: opacity .16s ease; }
+  #manche.on { opacity: 1; }
+  #manche i { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px;
+              border-radius: 50%; background: rgba(255,255,255,.34); border: 2px solid rgba(255,255,255,.5); }
+  #actions { position: absolute; right: calc(18px + env(safe-area-inset-right));
+             bottom: calc(26px + env(safe-area-inset-bottom)); display: flex; flex-direction: column;
+             align-items: center; gap: 12px; pointer-events: auto; }
+  .rond { flex: none; width: 84px; height: 84px; border-radius: 50%; padding: 0; border: 2px solid rgba(255,255,255,.34);
+          background: rgba(14,18,26,.55); color: var(--ink); font: 600 13px/1 system-ui, sans-serif;
+          backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); touch-action: none; }
+  .rond.p { flex: none; width: 56px; height: 56px; font-size: 11px; }
+  .rond:active, .rond.on { background: rgba(255,207,74,.34); border-color: var(--accent); color: #fff; }
+  #btn-feu { border-color: rgba(255,140,90,.55); }
+  #btn-feu:active { background: rgba(255,120,70,.45); border-color: #ff9a5c; }
+
+  /* ─────────────────────────────── PORTRAIT ────────────────────────────────
+     En portrait, le bas de l'écran appartient aux pouces : la coque et la
+     minicarte remontent, et la barre d'aide clavier disparaît. */
+  /* Téléphone : portrait (écran étroit) comme paysage (écran bas). */
+  @media (max-width: 640px), (pointer: coarse) and (max-height: 520px) {
+    #hud { width: auto; right: 14px; padding: 10px; }
+    #sources { display: none; }
+    #minimap { width: 92px; height: 92px; right: 12px; bottom: auto;
+               top: calc(58px + env(safe-area-inset-top)); }
+    #help-walk { white-space: normal; width: calc(100vw - 28px); text-align: center; }
+    #combat { left: 12px; right: 112px; width: auto; bottom: auto;
+              top: calc(58px + env(safe-area-inset-top)); flex-direction: row; align-items: center;
+              gap: 10px; padding: 7px 11px; }
+    #combat .ligne { flex-direction: column; gap: 0; }
+    #jauge { flex: 1; }
+    #vol { left: 12px; right: 112px; width: auto; bottom: auto;
+           top: calc(58px + env(safe-area-inset-top)); }
+    #auto { left: 12px; right: 112px; width: auto; bottom: auto;
+            top: calc(58px + env(safe-area-inset-top)); padding: 7px 11px 9px; }
+    #auto .compteur b { font-size: 26px; }
+    #card { top: calc(58px + env(safe-area-inset-top)); max-width: 190px; }
+  }
+  /* En tactile, les commandes remplacent la ligne de raccourcis clavier. */
+  body.tactile #help-walk { display: none; }
+  /* La croix reste au centre exact : le tir part du centre de l'écran, la
+     décaler visuellement ferait mentir la visée. */
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div id="vignette"></div>
+<div id="labels"></div>
+
+<div id="hud" class="panel">
+  <h1 id="hud-title" title="Replier / déplier">Poilhes <small>Hérault · 34310</small></h1>
+  <div id="stats">…</div>
+  <div class="row">
+    <button data-mode="survol" class="on" title="Tourner, zoomer, double-clic pour viser">Survol</button>
+    <button data-mode="balade" title="Se promener à pied dans les rues">Balade</button>
+    <button data-mode="drone" title="Voler librement au-dessus du village">Drone</button>
+    <button data-mode="robot" title="Piloter le robot dans les rues">Robot</button>
+    <button data-mode="voiture" title="Conduire la sportive dans les rues du village">Voiture</button>
+    <button data-mode="trottinette" title="Traverser le village en trottinette électrique">Trottinette</button>
+    <button data-mode="chasseur" title="Survoler le village au chasseur">Chasseur</button>
+  </div>
+  <!-- Choix de la voiture : dans le panneau, sous les modes, là où on le cherche.
+       Affiché seulement en mode Voiture. -->
+  <div class="row" id="choix-auto" hidden>
+    <button data-auto="rouge" class="on" title="Propulsion, 500 N·m : elle se met en travers">GT rouge</button>
+    <button data-auto="bleue" title="Traction, 380 N·m : elle pardonne">Berline bleue</button>
+    <button data-son title="Son du moteur (touche M)">♪</button>
+  </div>
+  <div class="row">
+    <input id="search" list="places" placeholder="Aller à… (rue, mairie, église)" autocomplete="off">
+    <datalist id="places"></datalist>
+  </div>
+  <div class="row time">
+    <span>Heure</span>
+    <input id="time" type="range" min="6.5" max="23.5" step="0.05" value="17.8">
+    <span id="clock"></span>
+  </div>
+  <div class="row chips">
+    <button data-time="9">Matin</button>
+    <button data-time="13.5">Midi</button>
+    <button data-time="19.3">Soir</button>
+    <button data-time="22.3">Nuit</button>
+  </div>
+  <div class="row">
+    <button id="btn-tour" title="Survol automatique des lieux du village">▶ Visite guidée</button>
+    <button id="btn-labels" class="on" title="Touche N">Noms</button>
+  </div>
+  <div id="sources">Données : IGN (BD TOPO, LiDAR HD, BD ORTHO) — Etalab 2.0 · © OpenStreetMap</div>
+</div>
+
+<div id="card" class="panel" hidden></div>
+<div id="help-walk" class="panel" hidden></div>
+<div id="viseur" hidden><svg viewBox="0 0 40 40">
+  <circle cx="20" cy="20" r="9"/>
+  <path d="M20 2.5v6M20 31.5v6M2.5 20h6M31.5 20h6"/>
+</svg></div>
+<div id="vol" class="panel" hidden>
+  <div class="ligne"><span>Vitesse</span><b><i id="vit">0</i> km/h</b></div>
+  <div class="ligne"><span>Hauteur sol</span><b><i id="haut">0</i> m</b></div>
+</div>
+<!-- Choix de la voiture AVANT de rouler : deux voitures qui ne se conduisent
+     pas du tout pareil, autant le savoir avant de partir. -->
+<div id="depart-auto" class="panel" hidden>
+  <h2>Quelle voiture ?</h2>
+  <div class="choix">
+    <button data-depart="rouge">
+      <b>GT rouge</b>
+      <span>Propulsion, 500 N·m, 0-100 en 4,8 s.<br>Elle se met en travers si on la brusque.</span>
+    </button>
+    <button data-depart="bleue">
+      <b>Berline bleue</b>
+      <span>Traction, 380 N·m, 0-100 en 6,4 s.<br>Elle pardonne : elle élargit au lieu de partir.</span>
+    </button>
+  </div>
+  <p class="note">On peut changer en roulant : touche <b>C</b>.</p>
+</div>
+<div id="auto" class="panel" hidden>
+  <div class="compteur"><b id="kmh">0</b><span>km/h</span><i id="rapport">1</i></div>
+  <div id="regime"><i></i></div>
+</div>
+<div id="combat" class="panel" hidden>
+  <div class="ligne"><span>Coque</span><b id="coque">100</b></div>
+  <div id="jauge"><i></i></div>
+  <div class="ligne"><span>Gobelins</span><b id="restants">0</b></div>
+</div>
+<canvas id="minimap" width="400" height="400" title="Cliquer pour s'y rendre"></canvas>
+<div id="tactile" hidden>
+  <div id="manche"><i></i></div>
+  <div id="actions">
+    <button class="rond p" id="btn-vue" type="button">Vue</button>
+    <button class="rond p" id="btn-course" type="button">Cours</button>
+    <button class="rond" id="btn-feu" type="button">TIR</button>
+  </div>
+</div>
+
+<div id="loader">
+  <div class="box">
+    <h2>Poilhes en 3D</h2>
+    <p>Le village reconstruit d’après le LiDAR et les photos de l’IGN</p>
+    <div class="track"><div id="load-bar"></div></div>
+    <div id="load-msg">Chargement…</div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./libs/three.module.js" } }
+</script>
+<!-- Le chasseur et sa loi de pilotage sont des scripts classiques partages avec la
+     ville et les Mondes : le meme appareil, le meme comportement, partout. Ils vont
+     chercher Three.js par la table d'imports ci-dessus, sans seconde copie. -->
+<script src="./chasseur-model.js?v=poilhes-20260920"></script>
+<script src="./flight-model.js?v=poilhes-20260920"></script>
+<script type="module">
+import { startVillage } from './maps/poilhes-village.js?v=voiture-20260921';
+const hud = document.getElementById('hud');
+if (matchMedia('(max-width: 640px)').matches) hud.classList.add('collapsed');
+document.getElementById('hud-title').addEventListener('click', () => hud.classList.toggle('collapsed'));
+startVillage().catch((err) => {
+  console.error(err);
+  document.getElementById('load-msg').textContent = 'Erreur : ' + err.message;
+});
+</script>
+</body>
+</html>
