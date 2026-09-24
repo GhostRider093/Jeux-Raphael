@@ -103,23 +103,36 @@
                     background: linear-gradient(180deg, rgba(8,10,16,.55) 0%, rgba(8,10,16,.25) 40%, rgba(8,10,16,.82) 100%); }
   #accueil .contenu { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px;
                       width: min(760px, calc(100vw - 32px)); padding: 24px 0; }
-  #accueil .titre { width: min(900px, 92vw); height: auto; filter: drop-shadow(0 14px 30px rgba(0,0,0,.6));
+  #accueil .titre { width: min(1080px, 96vw); height: auto; filter: drop-shadow(0 14px 30px rgba(0,0,0,.6));
                     animation: flotte 6s ease-in-out infinite; }
   @keyframes flotte { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
   #accueil .accroche { margin: 0; color: #e6ebf2; text-shadow: 0 1px 6px rgba(0,0,0,.8); font-size: 15px; text-align: center; max-width: 560px; }
-  #accueil .carte { width: 100%; background: rgba(14,18,26,.78); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-                    border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px 14px; display: grid; gap: 10px; }
+  /* Les réglages (village, engin, qualité) vivent derrière un hamburger en haut
+     à droite : l'accueil ne montre que le logo et « Rouler ». */
+  #accueil .coin { position: absolute; top: 14px; right: 14px; display: flex; gap: 8px; align-items: center; z-index: 2; }
+  #accueil .hamburger { flex: 0 0 auto; width: 44px; height: 44px; padding: 0; font-size: 22px; line-height: 1; border-radius: 12px;
+                        background: rgba(14,18,26,.78); border-color: var(--line); color: var(--ink);
+                        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  #accueil .hamburger[aria-expanded="true"] { background: var(--accent); color: #1b1600; border-color: var(--accent); }
+  #accueil .carte { position: absolute; top: 66px; right: 14px; width: min(420px, calc(100vw - 28px)); z-index: 2;
+                    background: rgba(14,18,26,.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+                    border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px 14px; display: grid; gap: 10px;
+                    box-shadow: 0 18px 40px rgba(0,0,0,.5); }
+  #accueil .carte[hidden] { display: none; }
+  #accueil .resume { margin: 0; color: var(--dim); font-size: 13px; text-align: center; }
+  #accueil .resume b { color: var(--ink); font-weight: 600; }
   #accueil .groupe { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 8px; }
   #accueil .groupe .etiquette { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
   #accueil .groupe .boutons { display: flex; gap: 6px; flex-wrap: wrap; }
   #accueil .groupe button { flex: 1; min-width: 88px; padding: 9px 8px; }
-  #btn-rouler { margin-top: 4px; padding: 13px; font-size: 17px; font-weight: 700; background: var(--accent); color: #1b1600;
-                border-color: var(--accent); border-radius: 12px; }
+  #btn-rouler { flex: 0 0 auto; margin-top: 4px; padding: 14px 64px; font-size: 19px; font-weight: 700; background: var(--accent); color: #1b1600;
+                border-color: var(--accent); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
   #btn-rouler:hover { background: #ffd970; }
   #accueil .aide { margin: 2px 0 0; color: var(--dim); font-size: 12px; text-align: center; }
   #accueil .aide b { color: var(--ink); }
-  #accueil .musique { flex: 0 0 auto; align-self: center; margin-top: 2px; padding: 5px 12px; font-size: 12px;
-                      background: rgba(255,255,255,.08); border-color: var(--line); color: var(--dim); }
+  #accueil .musique { flex: 0 0 auto; height: 44px; padding: 0 14px; font-size: 13px; border-radius: 12px;
+                      background: rgba(14,18,26,.78); border-color: var(--line); color: var(--dim);
+                      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
   #accueil .musique[aria-pressed="true"] { color: var(--ink); border-color: rgba(255,207,74,.6); }
   @media (max-width: 640px) {
     #accueil .groupe { grid-template-columns: 1fr; gap: 4px; }
@@ -255,10 +268,11 @@
   <div class="fond"><img id="accueil-image" src="assets/accueil/poilhes-city.jpg" alt=""
        onerror="document.getElementById('accueil').classList.add('sans-image')"></div>
   <div class="voile"></div>
-  <div class="contenu">
-    <img class="titre" src="assets/accueil/poilhes-city-titre.webp" alt="Poilhes City">
-    <p class="accroche">Trottinette et berline dans les rues du village, reconstruit d’après le LiDAR et les photos de l’IGN.</p>
-    <div class="carte">
+  <div class="coin">
+    <button id="btn-musique" type="button" class="musique" aria-pressed="true" title="Couper ou remettre la musique">♪ Musique</button>
+    <button id="btn-menu" type="button" class="hamburger" aria-expanded="false" aria-controls="menu-accueil" title="Village, engin, qualité">☰</button>
+  </div>
+  <div class="carte" id="menu-accueil" hidden>
       <div class="groupe"><span class="etiquette">Village</span>
         <div class="boutons">
           <button data-choix="village" data-valeur="poilhes">Poilhes</button>
@@ -276,10 +290,13 @@
           <button data-choix="qualite" data-valeur="moyen">Moyen</button>
           <button data-choix="qualite" data-valeur="eleve">Élevé</button>
         </div></div>
-      <button id="btn-rouler" type="button">Rouler</button>
-      <button id="btn-musique" type="button" class="musique" aria-pressed="true" title="Couper ou remettre la musique de l'accueil">♪ Musique</button>
-      <p class="aide">Flèches ou <b>ZQSD</b> · <b>Espace</b> saute · en l’air <b>F</b> looping, <b>G</b> 360 · <b>P</b> au skatepark · <b>V</b> caméra</p>
-    </div>
+  </div>
+  <div class="contenu">
+    <img class="titre" src="assets/accueil/poilhes-city-titre.webp" alt="Poilhes City">
+    <p class="accroche">Trottinette et berline dans les rues du village, reconstruit d’après le LiDAR et les photos de l’IGN.</p>
+    <button id="btn-rouler" type="button">Rouler</button>
+    <p class="resume" id="resume-choix"></p>
+    <p class="aide">Flèches ou <b>ZQSD</b> · <b>Espace</b> saute · en l’air <b>F</b> looping, <b>G</b> 360 · <b>P</b> au skatepark · <b>V</b> caméra</p>
   </div>
 </div>
 
@@ -315,9 +332,22 @@ const choix = {
   engin: params.get('engin') === 'berline' ? 'voiture' : 'trottinette',
   qualite: lireChoix() || 'auto',
 };
+const LIBELLES = {
+  village: { poilhes: 'Poilhes', capestang: 'Capestang' },
+  engin: { trottinette: 'Trottinette', voiture: 'Berline bleue' },
+  qualite: { auto: 'qualité auto', bas: 'qualité basse', moyen: 'qualité moyenne', eleve: 'qualité élevée' },
+};
 function peindreChoix() {
   accueil.querySelectorAll('[data-choix]').forEach((b) => b.classList.toggle('on', choix[b.dataset.choix] === b.dataset.valeur));
+  $('resume-choix').innerHTML = `<b>${LIBELLES.village[choix.village] || choix.village}</b> · <b>${LIBELLES.engin[choix.engin]}</b> · ${LIBELLES.qualite[choix.qualite]}`;
 }
+// Le hamburger : un clic ouvre, un clic dehors ou Échap referme.
+const menuAccueil = $('menu-accueil'), btnMenu = $('btn-menu');
+function ouvrirMenu(ouvert) { menuAccueil.hidden = !ouvert; btnMenu.setAttribute('aria-expanded', ouvert ? 'true' : 'false'); }
+btnMenu.addEventListener('click', (e) => { e.stopPropagation(); ouvrirMenu(menuAccueil.hidden); });
+menuAccueil.addEventListener('click', (e) => e.stopPropagation());
+accueil.addEventListener('click', () => { if (!menuAccueil.hidden) ouvrirMenu(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menuAccueil.hidden) ouvrirMenu(false); });
 accueil.querySelectorAll('[data-choix]').forEach((b) => b.addEventListener('click', () => {
   choix[b.dataset.choix] = b.dataset.valeur;
   peindreChoix();
