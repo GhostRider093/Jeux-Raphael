@@ -7,7 +7,7 @@ deux carreaux, moitié de gris clair, moitié de gris sombre, presque rien entre
 les deux et aucune couleur. Le dessin, même gris, a des valeurs continues. On ne garde ensuite que le damier
 relié aux bords, et on lisse le bord d'un pixel.
 
-    python scripts/accueil/detourer-damier.py entree.png sortie.png [--debug apercu.png]
+    python scripts/accueil/detourer-damier.py entree.png sortie.png [--debug apercu.png] [--part 0.2] [--seuil 0.7]
 """
 import sys
 import numpy as np
@@ -16,6 +16,10 @@ from scipy import ndimage
 
 src, dst = sys.argv[1], sys.argv[2]
 debug = sys.argv[sys.argv.index('--debug') + 1] if '--debug' in sys.argv else None
+# Sensibilité : part minimale de chaque gris dans la fenêtre, et somme des deux.
+# Baisser (0.15 / 0.6) quand un reste de damier se cache sous un reflet ou une ombre.
+part = float(sys.argv[sys.argv.index('--part') + 1]) if '--part' in sys.argv else 0.2
+seuil = float(sys.argv[sys.argv.index('--seuil') + 1]) if '--seuil' in sys.argv else 0.7
 
 im = Image.open(src).convert('RGB')
 a = np.asarray(im).astype(np.int16)
@@ -40,7 +44,7 @@ L = (np.abs(lum - clair) <= 24).astype(float)
 D = (np.abs(lum - sombre) <= 24).astype(float)
 C = (sat > 12).astype(float)
 fL = ndimage.uniform_filter(L, F); fD = ndimage.uniform_filter(D, F); fC = ndimage.uniform_filter(C, F)
-brut = (fL > 0.2) & (fD > 0.2) & (fL + fD > 0.7) & (fC < 0.04)
+brut = (fL > part) & (fD > part) & (fL + fD > seuil) & (fC < 0.04)
 damier = ndimage.binary_closing(brut, structure=np.ones((7, 7), bool))
 damier = ndimage.binary_opening(damier, structure=np.ones((5, 5), bool))
 # La fenêtre déborde de F/2 sur le dessin : on rétrécit d'autant.

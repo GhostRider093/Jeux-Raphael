@@ -127,6 +127,11 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   // ?village=capestang ouvre l'autre village avec le même moteur.
   const params = new URLSearchParams(location.search);
   const village = (params.get('village') || 'poilhes').replace(/[^a-z-]/g, '');
+  // L'outil de réglage (touche T) reste **en local** (décision d'Arnaud, 24/09/2026) :
+  // c'est le poste de développement qui règle, et le serveur ne reçoit que les
+  // valeurs retenues, collées dans REGLAGES. En ligne, T ne fait rien — sauf `?reglages=1`.
+  // Déclaré ici, avant les écouteurs clavier, pour être défini dès la première touche.
+  const outilsLocaux = ['127.0.0.1', 'localhost', ''].includes(location.hostname) || params.get('reglages') === '1';
   const decor = await construireVillage({
     scene, renderer, camera, onProgress: setProgress, leger: isTouch, village,
     onHeure: (h) => {
@@ -586,7 +591,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     if (e.target.tagName === 'INPUT') return;
     keys.add(e.code);
     if (e.code === 'KeyN') toggleLabels();
-    if (e.code === 'KeyT') montrerReglages();
+    if (e.code === 'KeyT' && outilsLocaux) montrerReglages();
     if (e.code === 'KeyV' && mode === 'chasseur') jet.basculerVue();
     if (mode === 'voiture') {
       if (e.code === 'KeyV') auto.basculerVue();
@@ -1018,6 +1023,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   // l'engin du mode courant et se remonte quand on change de voiture.
   const reglagesEl = $('reglages');
   let reglages = null;
+
   function montrerReglages(remonter = false) {
     if (!reglagesEl) return;
     const engin = mode === 'voiture' ? auto : mode === 'trottinette' ? deuxRoues : null;

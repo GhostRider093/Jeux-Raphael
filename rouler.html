@@ -91,7 +91,7 @@
      Poilhes City : l'image de fond (assets/accueil/poilhes-city.jpg — à défaut,
      le plan aérien du village), le titre 3D rendu par Blender, et trois choix
      avant de rouler. Rien ne se charge tant qu'on n'a pas cliqué « Rouler ». */
-  #accueil { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; overflow: hidden;
+  #accueil { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; overflow: hidden auto;
              background: #0b0e14; transition: opacity .7s ease; }
   #accueil[hidden] { display: none; }
   #accueil.parti { opacity: 0; pointer-events: none; }
@@ -103,13 +103,51 @@
                     background: linear-gradient(180deg, rgba(8,10,16,.55) 0%, rgba(8,10,16,.25) 40%, rgba(8,10,16,.82) 100%); }
   #accueil .contenu { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px;
                       width: min(760px, calc(100vw - 32px)); padding: 24px 0; }
-  /* Le titre flotte franchement : il monte et descend de deux centimètres,
-     se balance d'un degré et respire, sur deux rythmes décalés pour que le
-     mouvement ne se répète pas mécaniquement. */
-  #accueil .titre { width: min(1190px, 98vw); height: auto; filter: drop-shadow(0 14px 30px rgba(0,0,0,.6));
-                    animation: flotte 5.2s ease-in-out infinite, balance 7.8s ease-in-out infinite; transform-origin: 50% 60%; }
-  @keyframes flotte { 0%, 100% { translate: 0 0 } 50% { translate: 0 -22px } }
+  /* ── Le titre en trois calques : le village, le blason, le lettrage ──────
+     Chacun est une image détourée, posée dans une composition dont la largeur
+     fait la référence : toutes les cotes sont en % de cette largeur (--l =
+     largeur du calque, --x = décalage horizontal depuis le centre, --y = haut
+     du calque). C'est ici qu'on agence — ou en jeu, avec ?agencer=1 : on
+     glisse chaque calque à la souris, la molette le redimensionne, et le
+     bouton « Copier » donne les valeurs à coller ici. */
+  #accueil .composition {
+    /* 125vh : sur un écran peu haut, la composition rétrécit pour laisser
+       « Rouler » visible sans défiler. */
+    --largeur: min(1190px, 98vw, 92vh);
+    /* Agencement d'Arnaud, 24/09/2026 (mode ?agencer=1). Le village déborde
+       volontairement de la composition : il fait le décor du titre. */
+    --village-l: 173.2; --village-x: -6.6; --village-y: -10.3;
+    --blason-l: 29.6;   --blason-x: -4.3;  --blason-y: -5.2;
+    --titre-l: 108.9;   --titre-x: -4.5;   --titre-y: 25.8;
+    /* Hauteur = bas du lettrage (25.8 % + 108.9 % × 697/2106 ≈ 62 % de la largeur). */
+    position: relative; width: var(--largeur); aspect-ratio: 100 / 62; margin-top: calc(var(--largeur) * 0.10); }
+  #accueil .calque { position: absolute; left: 50%; top: 0; height: auto;
+                     width: calc(var(--l) * var(--largeur) / 100);
+                     translate: calc(-50% + var(--x) * var(--largeur) / 100) calc(var(--y) * var(--largeur) / 100);
+                     filter: drop-shadow(0 14px 30px rgba(0,0,0,.6)); transform-origin: 50% 60%; }
+  #accueil .calque.village { --l: var(--village-l); --x: var(--village-x); --y: var(--village-y); z-index: 1;
+                             animation: flotte 7.5s ease-in-out infinite; }
+  #accueil .calque.blason  { --l: var(--blason-l);  --x: var(--blason-x);  --y: var(--blason-y);  z-index: 2;
+                             animation: flotte 5.6s ease-in-out -1.4s infinite, balance 8.4s ease-in-out infinite; }
+  #accueil .calque.titre   { --l: var(--titre-l);   --x: var(--titre-x);   --y: var(--titre-y);   z-index: 3;
+                             animation: flotte 5.2s ease-in-out -2.6s infinite, balance 7.8s ease-in-out -3s infinite; }
+  /* Les animations bougent `transform`, pas `translate`, pour ne pas écraser la mise en place. */
+  @keyframes flotte { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-22px) } }
   @keyframes balance { 0%, 100% { rotate: -1deg; scale: 1 } 50% { rotate: 1deg; scale: 1.025 } }
+  /* Mode agencement */
+  #accueil.agencer .calque { animation: none; cursor: grab; outline: 1px dashed rgba(255,207,74,.7); outline-offset: 4px; }
+  #accueil.agencer .calque:active { cursor: grabbing; }
+  #accueil .agenceur { position: absolute; left: 14px; bottom: 14px; z-index: 5; background: rgba(14,18,26,.9);
+                       border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: 12px/1.5 ui-monospace, monospace;
+                       color: var(--ink); white-space: pre; display: none; }
+  #accueil.agencer .agenceur { display: block; }
+  #accueil .agenceur button { margin-top: 6px; padding: 5px 10px; font-size: 12px; }
+  #accueil .agenceur-lignes { display: grid; gap: 4px; margin-bottom: 6px; }
+  #accueil .agenceur-lignes div { display: flex; align-items: center; gap: 6px; }
+  #accueil .agenceur-lignes b { width: 60px; }
+  #accueil .agenceur-lignes button { margin: 0; width: 34px; padding: 4px 0; font-size: 15px; line-height: 1; }
+  #accueil .agenceur-aide { color: var(--dim); white-space: normal; max-width: 300px; margin-bottom: 6px; }
+  #accueil.agencer .calque.choisi { outline: 2px solid var(--accent); }
   #accueil .accroche { margin: 0; color: #e6ebf2; text-shadow: 0 1px 6px rgba(0,0,0,.8); font-size: 15px; text-align: center; max-width: 560px; }
   /* Les réglages (village, engin, qualité) vivent derrière un hamburger en haut
      à droite : l'accueil ne montre que le logo et « Rouler ». */
@@ -129,7 +167,7 @@
   #accueil .groupe .etiquette { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
   #accueil .groupe .boutons { display: flex; gap: 6px; flex-wrap: wrap; }
   #accueil .groupe button { flex: 1; min-width: 88px; padding: 9px 8px; }
-  #btn-rouler { flex: 0 0 auto; margin-top: 4px; padding: 14px 64px; font-size: 19px; font-weight: 700; background: var(--accent); color: #1b1600;
+  #btn-rouler { flex: 0 0 auto; margin-top: 18px; padding: 14px 64px; font-size: 19px; font-weight: 700; background: var(--accent); color: #1b1600;
                 border-color: var(--accent); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
   #btn-rouler:hover { background: #ffd970; }
   #accueil .aide { margin: 2px 0 0; color: var(--dim); font-size: 12px; text-align: center; }
@@ -297,6 +335,13 @@
   <div class="fond"><img id="accueil-image" src="assets/accueil/poilhes-city.jpg" alt=""
        onerror="document.getElementById('accueil').classList.add('sans-image')"></div>
   <div class="voile"></div>
+  <div class="agenceur" id="agenceur"><div class="agenceur-lignes">
+      <div><b>Village</b> <button type="button" data-taille="village" data-sens="-1">−</button><button type="button" data-taille="village" data-sens="1">+</button></div>
+      <div><b>Blason</b> <button type="button" data-taille="blason" data-sens="-1">−</button><button type="button" data-taille="blason" data-sens="1">+</button></div>
+      <div><b>Titre</b> <button type="button" data-taille="titre" data-sens="-1">−</button><button type="button" data-taille="titre" data-sens="1">+</button></div>
+    </div><div class="agenceur-aide">Glisser : déplacer · molette ou + / − : taille · clic puis flèches : déplacer au pas</div>
+<span id="agenceur-valeurs"></span>
+<button type="button" id="agenceur-copier">Copier les valeurs</button></div>
   <div class="coin">
     <button id="btn-musique" type="button" class="musique" aria-pressed="true" title="Couper ou remettre la musique">♪ Musique</button>
     <button id="btn-menu" type="button" class="hamburger" aria-expanded="false" aria-controls="menu-accueil" title="Village, engin, qualité">☰</button>
@@ -321,7 +366,11 @@
         </div></div>
   </div>
   <div class="contenu">
-    <img class="titre" src="assets/accueil/poilhes-city-titre.webp" alt="Poilhes City">
+    <div class="composition" id="composition">
+      <img class="calque village" data-calque="village" src="assets/accueil/village.webp" alt="" draggable="false">
+      <img class="calque blason" data-calque="blason" src="assets/accueil/blason.webp" alt="" draggable="false">
+      <img class="calque titre" data-calque="titre" src="assets/accueil/titre-texte.webp" alt="Poilhes City" draggable="false">
+    </div>
     <p class="accroche">Trottinette et berline dans les rues du village, reconstruit d’après le LiDAR et les photos de l’IGN.</p>
     <button id="btn-rouler" type="button">Rouler</button>
     <p class="resume" id="resume-choix"></p>
@@ -382,6 +431,70 @@ accueil.querySelectorAll('[data-choix]').forEach((b) => b.addEventListener('clic
   peindreChoix();
 }));
 peindreChoix();
+// ─────────────────────────────── agencer les calques (?agencer=1)
+// Glisser un calque le déplace, la molette le redimensionne ; les valeurs
+// s'affichent en bas à gauche, en % de la largeur de la composition, prêtes à
+// coller dans le CSS. Rien n'est enregistré : c'est un outil de mise au point.
+if (params.get('agencer') === '1') {
+  accueil.classList.add('agencer');
+  const compo = $('composition'), sortie = $('agenceur-valeurs');
+  const noms = ['village', 'blason', 'titre'];
+  const lire = (n, k) => parseFloat(getComputedStyle(compo).getPropertyValue(`--${n}-${k}`)) || 0;
+  const val = {};
+  for (const n of noms) val[n] = { l: lire(n, 'l'), x: lire(n, 'x'), y: lire(n, 'y') };
+  function appliquer() {
+    for (const n of noms) for (const k of ['l', 'x', 'y']) compo.style.setProperty(`--${n}-${k}`, val[n][k].toFixed(1));
+    sortie.textContent = noms.map((n) => `--${n}-l: ${val[n].l.toFixed(1)}; --${n}-x: ${val[n].x.toFixed(1)}; --${n}-y: ${val[n].y.toFixed(1)};`).join('\n');
+  }
+  appliquer();
+  let prise = null;
+  compo.querySelectorAll('.calque').forEach((img) => {
+    img.addEventListener('pointerdown', (e) => {
+      prise = { n: img.dataset.calque, x0: e.clientX, y0: e.clientY, vx: val[img.dataset.calque].x, vy: val[img.dataset.calque].y };
+      img.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation();
+    });
+    img.addEventListener('pointermove', (e) => {
+      if (!prise || prise.n !== img.dataset.calque) return;
+      const W = compo.clientWidth;
+      val[prise.n].x = prise.vx + (e.clientX - prise.x0) * 100 / W;
+      val[prise.n].y = prise.vy + (e.clientY - prise.y0) * 100 / W;
+      appliquer();
+    });
+    img.addEventListener('pointerup', () => { prise = null; });
+    img.addEventListener('wheel', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const n = img.dataset.calque;
+      val[n].l = Math.max(3, val[n].l * (e.deltaY < 0 ? 1.04 : 1 / 1.04));
+      appliquer();
+    }, { passive: false });
+    img.addEventListener('click', (e) => {
+      e.stopPropagation();
+      compo.querySelectorAll('.calque').forEach((c) => c.classList.toggle('choisi', c === img));
+      choisi = img.dataset.calque;
+    });
+  });
+  // Boutons + / − du panneau, et clavier sur le calque choisi.
+  let choisi = null;
+  const agrandir = (n, sens) => { val[n].l = Math.max(3, val[n].l * (sens > 0 ? 1.06 : 1 / 1.06)); appliquer(); };
+  $('agenceur').querySelectorAll('[data-taille]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation(); agrandir(b.dataset.taille, +b.dataset.sens);
+  }));
+  document.addEventListener('keydown', (e) => {
+    if (!choisi) return;
+    const pas = e.shiftKey ? 0.2 : 1;
+    if (e.key === 'ArrowLeft') val[choisi].x -= pas; else if (e.key === 'ArrowRight') val[choisi].x += pas;
+    else if (e.key === 'ArrowUp') val[choisi].y -= pas; else if (e.key === 'ArrowDown') val[choisi].y += pas;
+    else if (e.key === '+' || e.key === '=') { agrandir(choisi, 1); return; }
+    else if (e.key === '-') { agrandir(choisi, -1); return; }
+    else return;
+    e.preventDefault(); appliquer();
+  });
+  $('agenceur-copier').addEventListener('click', (e) => {
+    e.stopPropagation();
+    navigator.clipboard?.writeText(sortie.textContent).then(() => { $('agenceur-copier').textContent = 'Copié'; });
+  });
+}
+
 // ─────────────────────────────── la musique de l'accueil
 // Un navigateur refuse un son avant le premier geste : on tente tout de suite,
 // et sinon au premier clic ou à la première touche, une seule fois. Celui qui
@@ -404,11 +517,21 @@ let musiqueVoulue = true;
 try { musiqueVoulue = localStorage.getItem(CLE_MUSIQUE) !== '0'; } catch (e) { /* mode privé */ }
 const btnMusique = $('btn-musique');
 function peindreMusique() { btnMusique.setAttribute('aria-pressed', musiqueVoulue ? 'true' : 'false'); }
+// La playlist joue sur l'accueil **et en trottinette** (décision d'Arnaud du
+// 24/09) ; la berline a sa propre musique. Le moteur du village marque le
+// bouton du mode actif : c'est lui qu'on lit.
+const btnTrottinette = document.querySelector('[data-mode="trottinette"]');
+const surAccueil = () => !accueil.hidden && !accueil.classList.contains('parti');
+const enTrottinette = () => btnTrottinette.classList.contains('on');
 function jouerMusique() {
-  if (!musiqueVoulue || accueil.hidden || accueil.classList.contains('parti')) return;
+  if (!musiqueVoulue || !(surAccueil() || enTrottinette())) return;
   const p = musique.play();
   if (p?.catch) p.catch(() => {});
 }
+new MutationObserver(() => {
+  if (enTrottinette()) jouerMusique();
+  else if (!surAccueil()) fondu(musique, 900);
+}).observe(btnTrottinette, { attributes: true, attributeFilter: ['class'] });
 function auPremierGeste() { jouerMusique(); }
 btnMusique.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -449,7 +572,8 @@ if (!accueil.hidden && params.get('go') !== '1') {
 }
 
 $('btn-rouler').addEventListener('click', () => {
-  fonduMusique();
+  // En trottinette la playlist continue ; en berline elle laisse la place à Nitro Boost.
+  if (choix.engin === 'voiture') fonduMusique();
   if (choix.qualite === 'auto') oublierChoix(); else enregistrerChoix(choix.qualite);
   // Un autre village, c'est un autre paquet de données : on recharge la page
   // dessus, en sautant l'accueil (?go=1) puisque le choix est fait.

@@ -763,6 +763,9 @@ voitures sortent sous-vireuses à fond de volant (dérive AV 23°, AR 5-6°).
 - Les objets `TOUCHER` et `SAUT_TROTTINETTE` sont **globaux au module** : un réglage du toucher
   vaut pour les deux voitures et la trottinette. La mémoire, elle, est par nom d'engin.
 - Le panneau ne se remonte au changement de voiture que s'il est ouvert : fermé, il reste fermé.
+- **L'outil reste en local** (décision d'Arnaud) : la touche T n'agit que sur `127.0.0.1` /
+  `localhost`, ou avec `?reglages=1` dans l'URL. Le serveur ne reçoit que les valeurs
+  retenues, collées dans `REGLAGES`. Les fichiers, eux, se déploient (le module est importé).
 
 ## Le village habité : commerces, blason, trottinette
 
