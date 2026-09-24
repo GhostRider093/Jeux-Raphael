@@ -974,6 +974,23 @@ export function creerPilote({
    * résorbe au sol au lieu de sauter d'un coup, et c'est ce qu'on voit comme
    * une réception un peu lourde.
    */
+  // La foule acclame une figure réussie — léger, en fond, jamais sur une chute.
+  // Un enregistrement (assets/sons/acclamation.mp3, 5,5 s), rejoué du début à
+  // chaque figure ; il suit le bouton du son (M) comme les autres bruitages.
+  const acclamation = new Audio('assets/sons/acclamation.mp3?v=foule-20260924');
+  acclamation.preload = 'auto';
+  // … et « uh-oh » sur une chute (assets/sons/uh-oh.mp3).
+  const uhOh = new Audio('assets/sons/uh-oh.mp3?v=foule-20260924');
+  uhOh.preload = 'auto';
+  function jouerUneFois(piste, volume) {
+    if (!state.son) return;
+    piste.volume = volume;
+    piste.currentTime = 0;
+    const p = piste.play();
+    if (p?.catch) p.catch(() => {});
+  }
+  const acclamer = (force) => jouerUneFois(acclamation, 0.22 * force);
+
   function atterrir() {
     const toursFlip = Math.round(state.tangageAir / (2 * Math.PI));
     const resteFlip = state.tangageAir - toursFlip * 2 * Math.PI;
@@ -997,10 +1014,13 @@ export function creerPilote({
       etat.u *= 0.25;
       state.chute = 1.0;
       state.figure = { nom: 'Chute !', detail: noms.join(' + '), n: ++state.figureN };
+      jouerUneFois(uhOh, 0.35);
     } else if (noms.length) {
       state.figure = { nom: noms.join(' + '), detail: `${state.air.toFixed(1)} s en l’air`, n: ++state.figureN };
+      acclamer(Math.min(1, 0.6 + noms.length * 0.2));
     } else if (state.air > 0.9) {
       state.figure = { nom: 'Gros saut', detail: `${state.air.toFixed(1)} s en l’air`, n: ++state.figureN };
+      acclamer(0.6);
     }
     if (state.vy < -6) etat.u *= 0.93;
   }

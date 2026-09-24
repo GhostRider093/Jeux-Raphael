@@ -7,7 +7,7 @@ deux carreaux, moitié de gris clair, moitié de gris sombre, presque rien entre
 les deux et aucune couleur. Le dessin, même gris, a des valeurs continues. On ne garde ensuite que le damier
 relié aux bords, et on lisse le bord d'un pixel.
 
-    python scripts/accueil/detourer-damier.py entree.png sortie.png [--debug apercu.png] [--part 0.2] [--seuil 0.7]
+    python scripts/accueil/detourer-damier.py entree.png sortie.png [--debug apercu.png] [--part 0.2] [--seuil 0.7] [--trou 120]
 """
 import sys
 import numpy as np
@@ -54,13 +54,23 @@ proche = ((np.abs(lum - clair) <= 22) | (np.abs(lum - sombre) <= 22) | ((lum > s
 for _ in range(F * 2):
     damier = ndimage.binary_dilation(damier, structure=np.ones((3, 3), bool)) & proche
 
-# Ne garder que ce qui touche les bords.
+# Le fond relié aux bords, plus les **trous** : l'intérieur d'un O, d'un P,
+# d'une arche, où le damier est enfermé. Un dessin ne contient jamais de damier,
+# donc toute plage de damier d'au moins `trou` pixels est du fond, reliée ou non.
+trou = int(sys.argv[sys.argv.index('--trou') + 1]) if '--trou' in sys.argv else 120
 etiq, n = ndimage.label(damier)
 bords = set(np.unique(np.concatenate([etiq[0], etiq[-1], etiq[:, 0], etiq[:, -1]]))) - {0}
-fond = np.isin(etiq, list(bords))
+tailles = ndimage.sum(damier, etiq, range(1, n + 1))
+grands = {i + 1 for i, t in enumerate(tailles) if t >= trou}
+fond = np.isin(etiq, list(bords | grands))
 # Le damier passe aussi *sous* les pixels de bordure du dessin : on grignote
 # d'un pixel pour ne pas laisser de liseré gris, puis on adoucit.
 fond = ndimage.binary_dilation(fond, structure=np.ones((3, 3), bool))
+
+# Le voile blanc qu'un générateur peint parfois au-dessus du sujet n'est pas
+# traité : deux tentatives (plages claires touchant le fond ; tout ce qui est
+# au-dessus du premier pixel sombre) mangeaient les faces claires des lettres.
+# Demander plutôt au générateur un fond uni magenta ou vert, sans halo.
 
 alpha = Image.fromarray(np.where(fond, 0, 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.7))
 out = Image.fromarray(a.astype(np.uint8)).convert('RGBA'); out.putalpha(alpha)

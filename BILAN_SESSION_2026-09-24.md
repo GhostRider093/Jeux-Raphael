@@ -227,3 +227,11 @@ voiture et de la trottinette ».
 - Note : le dépôt porte aussi les modifications non commitées d'une autre session
   (assistance de conduite, musiques, logo ChatGPT) dans les mêmes fichiers — pas commité ici
   pour ne pas mélanger.
+- Nouveau lettrage chromé « POILHES CITY » (une ligne) : damier peint, retiré ; les trous
+  fermés (O, C) exigeaient une passe « trous » ajoutée à `detourer-damier.py`. Le voile
+  blanc peint au-dessus des lettres n'est pas traité (deux tentatives mangeaient les
+  faces claires) : à l'avenir demander à ChatGPT un fond uni magenta, pas « transparent ».
+- Diaporama de fond : sept photos du village en bande défilant vers la droite, deux à
+  l'écran, à 30 %, sous le voile (`assets/accueil/photos/`).
+- Acclamation de la foule (`assets/sons/acclamation.mp3`) sur chaque figure réussie en
+  trottinette, proportionnelle au nombre de figures, jamais sur une chute.

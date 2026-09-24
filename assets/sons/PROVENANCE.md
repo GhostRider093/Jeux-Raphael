@@ -27,6 +27,13 @@ une machine privée, à remplacer avant toute publication.
 | `boucle-reddit.wav` | 5,8 s tirées de la partie stable (5,5 s → 12 s). Le meilleur des deux : 32 % de graves, 38 % de bas médium, un moteur avec du corps. |
 | `boucle-reddit-3-tours.mp3` | La même jouée trois fois, pour vérifier que le raccord ne s'entend pas. Fichier de contrôle, pas d'usage en jeu. |
 
+## Fournis par Arnaud (24/09/2026)
+
+| Fichier | Ce que c'est |
+|---|---|
+| `acclamation.mp3` | « bruit acclamation foule », 5,5 s, ré-encodé en 96 kbit/s. Joué à chaque figure réussie en trottinette (looping, 360, gros saut), à 13–22 % de volume selon le nombre de figures. Jamais sur une chute. Origine à préciser par Arnaud (banque de bruitages ?). |
+| `uh-oh.mp3` | « uh-oh », tiré par Arnaud avec yt-grab (`E:\projet\yt-grab\sorties`), ré-encodé en 96 kbit/s. Joué sur une chute en trottinette (réception à l'envers), à 35 %. Origine YouTube : droits à vérifier avant publication. |
+
 ## Si le jeu doit être publié un jour
 
 Prendre les sons sur une banque à licence claire — freesound.org filtré en

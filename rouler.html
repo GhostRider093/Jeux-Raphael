@@ -99,6 +99,14 @@
   #accueil .fond img { width: 100%; height: 100%; object-fit: cover; display: block; }
   #accueil.sans-image .fond { background: url(maps/poilhes/plan.jpg) center / cover no-repeat; filter: saturate(.8); }
   #accueil.sans-image .fond img { display: none; }
+  #accueil .diaporama { position: absolute; inset: 0; overflow: hidden; opacity: .3; }
+  #accueil .diaporama .bande { position: absolute; top: 0; height: 100%; display: flex; gap: var(--ecart);
+                               --ecart: 4vw; --photo: 48vw;
+                               width: max-content; animation: defile 84s linear infinite; }
+  #accueil .diaporama img { width: var(--photo); height: 100%; object-fit: cover; flex: 0 0 auto; display: block; }
+  /* Défilement vers la droite : la bande contient deux fois les photos ; partir
+     d'une longueur de série à gauche et revenir à zéro donne une boucle parfaite. */
+  @keyframes defile { from { transform: translateX(calc(-1 * var(--serie))) } to { transform: translateX(0) } }
   #accueil .voile { position: absolute; inset: 0;
                     background: linear-gradient(180deg, rgba(8,10,16,.55) 0%, rgba(8,10,16,.25) 40%, rgba(8,10,16,.82) 100%); }
   #accueil .contenu { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px;
@@ -119,8 +127,8 @@
     --village-l: 173.2; --village-x: -6.6; --village-y: -10.3;
     --blason-l: 29.6;   --blason-x: -4.3;  --blason-y: -5.2;
     --titre-l: 108.9;   --titre-x: -4.5;   --titre-y: 25.8;
-    /* Hauteur = bas du lettrage (25.8 % + 108.9 % × 697/2106 ≈ 62 % de la largeur). */
-    position: relative; width: var(--largeur); aspect-ratio: 100 / 62; margin-top: calc(var(--largeur) * 0.10); }
+    /* Hauteur = bas du lettrage (25.8 % + 108.9 % × 587/2181 ≈ 55 % de la largeur). */
+    position: relative; width: var(--largeur); aspect-ratio: 100 / 55; margin-top: calc(var(--largeur) * 0.10); }
   #accueil .calque { position: absolute; left: 50%; top: 0; height: auto;
                      width: calc(var(--l) * var(--largeur) / 100);
                      translate: calc(-50% + var(--x) * var(--largeur) / 100) calc(var(--y) * var(--largeur) / 100);
@@ -334,6 +342,10 @@
 <div id="accueil">
   <div class="fond"><img id="accueil-image" src="assets/accueil/poilhes-city.jpg" alt=""
        onerror="document.getElementById('accueil').classList.add('sans-image')"></div>
+  <!-- Diaporama : les photos du village défilent vers la droite, deux à l'écran,
+       à 30 % d'opacité, un espace de fond entre chacune. La bande est doublée
+       pour boucler sans raccord (voir le CSS). -->
+  <div class="diaporama" id="diaporama" aria-hidden="true"></div>
   <div class="voile"></div>
   <div class="agenceur" id="agenceur"><div class="agenceur-lignes">
       <div><b>Village</b> <button type="button" data-taille="village" data-sens="-1">−</button><button type="button" data-taille="village" data-sens="1">+</button></div>
@@ -369,7 +381,7 @@
     <div class="composition" id="composition">
       <img class="calque village" data-calque="village" src="assets/accueil/village.webp" alt="" draggable="false">
       <img class="calque blason" data-calque="blason" src="assets/accueil/blason.webp" alt="" draggable="false">
-      <img class="calque titre" data-calque="titre" src="assets/accueil/titre-texte.webp" alt="Poilhes City" draggable="false">
+      <img class="calque titre" data-calque="titre" src="assets/accueil/titre-texte.webp?v=chrome-20260924" alt="Poilhes City" draggable="false">
     </div>
     <p class="accroche">Trottinette et berline dans les rues du village, reconstruit d’après le LiDAR et les photos de l’IGN.</p>
     <button id="btn-rouler" type="button">Rouler</button>
@@ -391,7 +403,7 @@
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
 <script type="module">
-import { startVillage } from './maps/poilhes-village.js?v=assiette-20260924';
+import { startVillage } from './maps/poilhes-village.js?v=foule-20260924';
 import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
 
 const $ = (id) => document.getElementById(id);
@@ -431,6 +443,19 @@ accueil.querySelectorAll('[data-choix]').forEach((b) => b.addEventListener('clic
   peindreChoix();
 }));
 peindreChoix();
+// ─────────────────────────────── le diaporama du fond
+{
+  const PHOTOS = [1, 2, 3, 4, 5, 6, 7].map((n) => `assets/accueil/photos/photo-${n}.webp`);
+  const bande = document.createElement('div');
+  bande.className = 'bande';
+  for (let k = 0; k < 2; k++) for (const src of PHOTOS) {
+    const img = document.createElement('img'); img.src = src; img.alt = ''; img.loading = 'lazy'; bande.appendChild(img);
+  }
+  // longueur d'une série = n × (photo + écart), en unités CSS
+  bande.style.setProperty('--serie', `calc(${PHOTOS.length} * (var(--photo) + var(--ecart)))`);
+  $('diaporama').appendChild(bande);
+}
+
 // ─────────────────────────────── agencer les calques (?agencer=1)
 // Glisser un calque le déplace, la molette le redimensionne ; les valeurs
 // s'affichent en bas à gauche, en % de la largeur de la composition, prêtes à
