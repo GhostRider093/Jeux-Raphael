@@ -153,3 +153,19 @@ loopings et les figures.
   8 m) : c'est le dos du virage. Un joueur tourne ; mais un muret ou une barrière au sommet
   du dévers éviterait l'envol dans l'herbe.
 - Pas de son de saut ni d'atterrissage, pas de score cumulé.
+
+
+---
+
+# Bilan de session — 24/09/2026 (tard) — Poilhes City : accueil et titre 3D
+
+- La page `rouler.html` devient **Poilhes City**, un vrai accueil : image de fond (celle
+  d'Arnaud, à déposer en `assets/accueil/poilhes-city.jpg` ; le plan aérien en attendant),
+  titre 3D, choix village / engin / qualité, bouton Rouler. Rien ne se charge avant le clic.
+- **Titre 3D par Blender** (`scripts/blender-titre.py`) : « Poilhes » en or, « CITY » en
+  ivoire, extrudés et biseautés, trois lampes, PNG transparent 2400 × 1000 + GLB. Quatre
+  polices rendues et montrées ; Titan One par défaut en attendant le choix d'Arnaud.
+- Vérifié dans Chromium : accueil sans rendu WebGL avant le clic, berline bleue lancée
+  depuis l'accueil, Capestang par rechargement sans repasser par l'accueil, portrait OK.
+- Piège : naviguer pendant que la berline charge encore ses textures fait crier GLTFLoader
+  (« Couldn't load texture blob ») — ce sont les blobs révoqués, pas un défaut du modèle.

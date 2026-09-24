@@ -657,7 +657,9 @@ qui donnerait l'impression d'un jeu qui bégaie :
 | Fichier | Rôle |
 | --- | --- |
 | `maps/qualite.js` | Les niveaux, la mesure (`mesurer`), la recommandation, l'application à chaud (`appliquer`), le panneau (`monterPanneau`) |
-| `rouler.html` | La page légère : **Poilhes ou Capestang, trottinette et berline bleue seulement**, panneau de qualité. Ni survol, ni robot, ni chasseur : leurs moteurs ne sont pas créés, rien n'est téléchargé pour eux |
+| `rouler.html` | **Poilhes City** : l'accueil (image de fond, titre 3D, choix du village, de l'engin et de la qualité, bouton Rouler) puis le jeu — **Poilhes ou Capestang, trottinette et berline bleue seulement**, panneau de qualité. Ni survol, ni robot, ni chasseur : leurs moteurs ne sont pas créés, rien n'est téléchargé pour eux |
+| `scripts/blender-titre.py` | Le titre « Poilhes City » en lettres extrudées (or + ivoire), rendu PNG à fond transparent + GLB, par Blender 5.0 en ligne de commande, police au choix |
+| `assets/accueil/` | `poilhes-city.jpg` = l'image de fond de l'accueil (à déposer ; sans elle, le plan aérien du village), `titre-<police>.png/.glb` = les titres rendus |
 
 À savoir :
 - **Tout s'applique à chaud** : ratio de pixels et ombres sur le rendu, taille de la carte
@@ -683,6 +685,28 @@ qui donnerait l'impression d'un jeu qui bégaie :
   expose dans `window.RaphaelPoilhes`, enrichi de `decor`, `sun` et `mode`.
 - Pas encore branché sur `mondes.html` : le moteur des Mondes garde ses plafonds en dur
   (`world-game.js`, ratio 2 et ombres douces sur ordinateur).
+
+### L'accueil de Poilhes City
+
+**Rien ne se charge avant le clic sur Rouler** : le rendu WebGL n'est créé qu'à ce moment,
+la mesure de la machine aussi (qualité « Auto »), et le clic donne au passage le droit au son.
+Choix : village, engin, qualité. Un autre village que celui de l'URL recharge la page avec
+`?village=…&engin=…&go=1` — `go=1` saute l'accueil, c'est aussi ce que font les liens de
+village du HUD. La berline se lance par le clic sur son bouton `[data-mode=voiture]`, qui est
+le seul chemin sachant choisir la bleue.
+
+Le titre est un rendu Blender, pas du texte HTML :
+
+```bash
+"C:/Program Files/Blender Foundation/Blender 5.0/blender.exe" -b --factory-startup \
+  --python scripts/blender-titre.py -- --police scripts/fonts/TitanOne-Regular.ttf \
+  --sortie assets/accueil/titre-titanone
+```
+
+Quatre polices libres (Google Fonts, dans `scripts/fonts/`, non déployées) ont été rendues
+le 24/09/2026 : Titan One (retenue par défaut), Luckiest Guy, Righteous, Bangers. Le cadrage
+se calcule sur l'emprise réelle du texte, **en largeur et en hauteur** : une police condensée
+(Bangers) est étroite mais haute, cadrée sur sa seule largeur elle sortait du cadre.
 
 ## Le village habité : commerces, blason, trottinette
 

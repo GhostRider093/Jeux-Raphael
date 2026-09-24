@@ -4,7 +4,7 @@
 <script src="./son-silence.js?v=coupe-son-20260922"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Rouler dans le village</title>
+<title>Poilhes City</title>
 <link rel="icon" href="favicon.svg">
 <style>
   :root { --panel: rgba(14, 18, 26, .72); --line: rgba(255, 255, 255, .14); --ink: #eef2f7; --dim: #a9b3c1; --accent: #ffcf4a; }
@@ -87,6 +87,41 @@
     72% { opacity: 1; }
     100% { opacity: 0; transform: translate(-50%, -85%); }
   }
+  /* ─────────────────────────────── ACCUEIL ────────────────────────────────
+     Poilhes City : l'image de fond (assets/accueil/poilhes-city.jpg — à défaut,
+     le plan aérien du village), le titre 3D rendu par Blender, et trois choix
+     avant de rouler. Rien ne se charge tant qu'on n'a pas cliqué « Rouler ». */
+  #accueil { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; overflow: hidden;
+             background: #0b0e14; transition: opacity .7s ease; }
+  #accueil[hidden] { display: none; }
+  #accueil.parti { opacity: 0; pointer-events: none; }
+  #accueil .fond { position: absolute; inset: 0; }
+  #accueil .fond img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #accueil.sans-image .fond { background: url(maps/poilhes/plan.jpg) center / cover no-repeat; filter: saturate(.8); }
+  #accueil.sans-image .fond img { display: none; }
+  #accueil .voile { position: absolute; inset: 0;
+                    background: linear-gradient(180deg, rgba(8,10,16,.55) 0%, rgba(8,10,16,.25) 40%, rgba(8,10,16,.82) 100%); }
+  #accueil .contenu { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px;
+                      width: min(760px, calc(100vw - 32px)); padding: 24px 0; }
+  #accueil .titre { width: min(620px, 88vw); height: auto; filter: drop-shadow(0 14px 30px rgba(0,0,0,.6));
+                    animation: flotte 6s ease-in-out infinite; }
+  @keyframes flotte { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+  #accueil .accroche { margin: 0; color: #e6ebf2; text-shadow: 0 1px 6px rgba(0,0,0,.8); font-size: 15px; text-align: center; max-width: 560px; }
+  #accueil .carte { width: 100%; background: rgba(14,18,26,.78); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+                    border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px 14px; display: grid; gap: 10px; }
+  #accueil .groupe { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 8px; }
+  #accueil .groupe .etiquette { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  #accueil .groupe .boutons { display: flex; gap: 6px; flex-wrap: wrap; }
+  #accueil .groupe button { flex: 1; min-width: 88px; padding: 9px 8px; }
+  #btn-rouler { margin-top: 4px; padding: 13px; font-size: 17px; font-weight: 700; background: var(--accent); color: #1b1600;
+                border-color: var(--accent); border-radius: 12px; }
+  #btn-rouler:hover { background: #ffd970; }
+  #accueil .aide { margin: 2px 0 0; color: var(--dim); font-size: 12px; text-align: center; }
+  #accueil .aide b { color: var(--ink); }
+  @media (max-width: 640px) {
+    #accueil .groupe { grid-template-columns: 1fr; gap: 4px; }
+    #accueil .carte { padding: 12px; }
+  }
   #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
   .label { position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform; }
   .label.poi { background: rgba(14,18,26,.82); border: 1px solid rgba(255,207,74,.6); color: #fff; padding: 3px 9px;
@@ -143,8 +178,8 @@
   <h1 id="hud-title" title="Replier / déplier">Poilhes <small>Hérault · 34310</small></h1>
   <div id="stats">…</div>
   <div class="row" id="villages">
-    <a class="village" href="rouler.html?village=poilhes" data-village="poilhes">Poilhes</a>
-    <a class="village" href="rouler.html?village=capestang" data-village="capestang">Capestang</a>
+    <a class="village" href="rouler.html?village=poilhes&amp;go=1" data-village="poilhes">Poilhes</a>
+    <a class="village" href="rouler.html?village=capestang&amp;go=1" data-village="capestang">Capestang</a>
   </div>
   <div class="row">
     <button data-mode="trottinette" title="Traverser le village en trottinette électrique">Trottinette</button>
@@ -213,10 +248,41 @@
   </div>
 </div>
 
+<div id="accueil">
+  <div class="fond"><img id="accueil-image" src="assets/accueil/poilhes-city.jpg" alt=""
+       onerror="document.getElementById('accueil').classList.add('sans-image')"></div>
+  <div class="voile"></div>
+  <div class="contenu">
+    <img class="titre" src="assets/accueil/titre-titanone.png" alt="Poilhes City">
+    <p class="accroche">Trottinette et berline dans les rues du village, reconstruit d’après le LiDAR et les photos de l’IGN.</p>
+    <div class="carte">
+      <div class="groupe"><span class="etiquette">Village</span>
+        <div class="boutons">
+          <button data-choix="village" data-valeur="poilhes">Poilhes</button>
+          <button data-choix="village" data-valeur="capestang">Capestang</button>
+        </div></div>
+      <div class="groupe"><span class="etiquette">Engin</span>
+        <div class="boutons">
+          <button data-choix="engin" data-valeur="trottinette">Trottinette</button>
+          <button data-choix="engin" data-valeur="voiture">Berline bleue</button>
+        </div></div>
+      <div class="groupe"><span class="etiquette">Qualité</span>
+        <div class="boutons">
+          <button data-choix="qualite" data-valeur="auto" title="La machine se mesure au chargement et choisit">Auto</button>
+          <button data-choix="qualite" data-valeur="bas">Bas</button>
+          <button data-choix="qualite" data-valeur="moyen">Moyen</button>
+          <button data-choix="qualite" data-valeur="eleve">Élevé</button>
+        </div></div>
+      <button id="btn-rouler" type="button">Rouler</button>
+      <p class="aide">Flèches ou <b>ZQSD</b> · <b>Espace</b> saute · en l’air <b>F</b> looping, <b>G</b> 360 · <b>P</b> au skatepark · <b>V</b> caméra</p>
+    </div>
+  </div>
+</div>
+
 <div id="loader">
   <div class="box">
-    <h2>Rouler dans le village</h2>
-    <p>Trottinette et berline dans les rues reconstruites d’après l’IGN</p>
+    <h2>Poilhes City</h2>
+    <p>Le village se construit…</p>
     <div class="track"><div id="load-bar"></div></div>
     <div id="load-msg">Chargement…</div>
   </div>
@@ -227,42 +293,78 @@
 </script>
 <script type="module">
 import { startVillage } from './maps/poilhes-village.js?v=qualite-20260924';
-import { NIVEAUX, lireChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
+import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
 
-const hud = document.getElementById('hud');
+const $ = (id) => document.getElementById(id);
+const hud = $('hud');
 if (matchMedia('(max-width: 640px)').matches) hud.classList.add('collapsed');
-document.getElementById('hud-title').addEventListener('click', () => hud.classList.toggle('collapsed'));
+$('hud-title').addEventListener('click', () => hud.classList.toggle('collapsed'));
 
-// Le village courant, souligné dans le choix.
-const village = (new URLSearchParams(location.search).get('village') || 'poilhes').replace(/[^a-z-]/g, '');
+const params = new URLSearchParams(location.search);
+const village = (params.get('village') || 'poilhes').replace(/[^a-z-]/g, '');
 document.querySelectorAll('#villages a').forEach((a) => a.classList.toggle('on', a.dataset.village === village));
 
-// Premier lancement : rien de mémorisé. On charge en Élevé, on mesure, on
-// conseille — et le conseil s'applique, une fois. Ensuite le joueur décide.
-const memorise = lireChoix();
-const loader = document.getElementById('loader'), msg = document.getElementById('load-msg');
-
-startVillage({
-  modes: ['trottinette', 'voiture'],
-  qualite: NIVEAUX[memorise || 'eleve'],
-  voitureUnique: 'bleue',
-  ouvrir: false,
-}).then(async (jeu) => {
-  appliquer(jeu, NIVEAUX[memorise || 'eleve']);
-  const panneau = monterPanneau({ racine: document.getElementById('qualite'), jeu, initial: memorise || 'eleve' });
-  if (!memorise) {
-    msg.textContent = 'Mesure de la machine…';
-    const { ms, conseille } = await panneau.tester({ appliquerConseil: true });
-    msg.textContent = `Réglé sur ${NIVEAUX[conseille].nom} (${ms.toFixed(1)} ms par image)`;
-    await new Promise((r) => setTimeout(r, 900));
+// ─────────────────────────────── l'accueil : trois choix, puis « Rouler »
+const accueil = $('accueil');
+const choix = {
+  village,
+  engin: params.get('engin') === 'berline' ? 'voiture' : 'trottinette',
+  qualite: lireChoix() || 'auto',
+};
+function peindreChoix() {
+  accueil.querySelectorAll('[data-choix]').forEach((b) => b.classList.toggle('on', choix[b.dataset.choix] === b.dataset.valeur));
+}
+accueil.querySelectorAll('[data-choix]').forEach((b) => b.addEventListener('click', () => {
+  choix[b.dataset.choix] = b.dataset.valeur;
+  peindreChoix();
+}));
+peindreChoix();
+$('btn-rouler').addEventListener('click', () => {
+  if (choix.qualite === 'auto') oublierChoix(); else enregistrerChoix(choix.qualite);
+  // Un autre village, c'est un autre paquet de données : on recharge la page
+  // dessus, en sautant l'accueil (?go=1) puisque le choix est fait.
+  if (choix.village !== village) {
+    location.href = `rouler.html?village=${choix.village}&engin=${choix.engin === 'voiture' ? 'berline' : 'trottinette'}&go=1`;
+    return;
   }
-  loader.classList.add('done');
-  // On arrive directement en selle : cette page ne survole pas, elle roule.
-  setTimeout(() => jeu.setMode('trottinette'), 400);
-}).catch((err) => {
-  console.error(err);
-  msg.textContent = 'Erreur : ' + err.message;
+  accueil.classList.add('parti');
+  setTimeout(() => { accueil.hidden = true; }, 750);
+  lancer(choix.engin);
 });
+if (params.get('go') === '1') { accueil.hidden = true; lancer(choix.engin); }
+
+// ─────────────────────────────── le jeu
+function lancer(engin) {
+  // Premier lancement (ou « Auto ») : rien de mémorisé. On charge en Élevé, on
+  // mesure, on conseille — et le conseil s'applique, une fois. Ensuite le joueur décide.
+  const memorise = lireChoix();
+  const loader = $('loader'), msg = $('load-msg');
+  startVillage({
+    modes: ['trottinette', 'voiture'],
+    qualite: NIVEAUX[memorise || 'eleve'],
+    voitureUnique: 'bleue',
+    ouvrir: false,
+  }).then(async (jeu) => {
+    appliquer(jeu, NIVEAUX[memorise || 'eleve']);
+    const panneau = monterPanneau({ racine: $('qualite'), jeu, initial: memorise || 'eleve' });
+    if (!memorise) {
+      msg.textContent = 'Mesure de la machine…';
+      const { ms, conseille } = await panneau.tester({ appliquerConseil: true });
+      msg.textContent = `Réglé sur ${NIVEAUX[conseille].nom} (${ms.toFixed(1)} ms par image)`;
+      await new Promise((r) => setTimeout(r, 900));
+    }
+    loader.classList.add('done');
+    // On arrive directement en selle : cette page ne survole pas, elle roule.
+    // La berline passe par son bouton, qui sait choisir la bleue.
+    setTimeout(() => {
+      if (engin === 'voiture') document.querySelector('[data-mode="voiture"]').click();
+      else jeu.setMode('trottinette');
+    }, 400);
+  }).catch((err) => {
+    console.error(err);
+    msg.textContent = 'Erreur : ' + err.message;
+  });
+}
 </script>
 </body>
 </html>
