@@ -631,6 +631,59 @@ deux `SpotLight` éclairent vraiment la chaussée.
   Noter la provenance et les droits dans `assets/sons/PROVENANCE.md`, comme pour les
   sons du chasseur.
 
+## Niveaux de qualité et la page « Rouler » (`rouler.html`)
+
+Le village pèse 2,4 millions de triangles par image. Mesuré le 24/09/2026 sur une RTX 4070 Ti
+en 1080p, sans synchronisation verticale (`maps/qualite.js` porte les chiffres) :
+
+| Situation | ms / image |
+| --- | --- |
+| Survol, ombres douces 4096 | 2,75 |
+| Survol, sans ombres | 1,63 |
+| Survol, ratio 2 (4K), ombres | 5,96 |
+| Berline, ombres | 2,0 |
+
+Extrapolé : une GTX 1060 tient 60 images/s sans ombres, un portable Intel Iris Xe tombe à
+25 images/s avec ombres, un vieux portable (UHD 620) n'est pas jouable en Élevé. D'où trois
+niveaux **choisis par le joueur**, comme dans un vrai jeu, et non une bascule automatique
+qui donnerait l'impression d'un jeu qui bégaie :
+
+| Niveau | Ratio de pixels | Ombres | Cartes de feuillage / arbre | Anticrénelage |
+| --- | --- | --- | --- | --- |
+| Bas | 1 | aucune | 20 | non |
+| Moyen | 1,5 | 2048 | 42 | oui |
+| Élevé | 2 | 4096 douces | 84 | oui |
+
+| Fichier | Rôle |
+| --- | --- |
+| `maps/qualite.js` | Les niveaux, la mesure (`mesurer`), la recommandation, l'application à chaud (`appliquer`), le panneau (`monterPanneau`) |
+| `rouler.html` | La page légère : **Poilhes ou Capestang, trottinette et berline bleue seulement**, panneau de qualité. Ni survol, ni robot, ni chasseur : leurs moteurs ne sont pas créés, rien n'est téléchargé pour eux |
+
+À savoir :
+- **Tout s'applique à chaud** : ratio de pixels et ombres sur le rendu, taille de la carte
+  d'ombre en jetant `sun.shadow.map`, feuillage par `decor.feuillage.regler(n)` qui pose un
+  `setDrawRange` sur les cartes — pas de reconstruction. Seul l'anticrénelage est figé à la
+  création du rendu : il suit le niveau mémorisé au chargement suivant.
+- **La machine se mesure, on ne lit pas le nom de la carte** : Chrome le donne, Firefox et
+  Safari le masquent, et il ne dit rien de l'écran 4K. `mesurer` rend des lots de quatre
+  images fermés par un `readPixels` d'un pixel, qui force la carte à finir — sans cela on ne
+  mesure que l'envoi des commandes et la synchronisation verticale plafonne tout à 16,7 ms.
+  Médiane, cinq lots d'échauffement. Seuils : < 8 ms Élevé, < 20 ms Moyen, sinon Bas.
+- **Après un changement d'ombres, la carte met ~3 s à retrouver son rythme** (programmes
+  recompilés : 3,5 ms puis 1,8 ms pour la même image). Le premier lancement mesure sur un
+  rendu neuf, donc sans ce biais ; « Retester » attend trois secondes si les ombres étaient coupées.
+- **Le premier lancement est le seul moment où la machine décide** : mesure en Élevé pendant
+  l'écran de chargement, le conseil s'applique et se mémorise (`localStorage`, clé
+  `nova.qualite`). Ensuite le joueur choisit, le bouton conseillé reste souligné, et le compteur
+  d'images par seconde (plafonné par l'écran, comme partout) montre l'effet du choix.
+- `startVillage(options)` accepte désormais `modes` (boutons cachés, moteurs non créés),
+  `qualite` (niveau à la création du rendu), `voitureUnique` ('bleue' : pas de panneau de
+  choix ni de touche C) et `ouvrir: false` (la page lève l'écran de chargement elle-même).
+  Sans options, `poilhes.html` se comporte comme avant. La fonction renvoie ce qu'elle
+  expose dans `window.RaphaelPoilhes`, enrichi de `decor`, `sun` et `mode`.
+- Pas encore branché sur `mondes.html` : le moteur des Mondes garde ses plafonds en dur
+  (`world-game.js`, ratio 2 et ombres douces sur ordinateur).
+
 ## Le village habité : commerces, blason, trottinette
 
 Ce que les données publiques ignorent et que le village sait — les vraies enseignes —

@@ -8,10 +8,14 @@
  */
 import * as THREE from 'three';
 import { construireSkatepark } from './poilhes-skatepark.js?v=skatepark-20260922';
+
 import {
   facadeMaterial, roofMaterial, groundMaterial, waterMaterial, foliageMaterial, stoneMaterial, skyMaterial,
   roadMaterial, leafMaterial, barkMaterial,
 } from './poilhes-shaders.js?v=voiture-20260921';
+
+/** Cartes de feuillage par arbre au niveau Élevé ; les niveaux inférieurs n'en dessinent qu'une partie. */
+const CARTES = 84;
 
 // Dossier des données du village courant. La chaîne sait en reconstruire
 // plusieurs (scripts/poilhes/sites.py) ; le moteur n'en connaît aucun d'avance.
@@ -394,6 +398,10 @@ export async function construireVillage({ scene, renderer, camera, onProgress = 
 
   // --------------------------------------------------------------------- arbres réels
   setProgress(0.88, 'Arbres…');
+  // Densité du feuillage réglable à chaud (niveaux de qualité, `maps/qualite.js`) :
+  // les cartes sont dessinées dans l'ordre où elles ont été tirées, on n'en
+  // dessine que les n premières — `setDrawRange`, pas de reconstruction.
+  let feuillage = null;
   {
     const data = arr('arbres'), rgb = arr('arbres_rgb');
     const count = data.length / 5;
@@ -401,6 +409,13 @@ export async function construireVillage({ scene, renderer, camera, onProgress = 
     // houppier = cœur opaque sombre + nuée de touffes de feuilles (cartes détourées)
     const cores = [0, 1, 2].map((v) => lumpySphere(v));
     const cards = [0, 1, 2].map((v) => leafCards(v));
+    feuillage = {
+      max: CARTES,
+      regler(n) {
+        const k = Math.max(4, Math.min(CARTES, Math.round(n)));
+        for (const g of cards) g.setDrawRange(0, k * 6);
+      },
+    };
     const coreMat = foliageMaterial(THREE);
     const leafMat = leafMaterial(THREE, leafTex);
     const leafDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leafTex, alphaTest: 0.42 });
@@ -660,7 +675,7 @@ transformed.y += (position.y > 1.3 ? 1.0 : 0.0) * (vn(w0.xz * 2.3) - 0.5) * 0.35
   function leafCards(seed) {
     let st = 1234 + seed * 97;
     const rnd = () => ((st = (st * 16807) % 2147483647) / 2147483647);
-    const CARDS = 84;                 // plus nombreuses et plus petites qu'avant :
+    const CARDS = CARTES;             // plus nombreuses et plus petites qu'avant :
     // une carte de 2,5 m sur un platane, cela se voyait comme un drap vert
     const pos = [], nor = [], uv = [], idx = [], graine = [];
     const center = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), nrm = new THREE.Vector3();
@@ -769,7 +784,7 @@ transformed.y += (position.y > 1.3 ? 1.0 : 0.0) * (vn(w0.xz * 2.3) - 0.5) * 0.35
   return {
     meta, arr, V, clock, loader, maxAniso, parc,
     groundAt, walkableAt, blockedAt, surfaceAt, setTime, setNight,
-    sun, sunDir, skyU, hemi, sky, ambiance, root: cible,
+    sun, sunDir, skyU, hemi, sky, ambiance, root: cible, feuillage,
     // Murs et toits : ce qu'on interroge au rayon (devanture d'un commerce à
     // accrocher sur sa façade, fiche du bâtiment pointé en survol).
     murs: walls, toits: roofs,

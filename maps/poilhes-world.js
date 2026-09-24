@@ -11,7 +11,7 @@
  * cockpit, son HUD et son combat aérien comme sur n'importe quelle autre carte.
  */
 import * as THREE from 'three';
-import { construireVillage } from './poilhes-scene.js?v=voiture-20260921';
+import { construireVillage } from './poilhes-scene.js?v=qualite-20260924';
 
 export async function buildPoilhesWorld(scene, world, onProgress, { renderer, camera, leger = false }) {
   const root = new THREE.Group();

@@ -11,7 +11,7 @@ import { OrbitControls } from '../libs/OrbitControls.module.js';
 import {
   facadeMaterial, roofMaterial, groundMaterial, waterMaterial, foliageMaterial, stoneMaterial, skyMaterial,
 } from './poilhes-shaders.js';
-import { construireVillage } from './poilhes-scene.js?v=voiture-20260921';
+import { construireVillage } from './poilhes-scene.js?v=qualite-20260924';
 import { createRobot } from './poilhes-robot.js?v=voiture-20260921';
 import { createEnemies } from './poilhes-enemies.js?v=voiture-20260921';
 import { createJet } from './poilhes-jet.js?v=voiture-20260921';
@@ -76,7 +76,22 @@ function sunDirection(lat, lon, date, hours, out) {
 
 // ---------------------------------------------------------------------------- village
 
-export async function startVillage() {
+/**
+ * @param {object} [options]
+ * @param {string[]} [options.modes] modes offerts (boutons `[data-mode]`) ; les
+ *   autres sont cachés et leurs moteurs (robot, gobelins, chasseur) ne sont pas
+ *   créés — rien n'est téléchargé pour eux. Par défaut : tous.
+ * @param {object} [options.qualite] niveau de `maps/qualite.js` appliqué à la
+ *   création du rendu (anticrénelage, définition, ombres). Par défaut : le
+ *   comportement historique, plein régime sur ordinateur, léger en tactile.
+ * @param {string} [options.voitureUnique] 'rouge' | 'bleue' : une seule voiture,
+ *   sans panneau de choix ni touche C.
+ * @param {boolean} [options.ouvrir] false : la page lève l'écran de chargement
+ *   elle-même (`loader.classList.add('done')`), par exemple après une mesure.
+ * @returns {Promise<object>} ce qui est aussi exposé dans `window.RaphaelPoilhes`
+ */
+export async function startVillage({ modes = null, qualite = null, voitureUnique = null, ouvrir = true } = {}) {
+  const veut = (m) => !modes || modes.includes(m);
   const setProgress = (f, msg) => {
     $('load-bar').style.width = `${Math.round(f * 100)}%`;
     if (msg) $('load-msg').textContent = msg;
@@ -85,15 +100,16 @@ export async function startVillage() {
   // --------------------------------------------------------------------- moteur
   const isTouch = matchMedia('(pointer: coarse)').matches;
   document.body.classList.toggle('tactile', isTouch);
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ antialias: qualite ? qualite.aa : true, powerPreference: 'high-performance' });
   // Téléphone : moitié moins de pixels à remplir, et pas d'ombres portées.
   // Le village pèse deux millions de triangles ; c'est le prix du rendu par
   // pixel qui fait la différence entre jouable et diaporama.
-  renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.25 : 2));
+  // Un niveau de qualité (`maps/qualite.js`), s'il est donné, décide à la place.
+  renderer.setPixelRatio(Math.min(devicePixelRatio, qualite ? qualite.ratio : (isTouch ? 1.25 : 2)));
   renderer.setSize(innerWidth, innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
-  renderer.shadowMap.enabled = !isTouch;
+  renderer.shadowMap.enabled = qualite ? qualite.ombres > 0 : !isTouch;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   $('scene').appendChild(renderer.domElement);
 
@@ -125,6 +141,8 @@ export async function startVillage() {
     if (titre) titre.textContent = `${ville} en 3D`;
   }
   const H = decor.detail;                 // demi-côté de la zone détaillée, pour la mini-carte
+  // Modes non offerts par la page : boutons cachés, moteurs jamais créés.
+  if (modes) document.querySelectorAll('[data-mode]').forEach((b) => { b.hidden = !veut(b.dataset.mode); });
 
   // --------------------------------------------------------------------- étiquettes
   const labelsEl = $('labels');
@@ -223,12 +241,12 @@ export async function startVillage() {
   const capJet = new THREE.Vector3();          // direction de l'appareil, pour la minicarte
   const euler = new THREE.Euler(0, 0, 0, 'YXZ');
   const touchMove = { x: 0, y: 0, active: false, run: false };
-  const robot = createRobot({ scene, camera, groundAt, walkableAt, blockedAt, surfaceAt, keys });
-  const ennemis = createEnemies({ scene, walkableAt, blockedAt });
-  const jet = createJet({ scene, camera, groundAt, surfaceAt, keys });
-  robot.setEnemies(ennemis);
+  const robot = veut('robot') ? createRobot({ scene, camera, groundAt, walkableAt, blockedAt, surfaceAt, keys }) : null;
+  const ennemis = veut('robot') ? createEnemies({ scene, walkableAt, blockedAt }) : null;
+  const jet = veut('chasseur') ? createJet({ scene, camera, groundAt, surfaceAt, keys }) : null;
+  if (robot) robot.setEnemies(ennemis);
   // cible passee aux gobelins : construite une fois, jamais dans la boucle
-  const proie = { position: robot.root.position, hurt: (d) => robot.hurt(d) };
+  const proie = robot ? { position: robot.root.position, hurt: (d) => robot.hurt(d) } : null;
 
   // --------------------------------------------------------------------- voiture
   // Construite au premier passage dans le mode, pas au chargement de la page :
@@ -368,10 +386,11 @@ export async function startVillage() {
         ? 'Flèches ou <b>ZQSD</b> : conduire · <b>V</b> caméra · <b>R</b> se remettre en selle · '
           + '<b>P</b> au skatepark (sur le stade) · 25 km/h en pointe, elle tourne court'
       : mode === 'voiture'
-        ? '<b>C</b> : changer de voiture · Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> frein à main · '
+        ? (voitureUnique ? '' : '<b>C</b> : changer de voiture · ')
+          + 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> frein à main · '
           + '<b>V</b> caméra · <b>R</b> remettre sur la route · <b>M</b> son du moteur · '
-          + 'frein maintenu à l’arrêt : marche arrière · '
-          + '(choix de la voiture dans le panneau, en haut à gauche)'
+          + 'frein maintenu à l’arrêt : marche arrière'
+          + (voitureUnique ? '' : ' · (choix de la voiture dans le panneau, en haut à gauche)')
       : mode === 'chasseur'
         ? 'Flèches : piloter · <b>Z</b> plein gaz · <b>Maj</b> post-combustion · <b>S</b> ralentir · '
           + '<b>E</b> / <b>Ctrl</b> monter, descendre · <b>V</b> caméra'
@@ -398,7 +417,7 @@ export async function startVillage() {
         : (prev === 'robot' ? robot.state.yaw : walker.yaw);
       placeWalker(from.x, from.z);
       if (document.pointerLockElement) document.exitPointerLock();
-      ennemis.clear();
+      if (ennemis) ennemis.clear();
       jet.enter(from.x, from.z, cap + Math.PI);
       volEl.hidden = false;
       return;
@@ -410,7 +429,7 @@ export async function startVillage() {
         : walker.yaw;
       placeWalker(from.x, from.z);
       if (document.pointerLockElement) document.exitPointerLock();
-      ennemis.clear();
+      if (ennemis) ennemis.clear();
       piloteTrottinette().enter(from.x, from.z, cap);
       autoEl.hidden = false;
       return;
@@ -423,7 +442,7 @@ export async function startVillage() {
         : (prev === 'robot' ? robot.state.yaw : walker.yaw);
       placeWalker(from.x, from.z);
       if (document.pointerLockElement) document.exitPointerLock();
-      ennemis.clear();
+      if (ennemis) ennemis.clear();
       pilote().enter(from.x, from.z, cap);
       // le bouton ♪ Moteur dit l'état réel du son, pas l'inverse
       majChoixAuto();
@@ -483,7 +502,11 @@ export async function startVillage() {
   document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
     // Entrer en voiture, c'est d'abord choisir laquelle : les deux ne se
     // conduisent pas pareil, et l'apprendre au premier virage est trop tard.
-    if (b.dataset.mode === 'voiture' && mode !== 'voiture') { $('depart-auto').hidden = false; return; }
+    if (b.dataset.mode === 'voiture' && mode !== 'voiture') {
+      if (voitureUnique) { setMode('voiture'); majChoixAuto(pilote().choisirVoiture(voitureUnique)); return; }
+      $('depart-auto').hidden = false;
+      return;
+    }
     setMode(b.dataset.mode);
   }));
   $('depart-auto').addEventListener('click', (e) => {
@@ -535,7 +558,7 @@ export async function startVillage() {
   renderer.domElement.addEventListener('mousedown', (e) => {
     if (mode === 'robot' && e.button === 0) robot.setTrigger(true);
   });
-  addEventListener('mouseup', (e) => { if (e.button === 0) robot.setTrigger(false); });
+  addEventListener('mouseup', (e) => { if (e.button === 0 && robot) robot.setTrigger(false); });
   renderer.domElement.addEventListener('wheel', (e) => {
     if (mode !== 'robot') return;             // en survol, c'est OrbitControls qui zoome
     e.preventDefault();
@@ -551,7 +574,7 @@ export async function startVillage() {
       if (e.code === 'KeyR') auto.redresser();
       // Le moteur est muet par défaut : on l'allume si on le veut.
       // C : on passe de la GT rouge (propulsion) à la berline bleue (traction).
-      if (e.code === 'KeyC') {
+      if (e.code === 'KeyC' && !voitureUnique) {
         majChoixAuto(auto.choisirVoiture(auto.voitureChoisie() === 'rouge' ? 'bleue' : 'rouge'));
       }
       if (e.code === 'KeyM') {
@@ -949,12 +972,12 @@ export async function startVillage() {
 
   // --------------------------------------------------------------------- boucle
   setProgress(1, 'Prêt');
-  setTimeout(() => $('loader').classList.add('done'), 250);
+  if (ouvrir) setTimeout(() => $('loader').classList.add('done'), 250);
 
   // Mode demandé par l'URL : le catalogue des Mondes envoie ici avec ?mode=chasseur
   // ou ?mode=robot. On attend que le décor soit posé pour basculer.
   const modeDemande = params.get('mode');
-  if (modeDemande && ['balade', 'drone', 'robot', 'chasseur', 'voiture', 'trottinette'].includes(modeDemande)) {
+  if (modeDemande && veut(modeDemande) && ['balade', 'drone', 'robot', 'chasseur', 'voiture', 'trottinette'].includes(modeDemande)) {
     setTimeout(() => setMode(modeDemande), 400);
   }
   const timer = new THREE.Clock();
@@ -1036,8 +1059,10 @@ export async function startVillage() {
   renderer.setAnimationLoop(tick);
 
   window.RaphaelPoilhes = {
-    meta, scene, camera, controls, renderer, setMode, goTo, setTime, groundAt, walker,
+    meta, scene, camera, controls, renderer, decor, sun, setMode, goTo, setTime, groundAt, walker,
     blockedAt, walkableAt, surfaceAt, keys, step: stepWalker, startTour, stopTour, tick, robot, ennemis, jet,
     get voiture() { return auto; },
+    get mode() { return mode; },
   };
+  return window.RaphaelPoilhes;
 }
