@@ -169,3 +169,61 @@ loopings et les figures.
   depuis l'accueil, Capestang par rechargement sans repasser par l'accueil, portrait OK.
 - Piège : naviguer pendant que la berline charge encore ses textures fait crier GLTFLoader
   (« Couldn't load texture blob ») — ce sont les blobs révoqués, pas un défaut du modèle.
+
+## Soirée — Poilhes City : logo, musiques, hamburger, assistance de conduite
+
+- Logo « Poilhes City » de ChatGPT : le damier était peint dans l'image (RGB, pas
+  d'alpha). `scripts/accueil/detourer-damier.py` le retire par statistique locale
+  (deux gris à parts égales, aucune couleur). La détection par périodicité a échoué :
+  les carreaux font 8 à 11 px, irréguliers.
+- Musiques Suno d'Arnaud : « SP-12000 Soul Run » sur l'accueil (premier geste,
+  bouton ♪, préférence retenue, fondu au départ), « Nitro Boost » sur la berline
+  (suit le bouton de mode `.on` par MutationObserver). `assets/musique/PROVENANCE.md`.
+- Accueil : logo 20 % plus large, réglages derrière un hamburger en haut à droite,
+  ligne de résumé sous « Rouler ».
+- **Assistance de conduite** (`state.assistance`, berline seulement, `setAssistance()`),
+  dans `maps/voiture-pilote.js` : le mur devient un rail (vitesse renvoyée le long de
+  la façade aux deux tiers, cap réaligné sur la rue), rappel très doux vers la route
+  la plus proche hors chaussée (cap + 0,6 m/s de glissement, effacé dès que le joueur
+  braque, jamais de frein), dégagement automatique quand on est coincé gaz enfoncé,
+  herbe deux fois moins glissante. La trottinette n'est pas touchée (Arnaud la refait
+  lui-même). Versions de cache `assistance-20260924` sur les imports.
+- Retour d'Arnaud : « la voiture ne colle plus à la route ». Cause probable : le rappel
+  déplaçait la caisse et tournait le cap directement (hors pneus), et se déclenchait
+  dès que le centre sortait d'une chaussée connue au mètre près ; le réalignement
+  contre les murs était par image (0,045 rad × 60 = 2,7 rad/s). Corrigé : le rappel
+  passe par `cmd.direction` avant la physique, n'agit qu'avec 3 roues hors chaussée ;
+  réalignement 1,2 rad/s, dégagement 0,6 m/s ; réglages exposés dans
+  `pilote.reglagesAssistance` pour l'outil de réglage en temps réel d'une autre session.
+- Feux de recul (`setRecul`, corps procédural et GLB) et crissement au choc (`chocSon`).
+- Bruitages voiture activés d'emblée, musiques baissées (35 % accueil, 28 % berline).
+- « L'arrière rentre dans le sol sur certaines textures » : le débattement des roues
+  était mesuré depuis le centre de la caisse alors que les roues sont filles de `root`,
+  déjà incliné (tangage + roulis) : la pente s'appliquait deux fois, roues arrière
+  enfoncées en montée, flottantes en descente. Corrigé (attache sur la caisse inclinée),
+  tangage de la voiture lissé à 16/s au lieu de 9, et garde-fou : aucune roue ni aucun
+  coin de caisse (pare-chocs) sous le relief, la caisse est relevée d'autant.
+
+
+---
+
+# Bilan de session — 24/09/2026 (nuit, suite) — L'outil de réglage de la conduite
+
+Priorité posée par Arnaud : « un outil très très fidèle de réglage du comportement de la
+voiture et de la trottinette ».
+
+- `maps/reglages.js` : schéma des 27 paramètres de `REGLAGES` + toucher du volant + sauts,
+  banc d'essai calculé avec la vraie physique (quelques ms, déterministe), panneau touche T
+  (application à chaud, télémétrie, banc recalculé à chaque geste, mémoriser / exporter /
+  charger / copier en JS), assistance de conduite en case à cocher sur la berline.
+- `scripts/banc-voiture.mjs` : le banc en ligne de commande, sur les engins du fichier ou un
+  JSON exporté.
+- `voiture-pilote.js` : `TOUCHER` et `SAUT_TROTTINETTE` deviennent des objets exportés lus à
+  l'usage ; `reglage` et `regler` exposés. `poilhes-village.js` : touche T, réglages mémorisés
+  appliqués à la création et au changement de voiture.
+- Vérifié dans Chromium : ouverture sur la trottinette et la berline, couple 26 → 40 appliqué
+  et banc recalculé (0-20 : 1,10 → 0,72 s), mémorisation reprise au rechargement, copie en JS.
+- Découverte du banc : la trottinette plafonne à **33 km/h**, pas 25 comme le dit son commentaire.
+- Note : le dépôt porte aussi les modifications non commitées d'une autre session
+  (assistance de conduite, musiques, logo ChatGPT) dans les mêmes fichiers — pas commité ici
+  pour ne pas mélanger.

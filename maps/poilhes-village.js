@@ -15,9 +15,11 @@ import { construireVillage } from './poilhes-scene.js?v=qualite-20260924';
 import { createRobot } from './poilhes-robot.js?v=voiture-20260921';
 import { createEnemies } from './poilhes-enemies.js?v=voiture-20260921';
 import { createJet } from './poilhes-jet.js?v=voiture-20260921';
-import { creerPilote, creerAdherence } from './voiture-pilote.js?v=figures-20260924';
+import { creerPilote, creerAdherence } from './voiture-pilote.js?v=assiette-20260924';
 import { poserEpicerie, poserBlasonClub, EPICERIE } from './poilhes-commerces.js?v=voiture-20260921';
 import { construireTrottinette } from './trottinette.js?v=pilote-20260922';
+import { TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=recul-20260924';
+import { monterPanneau as monterReglages, appliquerMemorise } from './reglages.js?v=reglages-20260924';
 
 const BASE = 'maps/poilhes/';
 const EYE = 1.68;              // hauteur des yeux du promeneur (m)
@@ -264,6 +266,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       bounds: decor.bounds - 60,
       turboAt: decor.parc ? decor.parc.turboAt : null,   // les bandes bleues du skatepark
     });
+    appliquerMemorise(deuxRoues, TOUCHER, SAUT_TROTTINETTE);
     return deuxRoues;
   }
 
@@ -277,6 +280,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       bounds: decor.bounds - 60,
     });
     auto.setNuit(+timeInput.value < 7.4 || +timeInput.value > 20.2);
+    appliquerMemorise(auto, TOUCHER);
     return auto;
   }
 
@@ -540,6 +544,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
 
   /** Met les boutons du panneau d'accord avec l'état réel de la voiture. */
   function majChoixAuto(choisie = auto && auto.voitureChoisie()) {
+    if (auto) { appliquerMemorise(auto, TOUCHER); if (reglages && !reglagesEl.hidden) montrerReglages(true); }
     $('choix-auto').querySelectorAll('[data-auto]').forEach((b) => b.classList.toggle('on', b.dataset.auto === choisie));
     $('choix-auto').querySelector('[data-son]')?.classList.toggle('on', !!(auto && auto.state.son));
   }
@@ -581,6 +586,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     if (e.target.tagName === 'INPUT') return;
     keys.add(e.code);
     if (e.code === 'KeyN') toggleLabels();
+    if (e.code === 'KeyT') montrerReglages();
     if (e.code === 'KeyV' && mode === 'chasseur') jet.basculerVue();
     if (mode === 'voiture') {
       if (e.code === 'KeyV') auto.basculerVue();
@@ -1006,6 +1012,25 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   if (modeDemande && veut(modeDemande) && ['balade', 'drone', 'robot', 'chasseur', 'voiture', 'trottinette'].includes(modeDemande)) {
     setTimeout(() => setMode(modeDemande), 400);
   }
+  // --------------------------------------------------------------------- réglages (touche T)
+  // L'outil de réglage de la conduite : curseurs sur la vraie physique, banc
+  // d'essai recalculé à chaque geste, télémétrie en direct. Il se monte sur
+  // l'engin du mode courant et se remonte quand on change de voiture.
+  const reglagesEl = $('reglages');
+  let reglages = null;
+  function montrerReglages(remonter = false) {
+    if (!reglagesEl) return;
+    const engin = mode === 'voiture' ? auto : mode === 'trottinette' ? deuxRoues : null;
+    if (!engin) { reglagesEl.hidden = true; return; }
+    if (!remonter && reglages && !reglagesEl.hidden) { reglagesEl.hidden = true; return; }
+    if (reglages) reglages.demonter();
+    reglages = monterReglages({
+      racine: reglagesEl, pilote: engin, toucher: TOUCHER,
+      saut: mode === 'trottinette' ? SAUT_TROTTINETTE : null,
+    });
+    reglagesEl.hidden = false;
+  }
+
   const timer = new THREE.Clock();
   const focus = new THREE.Vector3();
   const lookDir = new THREE.Vector3();
@@ -1078,6 +1103,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     sun.position.copy(focus).addScaledVector(sunDir, 600);
 
     sky.position.copy(camera.position);
+    if (reglages && !reglagesEl.hidden && (frame & 3) === 0) reglages.majTelemetrie();
     if ((frame++ & 1) === 0) updateLabels();
     if ((frame & 7) === 0) drawMinimap();
     renderer.render(scene, camera);

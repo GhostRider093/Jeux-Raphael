@@ -631,6 +631,28 @@ deux `SpotLight` éclairent vraiment la chaussée.
   Noter la provenance et les droits dans `assets/sons/PROVENANCE.md`, comme pour les
   sons du chasseur.
 
+### L'assistance de conduite (24/09/2026)
+
+Demande d'Arnaud : « que tout le monde puisse y jouer, que les murs remettent la
+voiture sur la route très doucement, sans trop la ralentir ». Tout est dans
+`maps/voiture-pilote.js`, **berline seulement** (`state.assistance`, `setAssistance(on)`) :
+
+- **Le mur est un rail** : la vitesse qui rentrait dans la façade est renvoyée le long
+  du mur (`rail` = part conservée), la caisse se réaligne sur la rue à `realigner` rad/s.
+- **Rappel vers la route** : hors chaussée (au moins `rappelRoues` roues dans l'herbe),
+  un peu de volant vers la route la plus proche — **jamais un déplacement de la caisse**,
+  ni un frein. La caisse ne bouge que par ses pneus, sinon elle « ne colle plus à la
+  route ». S'efface dès que le joueur braque.
+- **Dégagement** : coincé gaz enfoncé plus d'une demi-seconde, recul à `degager` m/s.
+- **Herbe** : l'adhérence hors piste est adoucie de `herbe` (0 = origine).
+
+Les réglages vivent dans `pilote.reglagesAssistance` (le même objet que
+`state.reglagesAssistance`) et se modifient **à chaud** : c'est le point d'accroche
+d'un outil de réglage en temps réel, avec `REGLAGES` de `voiture-physique.js` pour la
+loi de conduite elle-même. Le moteur de la voiture s'entend **d'emblée** depuis le
+24/09 (le paragraphe « muet par défaut » plus haut est périmé) ; **M** le coupe.
+Les feux de recul s'allument en marche arrière, et un choc contre un mur crisse.
+
 ## Niveaux de qualité et la page « Rouler » (`rouler.html`)
 
 Le village pèse 2,4 millions de triangles par image. Mesuré le 24/09/2026 sur une RTX 4070 Ti
@@ -707,6 +729,40 @@ Quatre polices libres (Google Fonts, dans `scripts/fonts/`, non déployées) ont
 le 24/09/2026 : Titan One (retenue par défaut), Luckiest Guy, Righteous, Bangers. Le cadrage
 se calcule sur l'emprise réelle du texte, **en largeur et en hauteur** : une police condensée
 (Bangers) est étroite mais haute, cadrée sur sa seule largeur elle sortait du cadre.
+
+## L'outil de réglage de la conduite (touche T)
+
+Demandé par Arnaud le 24/09/2026 comme la priorité : **un outil très fidèle de réglage
+du comportement de la voiture et de la trottinette.** Fidèle veut dire : il agit sur les
+vrais paramètres de la physique, à chaud, et il mesure avec la vraie physique.
+
+| Fichier | Rôle |
+| --- | --- |
+| `maps/reglages.js` | Le schéma des paramètres (bornes, unités, ce que ça change), le **banc d'essai** calculé pas à pas avec `creerPhysique` (0 → 100, Vmax, freinage, virage, vivacité, frein à main), la mémoire (`localStorage`, clé `nova.reglages.<engin>`), l'export JSON, la copie en JS, et le panneau |
+| `scripts/banc-voiture.mjs` | Le même banc en ligne de commande : `node scripts/banc-voiture.mjs [gt\|traction\|trottinette\|fichier.json] [--json]` |
+| `maps/voiture-pilote.js` | Expose `reglage` et `regler` ; `TOUCHER` (toucher du volant) et `SAUT_TROTTINETTE` (sauts) sont des objets exportés, lus à chaque image, donc réglables à chaud |
+| `maps/poilhes-village.js` | **T** ouvre / ferme le panneau sur l'engin du mode courant ; les réglages mémorisés s'appliquent à la création du pilote et à chaque changement de voiture |
+
+En jeu : **T**. Groupes : moteur, transmission (roues motrices, rapports en liste), châssis,
+pneus et freins, aides, direction, aéro, assistance (case, berline), toucher du volant,
+sauts (trottinette). Chaque curseur applique **immédiatement** (`pilote.regler`), le banc se
+recalcule en 120 ms, la télémétrie (km/h, rapport, régime, g latéral, dérives AV/AR,
+patinage) défile en tête. Boutons : Rétablir (valeurs du fichier), Mémoriser (appliqué à
+chaque partie, par nom d'engin), Oublier, Exporter (JSON), Charger…, Copier en JS (prêt à
+coller dans `REGLAGES`, c'est ainsi qu'un réglage devient définitif).
+
+Le banc, valeurs du fichier au 24/09/2026 : GT 0-100 en 4,85 s, 305 km/h, 53 m de freinage ;
+berline 6,41 s, 251 km/h, 55 m ; trottinette 0-20 en 1,1 s, **33 km/h** de pointe (le
+commentaire du réglage dit 25 : c'est le banc qui a raison), 1,6 m de freinage. Les deux
+voitures sortent sous-vireuses à fond de volant (dérive AV 23°, AR 5-6°).
+
+À savoir :
+- Le banc lance des physiques **neuves** (copie du réglage) : il ne touche jamais celle qui
+  roule. Ses épreuves partent d'une vitesse imposée (`etat.u`) sur un rapport choisi ; sans
+  cela, la boîte partait en marche arrière (frein tenu à l'arrêt = marche arrière).
+- Les objets `TOUCHER` et `SAUT_TROTTINETTE` sont **globaux au module** : un réglage du toucher
+  vaut pour les deux voitures et la trottinette. La mémoire, elle, est par nom d'engin.
+- Le panneau ne se remonte au changement de voiture que s'il est ouvert : fermé, il reste fermé.
 
 ## Le village habité : commerces, blason, trottinette
 

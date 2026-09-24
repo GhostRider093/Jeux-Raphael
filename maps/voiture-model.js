@@ -544,6 +544,10 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
   const feu = new THREE.MeshStandardMaterial({
     color: 0x7a0d12, emissive: 0xff1c10, emissiveIntensity: 0.55, metalness: 0.3, roughness: 0.25,
   });
+  // Feux de recul : blancs, éteints tant qu'on n'est pas en marche arrière.
+  const recul = new THREE.MeshStandardMaterial({
+    color: 0xe9eef4, emissive: 0xffffff, emissiveIntensity: 0, metalness: 0.3, roughness: 0.2,
+  });
 
   const root = new THREE.Group();
   root.name = 'voiture';
@@ -638,6 +642,7 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
   const barre = piece(new THREE.BoxGeometry(1.58, 0.085, 0.06), feu, 0, 0.79, 2.16);
   const feux = [barre];
   for (const cote of [-1, 1]) feux.push(piece(new THREE.BoxGeometry(0.22, 0.14, 0.06), feu, cote * 0.62, 0.66, 2.15));
+  for (const cote of [-1, 1]) piece(new THREE.BoxGeometry(0.16, 0.09, 0.06), recul, cote * 0.40, 0.66, 2.15);
 
   // ── roues ────────────────────────────────────────────────────────────────
   /** Une roue : moyeu (qui braque), disque et étrier fixes, pneu et jante qui tournent. */
@@ -733,7 +738,7 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
   // lumineux devant, deux rouges derrière, leur halo, et deux vrais faisceaux
   // qui éclairent la chaussée. Tout est placé d'après la boîte englobante du
   // modèle : rien n'est codé en dur pour cette voiture-là.
-  let optiqueAv = null, optiqueAr = null, faisceaux = [], halos = [];
+  let optiqueAv = null, optiqueAr = null, optiqueRecul = null, faisceaux = [], halos = [];
 
   /** Texture de halo : un point lumineux qui se voit de loin, additif. */
   function halo() {
@@ -756,6 +761,7 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
 
     optiqueAv = new THREE.MeshBasicMaterial({ color: 0xfff4d8, transparent: true, opacity: 0.0 });
     optiqueAr = new THREE.MeshBasicMaterial({ color: 0xff2a14, transparent: true, opacity: 0.0 });
+    optiqueRecul = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.0 });
 
     for (const cote of [-1, 1]) {
       const x = cote * largeur * 0.30;
@@ -768,11 +774,16 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
       const ar = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.11), optiqueAr);
       ar.position.set(cote * largeur * 0.28, hauteur * 0.58, poupe + 0.02);
       caisse.add(ar);
+      // feu de recul : une petite optique blanche, vers l'intérieur du feu rouge
+      const rc = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.08), optiqueRecul);
+      rc.position.set(cote * largeur * 0.16, hauteur * 0.56, poupe + 0.02);
+      caisse.add(rc);
 
       // halos : c'est eux qu'on voit à cent mètres, pas les disques
       for (const [couleur, pos, taille] of [
         [0xfff0cc, [x, hauteur * 0.50, nez - 0.05], 0.85],
         [0xff2a14, [cote * largeur * 0.28, hauteur * 0.58, poupe + 0.05], 0.55],
+        [0xffffff, [cote * largeur * 0.16, hauteur * 0.56, poupe + 0.05], 0.40],
       ]) {
         const sp = new THREE.Sprite(new THREE.SpriteMaterial({
           map: texHalo, color: couleur, transparent: true, opacity: 0,
@@ -780,7 +791,8 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
         }));
         sp.position.set(pos[0], pos[1], pos[2]);
         sp.scale.setScalar(taille);
-        sp.userData.arriere = couleur !== 0xfff0cc;
+        sp.userData.arriere = couleur === 0xff2a14;
+        sp.userData.recul = couleur === 0xffffff;
         caisse.add(sp);
         halos.push(sp);
       }
@@ -795,6 +807,17 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
       caisse.add(spot);
       caisse.add(spot.target);
       faisceaux.push(spot);
+    }
+  }
+
+  /** Feux de recul : blancs, allumés en marche arrière — de jour comme de nuit. */
+  function setRecul(actif) {
+    const e = actif ? 2.4 : 0;
+    if (recul.emissiveIntensity !== e) recul.emissiveIntensity = e;
+    if (optiqueRecul) {
+      const o = actif ? 0.95 : 0;
+      if (optiqueRecul.opacity !== o) optiqueRecul.opacity = o;
+      for (const h of halos) if (h.userData.recul) h.material.opacity = actif ? 0.7 : 0;
     }
   }
 
@@ -971,7 +994,7 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
 
   return {
     root, caisse, roues, ombre, phares, feux, pret,
-    majRoues, setFreinage, setNuit, setCouleur, setTeinte, teinte: () => teinteCourante,
+    majRoues, setFreinage, setRecul, setNuit, setCouleur, setTeinte, teinte: () => teinteCourante,
     materiaux: { peinture, vitre, noir, chrome, gomme, jante },
     dimensions: { longueur: 4.4, largeur: 1.98, empattement: ESSIEU_AR - ESSIEU_AV, rayonRoue: RAYON },
   };

@@ -120,6 +120,30 @@
   #hud h1::after { content: "▾"; float: right; color: var(--dim); font-size: 14px; margin-top: 3px; }
   #hud.collapsed h1::after { content: "▸"; }
   #hud.collapsed > :not(h1) { display: none; }
+  /* ─────────────────────────────── RÉGLAGES (touche T) ─────────────────────
+     L'outil de réglage de la conduite : à droite, sur toute la hauteur. */
+  #reglages { right: 14px; top: 14px; bottom: 14px; width: 360px; max-width: calc(100vw - 28px); padding: 12px 14px;
+              overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 12px; z-index: 7; }
+  #reglages[hidden] { display: none; }
+  .reglages-tete { display: flex; flex-direction: column; gap: 3px; }
+  .reglages-tete b { font-size: 14px; }
+  .reglages-tele { color: var(--accent); font-variant-numeric: tabular-nums; font-size: 11px; }
+  .reglages-banc { display: grid; gap: 2px; padding: 8px 10px; background: rgba(0,0,0,.28); border-radius: 8px; }
+  .reglages-banc div { display: flex; justify-content: space-between; gap: 8px; color: var(--dim); }
+  .reglages-banc b { color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
+  .reglages-corps details { border-top: 1px solid var(--line); padding: 4px 0; }
+  .reglages-corps summary { cursor: pointer; padding: 5px 0; font-weight: 600; color: var(--ink); }
+  .reglages-ligne { display: grid; grid-template-columns: 118px 1fr 64px; gap: 6px; align-items: center; padding: 3px 0; cursor: help; }
+  .reglages-ligne span { color: var(--dim); line-height: 1.15; }
+  .reglages-ligne small { display: block; font-size: 10px; opacity: .8; }
+  .reglages-ligne input[type=range] { width: 100%; accent-color: var(--accent); }
+  .reglages-ligne input[type=number], .reglages-ligne input[type=text], .reglages-ligne select {
+    width: 100%; border: 1px solid var(--line); background: rgba(0,0,0,.3); color: var(--ink); border-radius: 6px;
+    padding: 3px 5px; font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .reglages-ligne input[type=text], .reglages-ligne select { grid-column: 2 / 4; }
+  .reglages-boutons { display: flex; flex-wrap: wrap; gap: 5px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .reglages-boutons button { flex: 1 1 30%; padding: 6px 4px; font-size: 12px; }
+  .reglages-note { flex: 100%; color: var(--dim); font-size: 11px; min-height: 14px; }
   #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
   .label { position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform; }
   .label.poi { background: rgba(14,18,26,.82); border: 1px solid rgba(255,207,74,.6); color: #fff; padding: 3px 9px;
@@ -271,6 +295,7 @@
   <div id="jauge"><i></i></div>
   <div class="ligne"><span>Gobelins</span><b id="restants">0</b></div>
 </div>
+<div id="reglages" class="panel" hidden></div>
 <canvas id="minimap" width="400" height="400" title="Cliquer pour s'y rendre"></canvas>
 <div id="tactile" hidden>
   <div id="manche"><i></i></div>
@@ -299,7 +324,7 @@
 <script src="./chasseur-model.js?v=poilhes-20260920"></script>
 <script src="./flight-model.js?v=poilhes-20260920"></script>
 <script type="module">
-import { startVillage } from './maps/poilhes-village.js?v=qualite-20260924';
+import { startVillage } from './maps/poilhes-village.js?v=assiette-20260924';
 const hud = document.getElementById('hud');
 if (matchMedia('(max-width: 640px)').matches) hud.classList.add('collapsed');
 document.getElementById('hud-title').addEventListener('click', () => hud.classList.toggle('collapsed'));

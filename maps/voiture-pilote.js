@@ -17,6 +17,13 @@
  *     pont du canal au lieu d'y coller ;
  *   — des collisions de boîte : six sondes sur la grille d'obstacles, la voiture
  *     est repoussée le long du mur au lieu de s'y planter ;
+ *   — **l'assistance** (`state.assistance`, allumée par défaut sur la berline) :
+ *     un mur ne stoppe pas la voiture, il la **guide** — la vitesse est renvoyée
+ *     le long de la façade et la caisse se réaligne sur la rue ; hors chaussée,
+ *     un rappel très doux ramène vers la route la plus proche sans freiner, et
+ *     s'efface dès que le joueur braque ; une voiture coincée contre un mur,
+ *     gaz enfoncé, s'en dégage toute seule. Le but : que tout le monde puisse
+ *     se balader sans se battre avec les murs. Voir `rappelRoute` ;
  *   — une caméra amortie qui suit la trajectoire, pas le capot : en glissade on
  *     voit où l'on va, ce qui est la seule façon de rattraper une glissade ;
  *   — le son du moteur, synthétisé au régime (rien à télécharger), le crissement
@@ -27,7 +34,7 @@
  * particules sont réservés une fois pour toutes.
  */
 import * as THREE from 'three';
-import { construireVoiture } from './voiture-model.js?v=roues-entieres-20260922c';
+import { construireVoiture } from './voiture-model.js?v=recul-20260924';
 import { creerPhysique, REGLAGES } from './voiture-physique.js?v=voiture-20260921';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
 
@@ -42,10 +49,21 @@ const GRAVITE = 9.81;
 // On fait donc varier deux choses avec la vitesse : la vitesse de montée du
 // volant, et la courbe d'entrée (plus douce à l'arrêt, plus directe lancée).
 // Mesuré au banc, pichenette de 0,15 s : 10,8° de cap avant tout réglage.
-const MONTEE_ARRET = 1.9, MONTEE_LANCEE = 3.4;
-const EXPO_ARRET = 2.3, EXPO_LANCEE = 1.55;
-const VITESSE_PLEINE = 26;          // m/s (≈ 95 km/h) : au-delà, le toucher ne change plus
-const RETOUR_VOLANT = 9.0;
+// Objet exporté et **lu à chaque image** : l'outil de réglage (`maps/reglages.js`,
+// touche T) le modifie à chaud. Les valeurs ci-dessous sont celles du fichier.
+export const TOUCHER = {
+  monteeArret: 1.9, monteeLancee: 3.4,
+  expoArret: 2.3, expoLancee: 1.55,
+  vitessePleine: 26,               // m/s (≈ 95 km/h) : au-delà, le toucher ne change plus
+  retourVolant: 9.0,
+};
+/** Les sauts de la trottinette, réglables de la même façon (voir `decoller`). */
+export const SAUT_TROTTINETTE = {
+  impulsion: 2.6,                  // m/s : le coup de jambes (Espace), 34 cm de haut sur le plat
+  envolMax: 7.5,                   // m/s : au-delà, le saut n'est plus un saut mais un lancer
+  turboMax: 11.5,                  // m/s sur une bande de lancement (41 km/h), contre 6,9 au moteur seul
+  pencheMax: 0.55,                 // rad (≈ 31°) : au-delà, un vrai pilote pose le pied
+};
 const GARDE = 0.06;            // hauteur du châssis au-dessus du contact des roues (m)
 const VUES_AUTO = [
   { dist: 8.2, haut: 3.0, avance: 4.0, fov: 62 },   // poursuite large
@@ -398,7 +416,7 @@ function creerSon({ electrique = false } = {}) {
   }
 
   /** Suit le régime, les gaz, la glisse et la vitesse. Appelé à chaque image. */
-  function maj(etat, gaz, dt, cmd) {
+  function maj(etat, gaz, dt, cmd, choc = 0) {
     if (!ctx || !noeuds) return;
     if (document.hidden) { silence(); return; }
     if (ctx.state === 'suspended') ctx.resume();
@@ -463,9 +481,10 @@ function creerSon({ electrique = false } = {}) {
     noeuds.sortie.gain.setTargetAtTime(charge, t, 0.10);
 
     const glisse = Math.max(Math.abs(etat.glisseAr), Math.abs(etat.glisseAv));
-    const crisse = etat.vitesse > 5
+    // Un choc contre un mur crisse aussi : les pneus sont chassés de côté.
+    const crisse = Math.max(choc, etat.vitesse > 5
       ? Math.min(0.05, Math.max(0, glisse - 0.22) * 0.22 + Math.max(0, etat.patinage - 1.1) * 0.03)
-      : 0;
+      : 0);
     noeuds.gainCrissement.gain.setTargetAtTime(crisse, t, 0.08);
 
     // Freinage appuyé : l'enregistrement part une fois, pas en boucle — et pas
@@ -550,13 +569,13 @@ export function creerPilote({
   // Depuis le 24/09/2026, la trottinette ne décolle plus sur un seuil de
   // hauteur mais sur une comparaison d'accélérations (voir `update`) : le
   // seuil de vitesse n'est plus qu'un garde-fou contre le sur-place.
-  const ENVOL_MAX = surDeuxRoues ? 7.5 : 6.5;   // m/s : au-delà, le saut n'est plus un saut mais un lancer
-  const IMPULSION = 2.6;          // m/s : le coup de jambes (Espace), 34 cm de haut sur le plat
-  const TURBO_MAX = 11.5;         // m/s sur une bande de lancement (41 km/h), contre 6,9 au moteur seul
+  // À deux roues, ces plafonds sont ceux de `SAUT_TROTTINETTE`, lus à l'usage :
+  // l'outil de réglage les change à chaud.
+  const ENVOL_MAX_VOITURE = 6.5;  // m/s : au-delà, le saut n'est plus un saut mais un lancer
   // Inclinaison maximale d'un engin à deux roues, en radians (≈ 31°). Au-delà,
   // un vrai pilote pose le pied : on ne cherche pas l'angle d'une moto de
   // course sur une trottinette de village.
-  const PENCHE_MAX = 0.55;
+  // (`SAUT_TROTTINETTE.pencheMax`)
   const VUES = surDeuxRoues ? [VUES_AUTO[0], VUES_AUTO[1], VUE_GUIDON] : VUES_AUTO;
   const voiture = surDeuxRoues ? construireEnginTrottinette({ renderer })
                                : construireVoiture({ renderer, couleur });
@@ -617,19 +636,28 @@ export function creerPilote({
     chute: 0, figure: null, figureN: 0, turbo: 0,
     vue: 0, dist: VUES[0].dist, fov: VUES[0].fov,
     choc: 0, vueForcee: false, allumage: 0,
-    // **Le moteur est muet tant qu'on ne l'a pas demandé.** Il a été mis à
-    // `true` un jour, en pensant que le vrai coupable était l'onglet laissé en
-    // arrière-plan ; l'onglet a bien été corrigé, mais le bruit reprochait
-    // était bien celui-ci : un moteur qui démarre tout seul dès qu'on entre
-    // dans la voiture, et qui tourne sans interruption tant qu'on y reste.
-    // Un son qu'on n'a pas demandé est un son de trop. **M** l'allume, le
-    // bouton « ♪ Moteur » aussi, et personne n'est surpris.
-    // **Le sifflement de la trottinette s'entend d'emblée**, celui de la voiture
-    // non. Ce qui avait été coupé, c'était un moteur thermique qui démarrait
-    // tout seul et tournait sans fin ; un moteur-roue électrique tenu à 0,014 de
-    // niveau et porté par l'accélération est exactement ce qu'on veut entendre
-    // quand l'engin roule. **M** le coupe, **Maj + M** coupe toute la page.
-    son: surDeuxRoues,
+    // Assistance de conduite (voir l'en-tête) : coincé depuis combien de temps,
+    // direction de la route la plus proche, prochain balayage de la grille.
+    assistance: !surDeuxRoues, coince: 0, versRoute: null, prochainScan: 0, horsRoute: 0,
+    // Les réglages de l'assistance, modifiables à chaud (voir l'en-tête).
+    reglagesAssistance: {
+      rail: 0.66,          // part de la vitesse d'impact renvoyée le long du mur
+      realigner: 1.2,      // rad/s de réalignement de la caisse sur le mur touché
+      degager: 0.6,        // m/s de recul quand on est coincé gaz enfoncé
+      rappelVolant: 0.45,  // part du volant que le rappel vers la route peut prendre
+      rappelRoues: 3,      // nombre de roues hors chaussée à partir duquel on rappelle
+      herbe: 0.5,          // 0 = herbe d'origine, 1 = herbe aussi adhérente que le bitume
+    },
+    chocSon: 0,   // petit crissement d'un choc contre un mur, s'éteint en un quart de seconde
+    // **Les bruitages s'entendent d'emblée**, voiture comme trottinette — décision
+    // d'Arnaud du 24/09/2026 (« remettre surtout les bruitages de la voiture »).
+    // Le moteur de la voiture avait été rendu muet par défaut : ce qu'on lui
+    // reprochait alors, c'était de démarrer tout seul et de tourner sans fin ;
+    // le vrai fauteur de bruit était en fait l'ambiance de fond (voir
+    // `background-ambience.js`), corrigée depuis. Un moteur porté par
+    // l'accélération est ce qu'on veut entendre quand l'engin roule.
+    // **M** le coupe, le bouton « ♪ Moteur » aussi, **Maj + M** coupe toute la page.
+    son: true,
   };
 
   // ── fumée de gomme ───────────────────────────────────────────────────────
@@ -737,15 +765,15 @@ export function creerPilote({
     // `k` = 0 à l'arrêt, 1 à l'allure : c'est lui qui donne son caractère au
     // volant. Le retour au centre, lui, ne change pas — on veut toujours pouvoir
     // relâcher vite.
-    const k = Math.min(1, Math.abs(etat.u) / VITESSE_PLEINE);
-    const montee = MONTEE_ARRET + (MONTEE_LANCEE - MONTEE_ARRET) * k;
-    volant += (vise - volant) * lissage(vise === 0 ? RETOUR_VOLANT : montee, dt);
+    const k = Math.min(1, Math.abs(etat.u) / TOUCHER.vitessePleine);
+    const montee = TOUCHER.monteeArret + (TOUCHER.monteeLancee - TOUCHER.monteeArret) * k;
+    volant += (vise - volant) * lissage(vise === 0 ? TOUCHER.retourVolant : montee, dt);
     // Courbe exponentielle : les petits gestes restent petits, le fond de course
     // garde toute son autorité. Sans elle, une simple pichenette sur la flèche
     // faisait tourner la voiture de onze degrés — mesuré à 60 km/h ; avec, moins
     // de trois, et un virage tenu vaut toujours cinquante. C'est la même idée que
     // l'expo du manche dans `input-shaping.js`, pour la même raison.
-    const expo = EXPO_ARRET + (EXPO_LANCEE - EXPO_ARRET) * k;
+    const expo = TOUCHER.expoArret + (TOUCHER.expoLancee - TOUCHER.expoArret) * k;
     cmd.direction = Math.sign(volant) * Math.pow(Math.abs(volant), expo);
     const gazVise = Math.max(avance ? 1 : 0, Math.max(0, -doigt.y));
     const freinVise = Math.max(recule ? 1 : 0, Math.max(0, doigt.y));
@@ -1011,13 +1039,39 @@ export function creerPilote({
     const vz = -c * etat.u - s * etat.v;
     const vn = vx * normale.x + vz * normale.y;
     state.choc = Math.max(state.choc, Math.max(0, -vn));
+    if (vn < -2.5) state.chocSon = Math.max(state.chocSon, Math.min(0.06, (-vn) * 0.008));
     // Dégagement progressif : 6 cm par image et par sonde au lieu de 16. Une
     // poussée trop franche fait rebondir la voiture entre deux murs d'une ruelle,
     // et c'est ce va-et-vient qu'on voyait comme un tremblement.
     const pousse = Math.min(0.14, 0.055 * touche);
     etat.x += normale.x * pousse;
     etat.z += normale.y * pousse;
-    if (vn < 0) {
+    if (vn < 0 && state.assistance) {
+      // Assistance : le mur est un rail. La vitesse qui rentrait dans la façade
+      // est **renvoyée le long du mur** (aux deux tiers) au lieu d'être perdue :
+      // une voiture lancée qui accroche un angle continue sa route, un peu
+      // freinée, jamais plantée. C'est ce qui rend les ruelles amusantes au
+      // lieu de pénibles.
+      const tx0 = -normale.y, tz0 = normale.x;
+      const vt = vx * tx0 + vz * tz0;
+      const sens = vt >= 0 ? 1 : -1;
+      const tx = tx0 * sens, tz = tz0 * sens;
+      const vitesse = Math.abs(vt) * 0.97 + (-vn) * state.reglagesAssistance.rail;
+      const fx = tx * vitesse, fz = tz * vitesse;
+      etat.u = -(fx * s + fz * c);
+      etat.v = fx * c - fz * s;
+      etat.lacet *= 0.55;
+      // La caisse se réaligne sur la rue : un petit pas de cap vers le mur,
+      // dans le sens où l'on roule. Pas à l'arrêt, une voiture garée ne pivote pas.
+      if (Math.abs(etat.u) > 1.5) {
+        const capMur = Math.atan2(-tx, -tz);
+        let ecart = capMur - etat.yaw;
+        ecart = Math.atan2(Math.sin(ecart), Math.cos(ecart));
+        if (etat.u < 0) ecart = Math.atan2(Math.sin(ecart + Math.PI), Math.cos(ecart + Math.PI));
+        const pasMax = state.reglagesAssistance.realigner * dt;
+        etat.yaw += THREE.MathUtils.clamp(ecart, -pasMax, pasMax);
+      }
+    } else if (vn < 0) {
       // On retire la composante qui rentre dans le mur — presque sans rebond :
       // une façade renvoie une voiture, elle ne la catapulte pas. Le glissement
       // le long du mur, lui, est à peine freiné, sinon frôler un angle arrête
@@ -1028,6 +1082,69 @@ export function creerPilote({
       etat.v = fx * c - fz * s;
       etat.lacet *= 0.70;   // moins de coup de raquette en lacet
     }
+    // Coincé : nez dans un mur, gaz enfoncé, et rien ne bouge depuis une demi-
+    // seconde. On recule d'un pas dans la direction libre et on tourne la caisse
+    // vers elle, jusqu'à ce que ça reparte — sans que le joueur ait à trouver
+    // la marche arrière.
+    if (state.assistance) {
+      const veut = (cmd.gaz || 0) > 0.3 || (cmd.frein || 0) > 0.3;
+      if (veut && Math.abs(etat.u) < 0.8) state.coince += dt; else state.coince = 0;
+      if (state.coince > 0.5) {
+        const r = state.reglagesAssistance;
+        etat.x += normale.x * r.degager * dt;
+        etat.z += normale.y * r.degager * dt;
+        const capLibre = Math.atan2(-normale.x, -normale.y);
+        let ecart = capLibre - etat.yaw;
+        ecart = Math.atan2(Math.sin(ecart), Math.cos(ecart));
+        const pasMax = 0.6 * dt;
+        etat.yaw += THREE.MathUtils.clamp(ecart, -pasMax, pasMax);
+      }
+    }
+  }
+
+  // ── rappel vers la route ─────────────────────────────────────────────────
+  /**
+   * Hors chaussée, ramène **très doucement** vers la route la plus proche — en
+   * tournant le volant, jamais en déplaçant la voiture : la caisse ne bouge que
+   * par ses pneus, sinon elle « ne colle plus à la route ». Jamais de frein.
+   * Le rappel s'efface dès que le joueur braque — on l'aide, on ne conduit pas
+   * à sa place — et il ne s'éveille qu'avec trois roues dans l'herbe : la
+   * chaussée n'est connue qu'au mètre près, et frôler un bord n'est pas sortir.
+   * La grille des chaussées est balayée cinq fois par seconde, sur seize
+   * directions et douze rayons : deux cents lectures, rien.
+   * S'appelle AVANT la physique, puisqu'il agit sur la commande.
+   */
+  function rappelRoute(dt) {
+    if (!state.assistance || !surRoute || surDeuxRoues || state.enLair) { state.versRoute = null; return; }
+    if (state.horsRoute < state.reglagesAssistance.rappelRoues) { state.versRoute = null; return; }
+    state.prochainScan -= dt;
+    if (state.prochainScan <= 0 || !state.versRoute) {
+      state.prochainScan = 0.2;
+      let trouve = null;
+      for (let r = 2; r <= 24 && !trouve; r += 2) {
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * Math.PI * 2;
+          const ex = etat.x + Math.cos(a) * r, ez = etat.z + Math.sin(a) * r;
+          if (surRoute(ex, ez) && !blockedAt(ex, ez)) { trouve = { dx: Math.cos(a), dz: Math.sin(a), dist: r }; break; }
+        }
+      }
+      state.versRoute = trouve;
+    }
+    const vr = state.versRoute;
+    if (!vr) return;
+    // Force : réduite par le braquage du joueur, nulle à l'arrêt.
+    const libre = 1 - Math.min(1, Math.abs(cmd.direction || 0) * 1.4);
+    const roule = Math.min(1, Math.abs(etat.u) / 4);
+    const force = libre * roule;
+    if (force <= 0) return;
+    // Cap : on vise la route, dans le sens de marche ; l'écart devient un peu
+    // de volant (positif = droite, comme `cmd.direction`).
+    let capRoute = Math.atan2(-vr.dx, -vr.dz);
+    if (etat.u < 0) capRoute += Math.PI;
+    let ecart = capRoute - etat.yaw;
+    ecart = Math.atan2(Math.sin(ecart), Math.cos(ecart));
+    const volant = -THREE.MathUtils.clamp(ecart / 0.6, -1, 1) * state.reglagesAssistance.rappelVolant * force;
+    cmd.direction = THREE.MathUtils.clamp((cmd.direction || 0) + volant, -1, 1);
   }
 
   // ── caméra ───────────────────────────────────────────────────────────────
@@ -1112,16 +1229,24 @@ export function creerPilote({
     // Adhérence moyenne sous les quatre roues : deux roues dans l'herbe, et la
     // voiture tire de ce côté — c'est ce qui rend les bas-côtés dangereux.
     const s = Math.sin(etat.yaw), c = Math.cos(etat.yaw);
-    let mu = 0;
+    let mu = 0, horsRoute = 0;
     for (let i = 0; i < 4; i++) {
       const lx = ROUES[i][0], lz = ROUES[i][1];
       const px = etat.x + c * lx - s * lz;
       const pz = etat.z - s * lx - c * lz;
       roueMonde[i].set(px, 0, pz);
       solRoue[i] = solAt(px, pz);
-      mu += adherenceAt(px, pz);
+      const a = adherenceAt(px, pz);
+      mu += a;
+      if (a < 1) horsRoute++;
     }
     mu /= 4;
+    state.horsRoute = horsRoute;
+    // Assistance : l'herbe tient moins mal — deux roues dans le bas-côté
+    // tirent encore, mais ne retournent plus la voiture.
+    if (state.assistance) mu = 1 - (1 - mu) * (1 - state.reglagesAssistance.herbe);
+    // Le rappel vers la route tourne le volant : il passe avant la physique.
+    rappelRoute(dt);
     // En l'air, les roues ne tiennent rien : on ne pilote pas un avion.
     pas(dt, cmd, state.enLair ? 0.06 : mu);
     collisions(dt);
@@ -1190,10 +1315,10 @@ export function creerPilote({
         if (cmd.saut && !state.sautLatch && state.sautCooldown <= 0 && etat.vitesse > 0.4) {
           // Le coup de jambes : on saute quand on le décide, pas quand le sol
           // veut bien. Au bout d'un tremplin, il s'ajoute à ce que la rampe donne.
-          decoller(Math.max(0, state.elan) + IMPULSION);
+          decoller(Math.max(0, state.elan) + SAUT_TROTTINETTE.impulsion);
           state.sautCooldown = 0.35;
         } else if (etat.vitesse > SEUIL_ENVOL
-                   && (vaDecoller(Math.max(0, Math.min(state.elan, ENVOL_MAX)), 0.16, 0.04) || chuteNecessaire < chuteLibre)) {
+                   && (vaDecoller(Math.max(0, Math.min(state.elan, SAUT_TROTTINETTE.envolMax)), 0.16, 0.04) || chuteNecessaire < chuteLibre)) {
           // **On décolle quand la trajectoire libre passe au-dessus du sol.**
           // Lancée avec la vitesse verticale que la rampe lui a donnée, la
           // trottinette serait-elle à quatre centimètres au-dessus du béton dans
@@ -1204,14 +1329,14 @@ export function creerPilote({
           // bosses et on décollait trop tard, quand on décollait. Une simple
           // comparaison d'accélérations (le sol fuit plus vite que g) partait
           // trop tôt et donnait des envols d'une image, à quelques millimètres.
-          decoller(Math.max(0, Math.min(state.elan, ENVOL_MAX)));
+          decoller(Math.max(0, Math.min(state.elan, SAUT_TROTTINETTE.envolMax)));
         } else {
           state.y += monte * lissage(monte > 0 ? 26 : 22, dt);
         }
         state.sautLatch = cmd.saut;
         // Bande de lancement : le béton bleu pousse jusqu'à 41 km/h.
         if (turboAt && etat.u > 0.5 && turboAt(etat.x, etat.z)) {
-          etat.u = Math.min(etat.u + 18 * dt, TURBO_MAX);
+          etat.u = Math.min(etat.u + 18 * dt, SAUT_TROTTINETTE.turboMax);
           state.turbo = 0.25;
         }
       } else if (chuteNecessaire < chuteLibre && etat.vitesse > SEUIL_ENVOL) {
@@ -1221,7 +1346,7 @@ export function creerPilote({
         // béton et descendait aussitôt. Ce qu'on garde, c'est ce que la rampe a
         // mis dans la caisse — plafonné, sinon un dos d'âne pris vite devient
         // une catapulte.
-        state.vy = Math.max(chuteLibre, Math.min(state.elan, ENVOL_MAX));
+        state.vy = Math.max(chuteLibre, Math.min(state.elan, ENVOL_MAX_VOITURE));
       } else {
         // Suspension : ferme à la montée, ferme aussi à la descente — c'est cette
         // dissymétrie qui donnait l'impression de flotter en descendant.
@@ -1262,20 +1387,42 @@ export function creerPilote({
     // vérifié en jeu plutôt que déduit — sur cette physique, deux corrections de
     // signe faites en parallèle se sont déjà annulées.
     const penche = surDeuxRoues && !state.enLair
-      ? THREE.MathUtils.clamp(Math.atan2(etat.u * etat.lacet, GRAVITE), -PENCHE_MAX, PENCHE_MAX)
+      ? THREE.MathUtils.clamp(Math.atan2(etat.u * etat.lacet, GRAVITE), -SAUT_TROTTINETTE.pencheMax, SAUT_TROTTINETTE.pencheMax)
       : THREE.MathUtils.clamp(etat.charge * 0.055, -0.1, 0.1);
     const roulisVise = (state.enLair ? 0 : -penteRoulis) + penche
       + (state.chute > 0 ? Math.sin(state.chute * 38) * 0.30 * state.chute : 0);
     // Un looping ne se lisse pas : en l'air, à deux roues, l'assiette est celle
     // de la figure, exactement. Le lissage reprend à l'atterrissage.
     if (surDeuxRoues && state.enLair) state.tangage = tangageVise;
-    else state.tangage += (tangageVise - state.tangage) * lissage(9, dt);
+    else state.tangage += (tangageVise - state.tangage) * lissage(surDeuxRoues ? 9 : 16, dt);
     // Ce qui reste d'une vrille se résorbe au sol.
     if (!state.enLair && state.spin) state.spin -= state.spin * lissage(8, dt);
     // Se pencher demande un geste, pas un ressort de suspension : à deux roues
     // le roulis suit un peu plus vite, sinon l'engin part en virage avant d'y
     // être couché.
     state.roulis += (roulisVise - state.roulis) * lissage(surDeuxRoues ? 11 : 9, dt);
+    // **Rien ne passe sous le sol.** La hauteur de la caisse est une moyenne des
+    // quatre roues, lissée ; son inclinaison est lissée à part. Entre les deux,
+    // au passage d'une bordure, d'un dos d'âne ou d'un fossé, un coin de la
+    // caisse — l'arrière surtout, avec son porte-à-faux — pouvait se retrouver
+    // sous le relief pendant quelques images. On relève la caisse d'autant.
+    if (!state.enLair && !surDeuxRoues) {
+      const sT = Math.sin(state.tangage), cT = Math.cos(state.tangage), sR = Math.sin(state.roulis);
+      let releve = 0;
+      for (let i = 0; i < 4; i++) {
+        // attache de la roue sur la caisse inclinée, moins le débattement possible
+        const attache = state.y - GARDE + ROUES[i][0] * sR * cT - ROUES[i][1] * sT;
+        releve = Math.max(releve, solRoue[i] - 0.12 - attache);
+      }
+      for (let i = 0; i < 4; i++) {
+        // coins de la caisse (pare-chocs) : le sol y est lu directement
+        const lx = SONDES[i][0], lz = SONDES[i][1];
+        const coin = state.y + lx * sR * cT - lz * sT;
+        const solCoin = solAt(etat.x + c * lx - s * lz, etat.z - s * lx - c * lz);
+        releve = Math.max(releve, solCoin - 0.04 - coin);
+      }
+      if (releve > 0) { state.y += releve; position.y = state.y; }
+    }
     euler.set(state.tangage, etat.yaw + state.spin, state.roulis);
     root.quaternion.setFromEuler(euler);
     // La caisse se penche **en plus** de la voiture : les roues restent au sol.
@@ -1287,13 +1434,24 @@ export function creerPilote({
       ? 0
       : THREE.MathUtils.clamp(etat.charge * 0.030, -0.06, 0.06);
 
-    // débattement : chaque roue rattrape le sol sous elle
-    for (let i = 0; i < 4; i++) {
-      const vise = THREE.MathUtils.clamp(solRoue[i] - (state.y - GARDE), -0.12, 0.12);
-      debattement[i] += (vise - debattement[i]) * lissage(14, dt);
+    // débattement : chaque roue rattrape le sol sous elle — **depuis son point
+    // d'attache sur la caisse inclinée**, pas depuis le centre de la voiture.
+    // Les roues sont filles de `root`, qui porte tangage et roulis : mesurer
+    // l'écart depuis le centre appliquait la pente deux fois, et sur un relief
+    // les roues arrière s'enfonçaient en montée, flottaient en descente.
+    {
+      const sT = Math.sin(state.tangage), cT = Math.cos(state.tangage), sR = Math.sin(state.roulis);
+      for (let i = 0; i < 4; i++) {
+        const attache = state.y - GARDE + ROUES[i][0] * sR * cT - ROUES[i][1] * sT;
+        const vise = THREE.MathUtils.clamp(solRoue[i] - attache, -0.12, 0.12);
+        debattement[i] += (vise - debattement[i]) * lissage(14, dt);
+      }
     }
     voiture.majRoues(etat.braquage, etat.rotationRoue, debattement);
     voiture.setFreinage(etat.freinage > 0);
+    if (voiture.setRecul) voiture.setRecul(etat.rapport < 0);
+    state.chocSon *= Math.exp(-dt / 0.25);
+    if (state.chocSon < 0.002) state.chocSon = 0;
 
     // ombre de contact, posée à plat sur le terrain sous la voiture
     voiture.ombre.position.set(etat.x, sol + 0.045, etat.z);
@@ -1337,7 +1495,7 @@ export function creerPilote({
     if (tracesVivantes && traces.instanceColor) traces.instanceColor.needsUpdate = true;
 
     majCamera(dt);
-    if (state.son) son.maj(etat, cmd.gaz, dt, cmd);
+    if (state.son) son.maj(etat, cmd.gaz, dt, cmd, state.chocSon);
   }
 
   /** Ce que le HUD affiche. */
@@ -1386,6 +1544,10 @@ export function creerPilote({
     enter, exit, update, basculerVue, basculerSon, redresser, commande, setMain, setNuit, figure,
     choisirVoiture, voitureChoisie: () => choix,
     telemetrie, placer,
+    // L'outil de réglage (touche T) lit `reglage` et applique par `regler`.
+    reglage, regler: changerReglage,
+    setAssistance: (on) => { state.assistance = !!on; state.coince = 0; state.versRoute = null; },
+    reglagesAssistance: state.reglagesAssistance,
     get position() { return position; },
   };
 }
