@@ -348,16 +348,30 @@ btnMusique.addEventListener('click', (e) => {
   peindreMusique();
   if (musiqueVoulue) jouerMusique(); else musique.pause();
 });
-function fonduMusique(duree = 1200) {
-  if (musique.paused) return;
-  const depart = musique.volume, t0 = performance.now();
+function fondu(piste, duree = 1200) {
+  if (piste.paused) return;
+  const depart = piste.volume, t0 = performance.now();
   const pas = () => {
     const k = Math.min(1, (performance.now() - t0) / duree);
-    musique.volume = depart * (1 - k);
-    if (k < 1) requestAnimationFrame(pas); else { musique.pause(); musique.volume = depart; }
+    piste.volume = depart * (1 - k);
+    if (k < 1) requestAnimationFrame(pas); else { piste.pause(); piste.volume = depart; }
   };
   requestAnimationFrame(pas);
 }
+const fonduMusique = () => fondu(musique);
+
+// ─────────────────────────────── la musique de la berline
+// Le moteur du village marque le bouton du mode actif (`.on`) : on observe
+// celui de la berline, et la musique suit — elle démarre quand on monte dedans,
+// s'efface en fondu quand on en descend. Même préférence que l'accueil.
+const nitro = new Audio('assets/musique/berline-nitro-boost.mp3?v=musique-20260924');
+nitro.loop = true; nitro.preload = 'none'; nitro.volume = 0.4;
+const btnBerline = document.querySelector('[data-mode="voiture"]');
+new MutationObserver(() => {
+  const dedans = btnBerline.classList.contains('on');
+  if (dedans && musiqueVoulue) { nitro.currentTime = 0; const p = nitro.play(); if (p?.catch) p.catch(() => {}); }
+  else if (!dedans) fondu(nitro, 900);
+}).observe(btnBerline, { attributes: true, attributeFilter: ['class'] });
 peindreMusique();
 if (!accueil.hidden && params.get('go') !== '1') {
   jouerMusique();
