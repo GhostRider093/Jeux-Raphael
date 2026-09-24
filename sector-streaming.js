@@ -26,6 +26,6 @@
     portal.add(a,b,core);portal.userData.inner=b;window.scene.add(portal);
   }
   function tick(t){requestAnimationFrame(tick);makePortal();if(!portal)return;portal.rotation.z+=.006;portal.userData.inner.rotation.z-=.014;portal.scale.setScalar(1+Math.sin(t*.004)*.04);
-    if(!triggered&&window.player&&window.player.position.distanceTo(portal.position)<12){triggered=true;portal.visible=false;transition('RETOUR VERS LA VILLE','raphael2.html');}}
+    if(!triggered&&window.player&&window.player.position.distanceTo(portal.position)<12){triggered=true;portal.visible=false;transition('RETOUR VERS LA VILLE','archive/ville/raphael2.html');}}
   requestAnimationFrame(tick);window.RaphaelSectors={transition};
 })();
