@@ -262,6 +262,35 @@ function separerRoues(engin, hote) {
   return { roues, rayon, essieux };
 }
 
+/**
+ * Le repère d'un objet : `inv` ramène du monde dans son repère local, `mat`
+ * est un tampon pour `inv × matrixWorld(enfant)`.
+ */
+function repereDe(repere) {
+  repere.updateMatrixWorld(true);
+  return { inv: new THREE.Matrix4().copy(repere.matrixWorld).invert(), mat: new THREE.Matrix4() };
+}
+
+/**
+ * Boîte englobante des sommets d'`objet`, exprimée dans le repère de `repere`
+ * (ou dans le repère propre d'`objet` sans parent si `repere` est absent).
+ * `Box3.setFromObject` travaille en monde : inutilisable dès que l'engin est
+ * déjà posé quelque part.
+ */
+function boiteDans(objet, repere = null) {
+  objet.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4();
+  if (repere) { repere.updateMatrixWorld(true); inv.copy(repere.matrixWorld).invert(); }
+  const mat = new THREE.Matrix4(), v = new THREE.Vector3(), boite = new THREE.Box3();
+  objet.traverse((o) => {
+    if (!o.isMesh) return;
+    mat.multiplyMatrices(inv, o.matrixWorld);
+    const a = o.geometry.attributes.position;
+    for (let i = 0; i < a.count; i++) boite.expandByPoint(v.fromBufferAttribute(a, i).applyMatrix4(mat));
+  });
+  return boite;
+}
+
 /** Texture de halo : un point lumineux qui se voit de loin, additif. */
 function texHalo() {
   const c = document.createElement('canvas');
@@ -286,8 +315,12 @@ function texHalo() {
  * @returns {object} { setNuit, setFreinage, setRecul, setClignotant, animer, etat }
  */
 function installerFeux(engin, hote) {
-  engin.updateMatrixWorld(true);
-  const boite = new THREE.Box3().setFromObject(engin);
+  // **Tout se mesure dans le repère de l'hôte**, jamais en coordonnées monde :
+  // sur une machine rapide, le GLB arrive après que le jeu a déjà posé l'engin
+  // dans le village, et des feux mesurés en monde partaient à 400 m du quad
+  // (constat d'Arnaud du 25/09/2026 : « toujours pas de conducteur », ni de feux).
+  const boite = boiteDans(engin, hote);
+  const { inv, mat } = repereDe(hote);
   const largeur = boite.max.x - boite.min.x, hauteur = boite.max.y;
   const v = new THREE.Vector3();
 
@@ -297,8 +330,9 @@ function installerFeux(engin, hote) {
     engin.traverse((o) => {
       if (!o.isMesh) return;
       const a = o.geometry.attributes.position;
+      mat.multiplyMatrices(inv, o.matrixWorld);
       for (let i = 0; i < a.count; i += 2) {
-        v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld);
+        v.fromBufferAttribute(a, i).applyMatrix4(mat);
         if (v.y < yMin || v.y > yMax || Math.abs(v.x) > xMax) continue;
         if (devant ? v.z < z : v.z > z) z = v.z;
       }
@@ -440,12 +474,10 @@ export async function construireQuad({ scene, x = 0, z = 0, cap = 0, decor = nul
   // Le modèle a son guidon vers −x (mesuré : les sommets les plus hauts sont à
   // x ≈ −0,28) ; l'avant du jeu est −z. Un quart de tour.
   engin.rotation.y = -Math.PI / 2;
-  engin.updateMatrixWorld(true);
-  let boite = new THREE.Box3().setFromObject(engin);
+  let boite = boiteDans(engin);              // pas encore dans root : repère propre
   const echelle = LONGUEUR / (boite.max.z - boite.min.z);
   engin.scale.setScalar(echelle);
-  engin.updateMatrixWorld(true);
-  boite = new THREE.Box3().setFromObject(engin);
+  boite = boiteDans(engin);
   const centre = boite.getCenter(new THREE.Vector3());
   engin.position.set(-centre.x, -boite.min.y, -centre.z);
   engin.traverse((o) => {
@@ -455,8 +487,7 @@ export async function construireQuad({ scene, x = 0, z = 0, cap = 0, decor = nul
     if (o.material) { o.material.metalness = 0.30; o.material.roughness = 0.45; }
   });
   root.add(engin);
-  engin.updateMatrixWorld(true);
-  boite = new THREE.Box3().setFromObject(engin);
+  boite = boiteDans(engin, root);            // désormais dans le repère du quad
   const dimensions = {
     longueur: boite.max.z - boite.min.z, largeur: boite.max.x - boite.min.x, hauteur: boite.max.y,
   };
@@ -471,6 +502,8 @@ export async function construireQuad({ scene, x = 0, z = 0, cap = 0, decor = nul
   const feux = installerFeux(engin, root);
 
   // ── les poignées : les sommets les plus hauts du quad, à leurs extrêmes en largeur
+  // (dans le repère du quad, comme tout le reste — voir `installerFeux`)
+  const local = repereDe(root);
   const poignees = (() => {
     const haut = boite.max.y;
     const v = new THREE.Vector3();
@@ -478,8 +511,9 @@ export async function construireQuad({ scene, x = 0, z = 0, cap = 0, decor = nul
     engin.traverse((o) => {
       if (!o.isMesh) return;
       const pos = o.geometry.attributes.position;
+      local.mat.multiplyMatrices(local.inv, o.matrixWorld);
       for (let i = 0; i < pos.count; i += 2) {
-        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        v.fromBufferAttribute(pos, i).applyMatrix4(local.mat);
         if (v.y < haut - 0.10) continue;
         gy += v.y; gz += v.z; n++;
         if (v.x < xg) xg = v.x;
@@ -497,8 +531,9 @@ export async function construireQuad({ scene, x = 0, z = 0, cap = 0, decor = nul
     engin.traverse((o) => {
       if (!o.isMesh) return;
       const pos = o.geometry.attributes.position;
+      local.mat.multiplyMatrices(local.inv, o.matrixWorld);
       for (let i = 0; i < pos.count; i += 2) {
-        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        v.fromBufferAttribute(pos, i).applyMatrix4(local.mat);
         if (Math.abs(v.x) > 0.08 || v.z < 0.05 || v.z > 0.45) continue;
         if (v.y > y - 0.03) { y = Math.max(y, v.y); n++; }
       }

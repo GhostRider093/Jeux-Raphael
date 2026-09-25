@@ -18,7 +18,7 @@
  * Le même banc tourne en ligne de commande : `node scripts/banc-voiture.mjs gt`.
  * Ce fichier ne touche au DOM que dans `monterPanneau`.
  */
-import { creerPhysique, REGLAGES } from './voiture-physique.js?v=feux-20260925';
+import { creerPhysique, REGLAGES } from './voiture-physique.js?v=pilote-20260925';
 
 // ─────────────────────────────────────────────── le schéma
 const P = (cle, nom, unite, min, max, pas, aide) => ({ cle, nom, unite, min, max, pas, aide });

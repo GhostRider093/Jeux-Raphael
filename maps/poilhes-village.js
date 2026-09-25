@@ -11,18 +11,18 @@ import { OrbitControls } from '../libs/OrbitControls.module.js';
 import {
   facadeMaterial, roofMaterial, groundMaterial, waterMaterial, foliageMaterial, stoneMaterial, skyMaterial,
 } from './poilhes-shaders.js';
-import { construireVillage } from './poilhes-scene.js?v=feux-20260925';
+import { construireVillage } from './poilhes-scene.js?v=pilote-20260925';
 import { createRobot } from './poilhes-robot.js?v=voiture-20260921';
 import { createEnemies } from './poilhes-enemies.js?v=voiture-20260921';
 import { createJet } from './poilhes-jet.js?v=voiture-20260921';
 // **Une seule version** pour les deux imports de voiture-pilote.js : deux
 // `?v=` différents font deux modules, et le `TOUCHER` réglé par le panneau
 // n'était plus celui que lisait le pilote.
-import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=feux-20260925';
+import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=pilote-20260925';
 import { poserEpicerie, poserBlasonClub, EPICERIE } from './poilhes-commerces.js?v=voiture-20260921';
 import { construireTrottinette } from './trottinette.js?v=pilote-20260922';
-import { creerGlissieres } from './glissieres.js?v=feux-20260925';
-import { monterPanneau as monterReglages, appliquerMemorise } from './reglages.js?v=feux-20260925';
+import { creerGlissieres } from './glissieres.js?v=pilote-20260925';
+import { monterPanneau as monterReglages, appliquerMemorise } from './reglages.js?v=pilote-20260925';
 
 const BASE = 'maps/poilhes/';
 const EYE = 1.68;              // hauteur des yeux du promeneur (m)

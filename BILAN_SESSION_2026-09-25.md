@@ -207,3 +207,31 @@ connecte, qu'on recommence, qu'on repasse par l'accueil ».
 - Versions de cache de toute la chaîne du 25/09 → `?v=feux-20260925`.
 - Chargement du quad en Chromium logiciel : 70 s (la « mesure de la machine »
   prend 60 s à 1,5 s par image). Pas un bug, juste le rendu sans GPU.
+
+## « Toujours pas de conducteur » — le vrai bug, dépendant de la vitesse de la machine
+
+- Arnaud : « toujours pas de conducteur », puis « pourquoi le pilote n'apparaît
+  pas alors qu'il apparaît sur la trottinette ? montre-moi une vidéo où il
+  apparaît ». Il avait raison de ne pas me croire : mes vérifications étaient en
+  Chromium logiciel (1,5 s par image), et le bug ne se produit que sur une
+  machine rapide.
+- **Cause** : `separerRoues` appelle `root.updateMatrixWorld(true)`. Sur une
+  machine rapide, le GLB du quad arrive **après** que le jeu a posé l'engin
+  dans le village (root à z ≈ −394). Tout ce qui se mesurait ensuite avec
+  `o.matrixWorld` ou `Box3.setFromObject` — feux, poignées, selle — sortait en
+  coordonnées **monde** : poignées à y = 30, z = 31, selle introuvable. Le
+  pilote glissait « vers le guidon » à 400 m du quad, les feux avec. En rendu
+  lent, le quad se chargeait avant le placement, root était encore à l'origine,
+  tout tombait juste par accident.
+- **Correctif** (`maps/quad.js`) : `repereDe(root)` et `boiteDans(objet,
+  repere)` — toute mesure passe par `inverse(root.matrixWorld) × matrixWorld`,
+  donc dans le repère du quad, où que le jeu l'ait mis. Plus aucun
+  `setFromObject`. La trottinette n'a pas ce bug : elle mesure autrement.
+- **Preuve** : vrai Chrome, RTX 4070 Ti, qualité Élevé, 60 img/s — selle y 0,95,
+  poignées y 1,21 z −0,27 (identiques au cas lent), pilote assis mains aux
+  poignées, feux arrière rouges de jour, feu de recul, faisceaux de nuit.
+  Vidéo `Downloads/quad-pilote-preuve.webm`, captures `quad-pilote-jour.png`,
+  `quad-pilote-nuit.png`.
+- Versions de cache → `?v=pilote-20260925`.
+- Leçon : **vérifier sur la machine d'Arnaud, pas dans un rendu lent** —
+  un bug de course se cache derrière un rendu à 1 img/s.

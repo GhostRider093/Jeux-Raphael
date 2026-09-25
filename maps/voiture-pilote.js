@@ -40,10 +40,10 @@
  * particules sont réservés une fois pour toutes.
  */
 import * as THREE from 'three';
-import { construireVoiture, ECHELLE } from './voiture-model.js?v=feux-20260925';
-import { creerPhysique, REGLAGES } from './voiture-physique.js?v=feux-20260925';
+import { construireVoiture, ECHELLE } from './voiture-model.js?v=pilote-20260925';
+import { creerPhysique, REGLAGES } from './voiture-physique.js?v=pilote-20260925';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
-import { construireEnginQuad } from './quad.js?v=feux-20260925';
+import { construireEnginQuad } from './quad.js?v=pilote-20260925';
 
 const GRAVITE = 9.81;
 // Toucher du volant, **selon la vitesse** — comme une vraie voiture.

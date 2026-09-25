@@ -189,7 +189,7 @@ export function construireSkatepark({ decor, centre = CENTRE, parc = null }) {
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     const cache = new Map();
     const charger = (nom) => {
-      if (!cache.has(nom)) cache.set(nom, loader.loadAsync(`assets/skatepark/${nom}.glb?v=feux-20260925`));
+      if (!cache.has(nom)) cache.set(nom, loader.loadAsync(`assets/skatepark/${nom}.glb?v=pilote-20260925`));
       return cache.get(nom);
     };
     // Béton clair, à facettes : les STL n'ont pas de normales lissées, et sans
