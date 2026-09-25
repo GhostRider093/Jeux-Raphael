@@ -71,6 +71,19 @@ export const SAUT_TROTTINETTE = {
   turboMax: 11.5,                  // m/s sur une bande de lancement (41 km/h), contre 6,9 au moteur seul
   pencheMax: 0.55,                 // rad (≈ 31°) : au-delà, un vrai pilote pose le pied
 };
+/**
+ * Le quad saute et fait les mêmes figures que la trottinette (Arnaud,
+ * 25/09/2026 : « rajouter toutes les fonctionnalités de la trottinette, les
+ * loopings, tout ça »). Mêmes touches : Espace saute, F looping, G 360,
+ * flèches haut / bas inclinent en l'air. Il est plus lourd : le coup de
+ * suspension le lève moins haut, mais il arrive plus vite sur les tremplins.
+ */
+export const SAUT_QUAD = {
+  impulsion: 2.3,
+  envolMax: 8.0,
+  turboMax: 16.0,                  // 58 km/h sur une bande de lancement
+  pencheMax: 0.20,
+};
 const GARDE = 0.06;            // hauteur du châssis au-dessus du contact des roues (m)
 const VUES_AUTO = [
   { dist: 8.2, haut: 3.0, avance: 4.0, fov: 62 },   // poursuite large
@@ -225,6 +238,15 @@ const SONS = {
   regimeBoucle: 2200,
 };
 
+/** Le son électrique de la trottinette (variante B du 25/09/2026), réglable à chaud : `RaphaelVoiture.son` n'en a pas besoin, ce sont des constantes lues à chaque image. */
+export const SON_ELECTRIQUE = {
+  graveBase: 55, gravePente: 22,      // Hz du sinus grave : 55 à l'arrêt, +22 par m/s (207 Hz à 25 km/h)
+  aiguBase: 420, aiguPente: 260,      // Hz du sifflement : 420 → 2 200 Hz à 25 km/h
+  aiguMax: 0.08,                      // gain du sifflement à 36 km/h
+  roulement: 0.30,                    // part du souffle de gomme conservée (1 = comme avant)
+  volume: 0.09,                       // volume d'ensemble en pointe (0,05 avant)
+};
+
 function creerSon({ electrique = false } = {}) {
   let ctx = null, noeuds = null;
   let echantillons = null;      // { demarrage, boucle } décodés, ou null
@@ -299,16 +321,29 @@ function creerSon({ electrique = false } = {}) {
     // Ici : deux **sinus** (la fondamentale et sa quinte, très en retrait), qui
     // ne passent ni par le filtre ni par la saturation. Un sinus n'a aucune
     // harmonique : il ne peut pas devenir agressif, quelle que soit sa hauteur.
-    const voix = electrique ? [[1, 0, 0.55], [1.5, 4, 0.16]] : [[1, 0, 0.5], [0.5, 0, 0.32], [1, 9, 0.22]];
+    // Trottinette (refonte du 25/09/2026, Arnaud : « enlever ce son horrible,
+    // lui mettre un son électrique ») : le souffle de gomme, jugé horrible,
+    // recule loin derrière ; ce qu'on entend est un **onduleur** — un sinus
+    // grave qui monte avec la vitesse et un sifflement aigu (dent de scie
+    // filtrée) qui s'éclaircit quand on accélère. Trois variantes ont été
+    // rendues en WAV pour Arnaud (Downloads/trottinette-son-A|B|C.wav) ; c'est
+    // la B qui est câblée ici, les réglages sont dans `SON_ELECTRIQUE`.
+    const voix = electrique ? [[1, 0, 0.7]] : [[1, 0, 0.5], [0.5, 0, 0.32], [1, 9, 0.22]];
     let siffle = null, roulement = null, filtreRoulement = null;
+    let aigu = null, filtreAigu = null, gainAigu = null;
     if (electrique) {
       siffle = ctx.createGain();
-      // **Le sifflement passe au second plan.** Deux sinus qui montent avec la
-      // vitesse, c'est une sirène, pas une trottinette : ce qu'on entend
-      // vraiment en roulant, c'est la gomme sur le bitume. Le moteur-roue ne
-      // reste qu'en filigrane, et seulement quand on accélère.
-      siffle.gain.value = 0.22;
+      siffle.gain.value = 0.6;
       siffle.connect(sortie);
+      aigu = ctx.createOscillator();
+      aigu.type = 'sawtooth';
+      filtreAigu = ctx.createBiquadFilter();
+      filtreAigu.type = 'lowpass';
+      filtreAigu.Q.value = 1.2;
+      gainAigu = ctx.createGain();
+      gainAigu.gain.value = 0;
+      aigu.connect(filtreAigu); filtreAigu.connect(gainAigu); gainAigu.connect(sortie);
+      aigu.start();
 
       // Le roulement : du bruit blanc filtré. Deux secondes suffisent — bouclé,
       // du bruit reste du bruit, on n'entend pas le raccord. Rien à télécharger.
@@ -384,7 +419,7 @@ function creerSon({ electrique = false } = {}) {
     source.start();
 
     noeuds = { sortie, filtre, osc, gainCrissement, gainVent, gainAdmission, source,
-               roulement, filtreRoulement };
+               roulement, filtreRoulement, aigu, filtreAigu, gainAigu };
     // Une trottinette n'a que faire d'un démarreur, d'une boucle de six-cylindres
     // et d'un crissement de freinage : on ne les télécharge même pas.
     if (electrique) chargerEchantillons(['trottinette']);
@@ -475,13 +510,16 @@ function creerSon({ electrique = false } = {}) {
         // **Ce qu'on entend d'une trottinette, c'est la gomme sur le bitume.**
         // Le roulement monte avec la vitesse et s'éclaircit avec elle ; il
         // s'éteint à l'arrêt, ce qui reste la signature d'un engin électrique.
-        const v = etat.vitesse;
+        const v = etat.vitesse, E = SON_ELECTRIQUE;
         noeuds.filtreRoulement.frequency.setTargetAtTime(180 + v * 62, t, 0.10);
-        noeuds.roulement.gain.setTargetAtTime(Math.min(1, v / 5.5), t, 0.12);
-        // Le moteur-roue ne reste qu'en filigrane, et **surtout à l'accélération** :
-        // à vitesse stabilisée, un moteur-roue ne s'entend presque pas.
-        const f = 150 + v * 26;
-        for (const o of noeuds.osc) o.frequency.setTargetAtTime(f * (o.userRapport || 1), t, 0.12);
+        noeuds.roulement.gain.setTargetAtTime(Math.min(1, v / 5.5) * E.roulement, t, 0.12);
+        // Le grave suit la vitesse ; l'aigu monte avec elle et s'ouvre aux gaz.
+        const f = E.graveBase + v * E.gravePente;
+        for (const o of noeuds.osc) o.frequency.setTargetAtTime(f * (o.userRapport || 1), t, 0.06);
+        const fa = E.aiguBase + v * E.aiguPente;
+        noeuds.aigu.frequency.setTargetAtTime(fa, t, 0.06);
+        noeuds.filtreAigu.frequency.setTargetAtTime(fa * (1.2 + gaz * 1.6), t, 0.08);
+        noeuds.gainAigu.gain.setTargetAtTime(Math.min(E.aiguMax, v * E.aiguMax / 10) * (0.4 + gaz * 0.6), t, 0.08);
         noeuds.gainAdmission.gain.setTargetAtTime(0, t, 0.2);
       } else {
         // Fréquence d'allumage : trois temps par tour, comme un six-cylindres.
@@ -505,7 +543,7 @@ function creerSon({ electrique = false } = {}) {
       // électrique se fait entendre, et cela suffit à donner la sensation.
       // Un bruit large s'écoute sans fatigue là où un sinus agace : on peut donc
       // monter (0,05 contre 0,014) sans retomber dans le sifflement scié.
-      ? Math.min(0.05, etat.vitesse * 0.008) * (0.55 + gaz * 0.45)
+      ? Math.min(SON_ELECTRIQUE.volume, etat.vitesse * SON_ELECTRIQUE.volume / 6.5) * (0.55 + gaz * 0.45)
       : lecture
         // Et quand on l'allume, il ne hurle pas : 0,16 au ralenti et 0,39 à
         // fond, au lieu de 0,34 et 0,78. Un enregistrement mp3 est déjà
@@ -597,6 +635,9 @@ export function creerPilote({
   // Le quad (25/09/2026) : quatre roues comme une voiture, mais court, léger,
   // sans caisse qui roule, et il saute (seuil d'envol bas, comme la trottinette).
   const surQuad = engin === 'quad';
+  // Ce qui saute et fait des figures : la trottinette et, depuis le 25/09/2026, le quad.
+  const figures = surDeuxRoues || surQuad;
+  const SAUT = surQuad ? SAUT_QUAD : SAUT_TROTTINETTE;
   // **Le seuil d'envol appartient à l'engin.** Il valait 8 m/s pour tout le
   // monde — au-dessus de la vitesse de pointe de la trottinette (6,9 m/s) : elle
   // ne pouvait littéralement pas décoller, et un tremplin n'était qu'une bosse
@@ -692,12 +733,19 @@ export function creerPilote({
     assistance: !surDeuxRoues, coince: 0, versRoute: null, prochainScan: 0, horsRoute: 0,
     // Les glissières retiennent la berline ; la trottinette passe au travers
     // (Arnaud la refait lui-même). Case à cocher dans l'outil de réglage.
-    glissieres: !surDeuxRoues && !!glissiereAt,
+    // Les glissières retiennent tout le monde depuis le 25/09/2026 (« finir de
+    // mettre les barrières partout ») ; case à cocher dans l'outil de réglage.
+    glissieres: !!glissiereAt,
     // Les réglages de l'assistance, modifiables à chaud (voir l'en-tête).
     reglagesAssistance: {
       rail: 0.5,           // part de la vitesse d'impact renvoyée le long du mur (0,66 avant le 25/09)
       pousse: 0.07,        // m par image de dégagement hors d'un mur, au plus (0,14 avant le 25/09)
       realigner: 1.2,      // rad/s de réalignement de la caisse sur le mur touché
+      // Les glissières ne sont pas des murs (Arnaud, 25/09/2026 : « ça rebondit
+      // vraiment trop fort, il faut juste que ça remette dans l'axe de la route,
+      // très doucement, ce n'est pas une punition ») : presque toute la vitesse
+      // est gardée, on ne pousse presque pas, on réaligne un peu plus vite.
+      railGlissiere: 0.95, pousseGlissiere: 0.03, realignerGlissiere: 1.8,
       degager: 0.6,        // m/s de recul quand on est coincé gaz enfoncé
       rappelVolant: 0.45,  // part du volant que le rappel vers la route peut prendre
       rappelRoues: 3,      // nombre de roues hors chaussée à partir duquel on rappelle
@@ -837,10 +885,10 @@ export function creerPilote({
     // À deux roues, Espace n'est pas un frein à main : c'est le coup de jambes
     // qui fait sauter (`decoller`). F et G lancent les figures en l'air, et les
     // flèches haut / bas y inclinent l'engin — au sol elles restent gaz et frein.
-    cmd.main = surDeuxRoues ? false : (tenue('Space') || mainTactile);
-    cmd.saut = surDeuxRoues && (tenue('Space') || mainTactile);
-    cmd.flip = surDeuxRoues && tenue('KeyF');
-    cmd.spin = surDeuxRoues && tenue('KeyG');
+    cmd.main = figures ? false : (tenue('Space') || mainTactile);
+    cmd.saut = figures && (tenue('Space') || mainTactile);
+    cmd.flip = figures && tenue('KeyF');
+    cmd.spin = figures && tenue('KeyG');
     // Clignotants (quad) : ils suivent le volant tout seuls — un coup de guidon
     // franc d'un côté les allume, ils restent une seconde après qu'on a
     // redressé. X : feux de détresse, tant qu'on l'appuie.
@@ -850,7 +898,7 @@ export function creerPilote({
       const auto = performance.now() < state.clignoJusqua ? state.clignoCote : 0;
       voiture.setClignotant(tenue('KeyX') ? 2 : (auto || 0));
     }
-    cmd.cabre = surDeuxRoues ? THREE.MathUtils.clamp((avance ? 1 : 0) - (recule ? 1 : 0) - doigt.y, -1, 1) : 0;
+    cmd.cabre = figures ? THREE.MathUtils.clamp((avance ? 1 : 0) - (recule ? 1 : 0) - doigt.y, -1, 1) : 0;
   }
 
   // ── obstacles ────────────────────────────────────────────────────────────
@@ -1124,6 +1172,7 @@ export function creerPilote({
   function collisions(dt) {
     const s = Math.sin(etat.yaw), c = Math.cos(etat.yaw);
     let touche = 0;
+    let glissiere = 0;
     state.choc = 0;
     normale.set(0, 0);
     for (let i = 0; i < SONDES.length; i++) {
@@ -1132,6 +1181,7 @@ export function creerPilote({
       const pz = etat.z - s * lx - c * lz;
       if (!obstacleAt(px, pz)) continue;
       touche++;
+      if (glissiereAt && state.glissieres && !blockedAt(px, pz) && glissiereAt(px, pz)) glissiere++;
       for (let k = 0; k < 8; k++) {
         const a = (k / 8) * Math.PI * 2;
         const dx = Math.cos(a), dz = Math.sin(a);
@@ -1141,6 +1191,12 @@ export function creerPilote({
     if (!touche) return;
     if (normale.lengthSq() < 1e-4) { normale.set(-Math.sin(etat.yaw), -Math.cos(etat.yaw)); }
     normale.normalize();
+    // Toutes les sondes qui touchent sont sur une glissière : réponse douce.
+    const douce = glissiere === touche;
+    const RA = state.reglagesAssistance;
+    const rail = douce ? RA.railGlissiere : RA.rail;
+    const pousseMax = douce ? RA.pousseGlissiere : RA.pousse;
+    const realigner = douce ? RA.realignerGlissiere : RA.realigner;
 
     // vitesse monde, projetée sur la normale du mur
     const vx = -s * etat.u + c * etat.v;
@@ -1154,7 +1210,7 @@ export function creerPilote({
     // Adouci le 25/09/2026 (« les rebonds sont un peu trop forts ») : 3 cm par
     // sonde, 7 cm au plus — la composante qui rentre est de toute façon retirée
     // plus bas, la poussée n'a qu'à résorber la pénétration d'une image.
-    const pousse = Math.min(state.reglagesAssistance.pousse, 0.03 * touche);
+    const pousse = Math.min(pousseMax, 0.03 * touche);
     etat.x += normale.x * pousse;
     etat.z += normale.y * pousse;
     if (vn < 0 && state.assistance) {
@@ -1167,11 +1223,11 @@ export function creerPilote({
       const vt = vx * tx0 + vz * tz0;
       const sens = vt >= 0 ? 1 : -1;
       const tx = tx0 * sens, tz = tz0 * sens;
-      const vitesse = Math.abs(vt) * 0.97 + (-vn) * state.reglagesAssistance.rail;
+      const vitesse = Math.abs(vt) * (douce ? 0.995 : 0.97) + (-vn) * rail;
       const fx = tx * vitesse, fz = tz * vitesse;
       etat.u = -(fx * s + fz * c);
       etat.v = fx * c - fz * s;
-      etat.lacet *= 0.55;
+      etat.lacet *= douce ? 0.85 : 0.55;
       // La caisse se réaligne sur la rue : un petit pas de cap vers le mur,
       // dans le sens où l'on roule. Pas à l'arrêt, une voiture garée ne pivote pas.
       if (Math.abs(etat.u) > 1.5) {
@@ -1179,7 +1235,7 @@ export function creerPilote({
         let ecart = capMur - etat.yaw;
         ecart = Math.atan2(Math.sin(ecart), Math.cos(ecart));
         if (etat.u < 0) ecart = Math.atan2(Math.sin(ecart + Math.PI), Math.cos(ecart + Math.PI));
-        const pasMax = state.reglagesAssistance.realigner * dt;
+        const pasMax = realigner * dt;
         etat.yaw += THREE.MathUtils.clamp(ecart, -pasMax, pasMax);
       }
     } else if (vn < 0) {
@@ -1380,16 +1436,16 @@ export function creerPilote({
       state.vy -= GRAVITE * dt;
       state.y += state.vy * dt;
       state.air += dt;
-      if (surDeuxRoues) figuresEnLair(dt);
+      if (figures) figuresEnLair(dt);
       if (state.y <= appui) {
         // atterrissage : la caisse encaisse, et un gros saut coûte de la vitesse
         state.y = appui;
-        if (surDeuxRoues) atterrir(); else if (state.vy < -6) etat.u *= 0.93;
+        if (figures) atterrir(); else if (state.vy < -6) etat.u *= 0.93;
         state.vy = 0;
         state.enLair = false;
         // Un contact d'une ou deux images sur une rampe n'est pas un
         // atterrissage : l'élan de la rampe reste en mémoire pour le vrai bord.
-        if (!(surDeuxRoues && state.air < 0.12)) { state.montee = 0; state.elan = 0; }
+        if (!(figures && state.air < 0.12)) { state.montee = 0; state.elan = 0; }
         state.appuiPrec = appui;
       }
     } else {
@@ -1407,15 +1463,15 @@ export function creerPilote({
       // l'engin a prise. On la lui rend au décollage.
       const vitesseSol = (appui - (state.appuiPrec === null ? appui : state.appuiPrec)) / Math.max(dt, 1e-3);
       state.vitesseSol = vitesseSol;
-      state.montee += (vitesseSol - state.montee) * lissage(surDeuxRoues ? 24 : 14, dt);
+      state.montee += (vitesseSol - state.montee) * lissage(figures ? 24 : 14, dt);
       state.appuiPrec = appui;
       // **L'élan garde le meilleur de la rampe, et l'oublie en une seconde.**
       // Au moment précis où la roue quitte le béton, la montée instantanée est
       // déjà retombée — c'est justement parce que le sol se dérobe qu'on
       // décolle. Lancer avec cette valeur-là revenait à glisser du bout du
       // tremplin. On lance donc avec ce que la rampe a réellement donné.
-      state.elan = Math.max(state.montee, state.elan - dt * (surDeuxRoues ? 5 : 2.2));
-      if (surDeuxRoues) {
+      state.elan = Math.max(state.montee, state.elan - dt * (figures ? 5 : 2.2));
+      if (figures) {
         if (state.sautCooldown > 0) state.sautCooldown -= dt;
         // F ou G pressés au sol : la demande vaut une demi-seconde, le temps d'arriver au bord.
         if (cmd.flip && !state.flipLatch) { state.figureDemandee = 'flip'; state.demandeExpire = 0.5; }
@@ -1426,10 +1482,10 @@ export function creerPilote({
         if (cmd.saut && !state.sautLatch && state.sautCooldown <= 0 && etat.vitesse > 0.4) {
           // Le coup de jambes : on saute quand on le décide, pas quand le sol
           // veut bien. Au bout d'un tremplin, il s'ajoute à ce que la rampe donne.
-          decoller(Math.max(0, state.elan) + SAUT_TROTTINETTE.impulsion);
+          decoller(Math.max(0, state.elan) + SAUT.impulsion);
           state.sautCooldown = 0.35;
         } else if (etat.vitesse > SEUIL_ENVOL
-                   && (vaDecoller(Math.max(0, Math.min(state.elan, SAUT_TROTTINETTE.envolMax)), 0.16, 0.04) || chuteNecessaire < chuteLibre)) {
+                   && (vaDecoller(Math.max(0, Math.min(state.elan, SAUT.envolMax)), 0.16, 0.04) || chuteNecessaire < chuteLibre)) {
           // **On décolle quand la trajectoire libre passe au-dessus du sol.**
           // Lancée avec la vitesse verticale que la rampe lui a donnée, la
           // trottinette serait-elle à quatre centimètres au-dessus du béton dans
@@ -1440,28 +1496,20 @@ export function creerPilote({
           // bosses et on décollait trop tard, quand on décollait. Une simple
           // comparaison d'accélérations (le sol fuit plus vite que g) partait
           // trop tôt et donnait des envols d'une image, à quelques millimètres.
-          decoller(Math.max(0, Math.min(state.elan, SAUT_TROTTINETTE.envolMax)));
+          decoller(Math.max(0, Math.min(state.elan, SAUT.envolMax)));
         } else {
           state.y += monte * lissage(monte > 0 ? 26 : 22, dt);
         }
         state.sautLatch = cmd.saut;
         // Bande de lancement : le béton bleu pousse jusqu'à 41 km/h.
         if (turboAt && etat.u > 0.5 && turboAt(etat.x, etat.z)) {
-          etat.u = Math.min(etat.u + 18 * dt, SAUT_TROTTINETTE.turboMax);
+          etat.u = Math.min(etat.u + 18 * dt, SAUT.turboMax);
           state.turbo = 0.25;
         }
-      } else if (surQuad && chuteNecessaire < chuteLibre && etat.vitesse > SEUIL_ENVOL) {
-        // Seul le quad décolle encore à quatre roues. **La berline ne saute
-        // plus** (Arnaud, 25/09/2026 : « le saut, c'est un vrai problème ») :
-        // elle suit le sol par sa suspension, même au bout d'un tremplin.
-        state.enLair = true;
-        // **On est projeté, on ne tombe pas.** Repartir à la vitesse de chute
-        // libre revenait à glisser du bout du tremplin : la roue quittait le
-        // béton et descendait aussitôt. Ce qu'on garde, c'est ce que la rampe a
-        // mis dans la caisse — plafonné, sinon un dos d'âne pris vite devient
-        // une catapulte.
-        state.vy = Math.max(chuteLibre, Math.min(state.elan, ENVOL_MAX_VOITURE));
       } else {
+        // **La berline ne saute plus** (Arnaud, 25/09/2026 : « le saut, c'est
+        // un vrai problème ») : elle suit le sol par sa suspension, même au
+        // bout d'un tremplin. Le quad, lui, saute comme la trottinette (ci-dessus).
         // Suspension : ferme à la montée, ferme aussi à la descente — c'est cette
         // dissymétrie qui donnait l'impression de flotter en descendant.
         state.y += monte * lissage(monte > 0 ? 26 : 22, dt);
@@ -1477,7 +1525,7 @@ export function creerPilote({
     // En l'air, la trottinette suit sa trajectoire du nez — cabrée en montant,
     // piquée en descendant — et y ajoute la rotation de ses figures.
     const tangageVise = state.enLair
-      ? (surDeuxRoues ? Math.atan2(state.vy, Math.max(2.5, Math.abs(etat.u))) * 0.5 + state.tangageAir : state.vy * 0.02)
+      ? (figures ? Math.atan2(state.vy, Math.max(2.5, Math.abs(etat.u))) * 0.5 + state.tangageAir : state.vy * 0.02)
       : penteTangage + THREE.MathUtils.clamp(etat.ax * 0.011, -0.09, 0.09);
     // Signes du roulis, vérifiés plutôt que devinés : une rotation positive
     // autour de l'axe arrière lève le côté droit. Un virage à droite penche donc
@@ -1507,7 +1555,7 @@ export function creerPilote({
       + (state.chute > 0 ? Math.sin(state.chute * 38) * 0.30 * state.chute : 0);
     // Un looping ne se lisse pas : en l'air, à deux roues, l'assiette est celle
     // de la figure, exactement. Le lissage reprend à l'atterrissage.
-    if (surDeuxRoues && state.enLair) state.tangage = tangageVise;
+    if (figures && state.enLair) state.tangage = tangageVise;
     else state.tangage += (tangageVise - state.tangage) * lissage(surDeuxRoues ? 9 : 16, dt);
     // Ce qui reste d'une vrille se résorbe au sol.
     if (!state.enLair && state.spin) state.spin -= state.spin * lissage(8, dt);

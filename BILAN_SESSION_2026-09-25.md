@@ -235,3 +235,41 @@ connecte, qu'on recommence, qu'on repasse par l'accueil ».
 - Versions de cache → `?v=pilote-20260925`.
 - Leçon : **vérifier sur la machine d'Arnaud, pas dans un rendu lent** —
   un bug de course se cache derrière un rendu à 1 img/s.
+
+## Nuit du 25 au 26 — la liste d'Arnaud avant d'aller se coucher
+
+Liste dictée : barrières partout, barrières des ponts aux limites du tablier, figures de la
+trottinette sur le quad, son électrique de la trottinette, comportement plus arcade (freiner
+droit, freiner et repartir plus vite, marche arrière beaucoup plus vite), place centrale /
+mairie / Ostal à refaire, textures et fichiers non utilisés du skatepark ; puis : chaque engin
+naît à sa place (trottinette sur le pump track, voiture à l'entrée, quad de l'autre côté),
+une belle page d'accueil à trois choix illustrés, et des glissières qui recadrent en douceur
+au lieu de renvoyer.
+
+### Fait — premier lot (poussé)
+
+- **Arcade** (`voiture-physique.js`, `ARCADE` + `arcade: true` sur gt, traction, quad) :
+  frein appuyé sans volant → lacet et dérive s'éteignent (on freine droit) ; marche arrière
+  engagée après 0,4 s au lieu de 0,75, sortie en 0,25 s, couple ×1,6 en arrière ; couples
+  et freins relevés (GT 600 N·m / 5 200, quad 58 N·m / 1 200, adhérence quad 1,30).
+  Banc : quad 0-100 en 7,6 s (13,6 avant), GT freine en 37 m (53 avant).
+- **Ponts** (`glissieres.js`) : lame collée à la face intérieure du parapet (w/2 − 0,36),
+  bande de retenue à partir de 50 cm derrière la lame (dans le mur) ; et partout, une
+  cellule dont le centre est sur la chaussée n'est plus marquée (on perdait jusqu'à 50 cm
+  de voie de chaque côté).
+- **Glissières douces** (`voiture-pilote.js`, `reglagesAssistance.*Glissiere`) : quand
+  toutes les sondes touchent une glissière (pas un mur), 95 % de la vitesse d'impact
+  renvoyée le long du rail, 99,5 % du glissement gardé, poussée 3 cm, réalignement 1,8 rad/s,
+  lacet à peine amorti. Les murs gardent l'ancienne réponse.
+- **La trottinette est retenue aussi** par les glissières (case du panneau T pour couper).
+- **Quad = trottinette** : `figures = surDeuxRoues || surQuad` ; Espace saute (plus de
+  frein à main sur le quad), F looping, G 360, flèches haut/bas en l'air ; `SAUT_QUAD`
+  (impulsion 2,3, envol 8, turbo 16 m/s). Aide clavier, bouton tactile SAUT/Flip.
+- **Son électrique** (`SON_ELECTRIQUE`) : sinus grave 55 → 207 Hz + sifflement dent de
+  scie filtrée 420 → 2 200 Hz qui s'ouvre aux gaz, souffle de gomme à 30 %. Trois variantes
+  rendues en WAV pour choisir : `Downloads/trottinette-son-A|B|C.wav` (B câblée).
+- **Départs** (`rouler.html`, `DEPARTS`) : berline avenue de Capestang (−249, −6), quad rue
+  de la Porte d'Ensérune (212, 10) face au village (cap forcé après `placer`, qui préférait
+  la campagne), trottinette au départ du pump track. `window.jeu` exposé pour les tests.
+- Vérifié en vrai Chrome : les trois engins naissent au bon endroit et roulent ; quad
+  0,3 m de saut sur le plat, marche arrière 35 km/h en 2,5 s, freinage droit (−0,6°).

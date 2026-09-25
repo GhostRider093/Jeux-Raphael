@@ -72,7 +72,12 @@ export function creerGlissieres({ decor, surRoute = null, blockedAt = () => fals
   const marquer = (x, z) => {
     if (surRoute && surRoute(x, z)) return;         // jamais sur une chaussée
     const c = Math.floor((x + demi) / G.pas), r = Math.floor((z + demi) / G.pas);
-    if (c >= 0 && r >= 0 && c < n && r < n) grille[r * n + c] = 1;
+    if (c < 0 || r < 0 || c >= n || r >= n) return;
+    // Ni une cellule dont le **centre** est sur la chaussée : un point à 10 cm
+    // du bord marquait une cellule de 50 cm qui mordait sur la route, et la
+    // voie utile perdait jusqu'à un demi-mètre de chaque côté (25/09/2026).
+    if (surRoute && surRoute((c + 0.5) * G.pas - demi, (r + 0.5) * G.pas - demi)) return;
+    grille[r * n + c] = 1;
   };
   /** Vrai si (x, z) est dans la bande de retenue d'une glissière. */
   function glissiereAt(x, z) {
@@ -189,7 +194,12 @@ export function creerGlissieres({ decor, surRoute = null, blockedAt = () => fals
         }
         if (i + 2 === P.length) S.push({ x: b.x, y: b.y, z: b.z, tx: (b.x - a.x) / L, tz: (b.z - a.z) / L });
       }
-      const recul = w / 2 - 0.55;          // devant le parapet (35 cm) et son épaisseur
+      // **Aux limites du tablier** (Arnaud, 25/09/2026 : « les écarter à mort,
+      // vraiment sur les limites du pont, sinon on ne peut pas passer »). La
+      // lame se colle à la face intérieure du parapet (mur de 35 cm), et la
+      // bande de retenue ne commence qu'un demi-mètre plus loin, dans le mur :
+      // toute la largeur du tablier reste roulable.
+      const recul = w / 2 - 0.36;
       for (let cote = 0; cote < 2; cote++) {
         const sg = cote === 0 ? 1 : -1;
         const lameDe = (s) => ({ x: s.x + sg * (-s.tz) * recul, y: s.y - 0.01, z: s.z + sg * s.tx * recul, nx: sg * (-s.tz), nz: sg * s.tx });
@@ -206,7 +216,7 @@ export function creerGlissieres({ decor, surRoute = null, blockedAt = () => fals
           for (let a = 0; a <= nt; a++) {
             const t = a / nt;
             const bx = p0.x + (p1.x - p0.x) * t, bz = p0.z + (p1.z - p0.z) * t;
-            for (let j = 0; j <= nd; j++) marquer(bx + p0.nx * j * 0.25, bz + p0.nz * j * 0.25);
+            for (let j = 2; j <= nd + 2; j++) marquer(bx + p0.nx * j * 0.25, bz + p0.nz * j * 0.25);
           }
         }
       }

@@ -443,14 +443,16 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     $('help-walk').innerHTML = isTouch && mode === 'robot'
       ? 'Pouce gauche : avancer · glisser à droite : viser · '
         + `<button class="mini" id="btn-laser">Laser</button> <button class="mini" data-robot="titan">Titan</button> <button class="mini" data-robot="mech">Mech</button>`
-      : isTouch && (mode === 'voiture' || mode === 'quad')
+      : isTouch && mode === 'voiture'
       ? 'Pouce gauche : haut pour accélérer, bas pour freiner, côtés pour tourner · <b>MAIN</b> : frein à main'
+      : isTouch && mode === 'quad'
+      ? 'Pouce gauche : haut pour accélérer, bas pour freiner, côtés pour tourner · <b>SAUT</b> : sauter · <b>Flip</b> : looping'
       : isTouch
       ? 'Pouce gauche : avancer · glisser à droite : regarder'
       : mode === 'quad'
-        ? 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> frein à main · <b>X</b> feux de détresse · '
-          + '<b>V</b> caméra · <b>R</b> remettre sur la route · <b>M</b> son du moteur · <b>P</b> au skatepark · '
-          + 'les clignotants suivent le guidon, les feux suivent l’heure'
+        ? 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> sauter · en l’air : <b>F</b> looping, <b>G</b> 360, '
+          + 'flèches haut / bas pour incliner · <b>X</b> feux de détresse · <b>V</b> caméra · <b>R</b> remettre sur la route · '
+          + '<b>M</b> son du moteur · <b>P</b> au skatepark · les clignotants suivent le guidon'
       : mode === 'trottinette'
         ? 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> sauter · en l’air : <b>F</b> looping, <b>G</b> 360, '
           + 'flèches haut / bas pour incliner · <b>V</b> caméra · <b>R</b> se remettre en selle · '
@@ -819,6 +821,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   btnCourse.addEventListener('click', () => {
     // En trottinette, ce bouton demande un looping (au prochain saut, ou en l'air).
     if (mode === 'trottinette') { deuxRoues.figure('flip'); return; }
+    if (mode === 'quad') { quad.figure('flip'); return; }
     touchMove.run = !touchMove.run;
     btnCourse.classList.toggle('on', touchMove.run);
   });
@@ -838,10 +841,10 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     // En voiture, le gros bouton devient le frein à main : c'est la commande
     // qu'on garde sous le pouce, comme le tir en robot.
     btnFeu.style.display = (mode === 'robot' || mode === 'voiture' || mode === 'quad' || mode === 'trottinette') ? '' : 'none';
-    btnFeu.textContent = (mode === 'voiture' || mode === 'quad') ? 'MAIN' : mode === 'trottinette' ? 'SAUT' : 'TIR';
-    btnCourse.style.display = (mode === 'robot' || mode === 'balade' || mode === 'drone' || mode === 'trottinette') ? '' : 'none';
-    btnCourse.textContent = mode === 'trottinette' ? 'Flip' : 'Cours';
-    btnCourse.classList.toggle('on', mode !== 'trottinette' && touchMove.run);
+    btnFeu.textContent = mode === 'voiture' ? 'MAIN' : (mode === 'trottinette' || mode === 'quad') ? 'SAUT' : 'TIR';
+    btnCourse.style.display = (mode === 'robot' || mode === 'balade' || mode === 'drone' || mode === 'trottinette' || mode === 'quad') ? '' : 'none';
+    btnCourse.textContent = (mode === 'trottinette' || mode === 'quad') ? 'Flip' : 'Cours';
+    btnCourse.classList.toggle('on', mode !== 'trottinette' && mode !== 'quad' && touchMove.run);
     btnVue.style.display = (mode === 'robot' || mode === 'chasseur' || mode === 'voiture' || mode === 'quad' || mode === 'trottinette') ? '' : 'none';
     if (!actif) rangerManche();
   }

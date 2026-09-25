@@ -628,6 +628,17 @@ $('btn-rouler').addEventListener('click', () => {
 if (params.get('go') === '1') { accueil.hidden = true; lancer(choix.engin); }
 
 // ─────────────────────────────── le jeu
+// Points de départ par engin et par village (repère du jeu, cap en radians,
+// `placer` recale sur la chaussée et dans le sens de la rue). Poilhes : la
+// berline entre par l'avenue de Capestang (ouest, 6 m de large), le quad par la
+// rue de la Porte d'Ensérune (est), la trottinette naît sur le pump track.
+const DEPARTS = {
+  poilhes: {
+    voiture: { x: -249.4, z: -6.4, cap: -2.38 },
+    quad: { x: 211.9, z: 10.3, cap: 1.38 },
+    trottinette: 'parc',
+  },
+};
 function lancer(engin) {
   // Premier lancement (ou « Auto ») : rien de mémorisé. On charge en Élevé, on
   // mesure, on conseille — et le conseil s'applique, une fois. Ensuite le joueur décide.
@@ -639,6 +650,7 @@ function lancer(engin) {
     voitureUnique: 'bleue',
     ouvrir: false,
   }).then(async (jeu) => {
+    window.jeu = jeu;                 // poignée de console et de test
     appliquer(jeu, NIVEAUX[memorise || 'eleve']);
     const panneau = monterPanneau({ racine: $('qualite'), jeu, initial: memorise || 'eleve' });
     if (!memorise) {
@@ -653,6 +665,18 @@ function lancer(engin) {
     setTimeout(() => {
       if (engin === 'voiture') document.querySelector('[data-mode="voiture"]').click();
       else jeu.setMode(engin === 'quad' ? 'quad' : 'trottinette');
+      // **Chacun à sa place** (Arnaud, 25/09/2026) : la trottinette sur le pump
+      // track du stade, la berline à l'entrée du village, le quad de l'autre côté.
+      const d = (DEPARTS[village] || {})[engin];
+      const pilote = engin === 'voiture' ? jeu.voiture : engin === 'quad' ? jeu.quad : jeu.trottinette;
+      if (!d || !pilote) return;
+      if (d === 'parc') { if (jeu.decor && jeu.decor.parc) { const p = jeu.decor.parc.depart; pilote.placer(p.x, p.z, p.cap); } }
+      else {
+        pilote.placer(d.x, d.z, d.cap);
+        // `placer` préfère le sens où la chaussée continue le plus loin ; ici
+        // on veut regarder **vers le village**, pas vers la campagne.
+        pilote.etat.yaw = d.cap;
+      }
     }, 400);
   }).catch((err) => {
     console.error(err);

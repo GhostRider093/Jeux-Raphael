@@ -29,6 +29,25 @@ const G = 9.81;
 const RHO = 1.225;             // masse volumique de l'air (kg/m³)
 const PAS_MAX = 1 / 120;       // sous-pas d'intégration : au-delà, la glisse diverge
 
+/**
+ * Le mode **arcade** (Arnaud, 25/09/2026 : « il faut que ce soit un peu plus
+ * arcade, tant pis, ça fera moins simulation »). Il s'active par `arcade: true`
+ * dans un réglage — la berline et le quad, pas la trottinette qui a sa propre
+ * loi de saut — et change quatre choses, rien d'autre :
+ *  - **on freine droit** : sans commande de direction, le lacet et la vitesse
+ *    latérale s'éteignent au freinage, l'engin ne part plus de côté ;
+ *  - la marche arrière s'engage plus vite (0,4 s à l'arrêt au lieu de 0,75) et
+ *    on en ressort plus vite (0,25 s au lieu de 0,5) ;
+ *  - en marche arrière, le couple est multiplié (« beaucoup plus vite ») ;
+ *  - le reste (plus de couple, plus de frein) est dans les réglages eux-mêmes.
+ */
+const ARCADE = {
+  freinDroit: 9,          // 1/s : vitesse d'extinction du lacet et de la dérive au freinage
+  attenteArriere: 0.40,   // s d'arrêt frein tenu avant d'engager la marche arrière
+  attenteAvant: 0.25,     // s d'arrêt gaz tenu avant de repasser en avant
+  coupleArriere: 1.6,     // multiplicateur du couple en marche arrière
+};
+
 export const REGLAGES = {
   /** Sportive GT : moteur avant, **propulsion**, châssis vif et rattrapable. */
   gt: {
@@ -40,7 +59,7 @@ export const REGLAGES = {
     inertie: 1980,              // moment d'inertie en lacet (kg·m²)
     voie: 1.64, rayonRoue: 0.345,
 
-    couple: 500,                // couple maxi (N·m)
+    couple: 600,                // couple maxi (N·m) — 500 avant l'arcade du 25/09/2026
     regimeCouple: 5100, regimeMax: 7400, ralenti: 950,
     rapports: [3.38, 2.16, 1.58, 1.24, 1.02, 0.84], pont: 3.60, marche: 3.20,
     rendement: 0.90,
@@ -48,7 +67,8 @@ export const REGLAGES = {
 
     adherence: 1.32,            // µ des pneus sur bitume sec
     repartAvant: 0.64,          // part du freinage sur l'avant
-    freinCouple: 3400,          // couple de freinage total maxi (N·m aux roues)
+    freinCouple: 5200,          // couple de freinage total maxi (N·m aux roues) — 3400 avant l'arcade
+    arcade: true,
 
     // Aides de conduite — c'est ce qui sépare une voiture qu'on conduit d'un
     // châssis de course qui part en tête-à-queue au premier coup de gaz.
@@ -84,7 +104,7 @@ export const REGLAGES = {
     inertie: 2050,
     voie: 1.58, rayonRoue: 0.345,
 
-    couple: 380,
+    couple: 460,                // 380 avant l'arcade du 25/09/2026
     regimeCouple: 4200, regimeMax: 6600, ralenti: 850,
     rapports: [3.55, 2.05, 1.38, 1.03, 0.82, 0.68], pont: 3.90, marche: 3.40,
     rendement: 0.90,
@@ -92,7 +112,8 @@ export const REGLAGES = {
 
     adherence: 1.24,
     repartAvant: 0.68,
-    freinCouple: 3100,
+    freinCouple: 4600,          // 3100 avant l'arcade
+    arcade: true,
 
     antipatinage: 0.86,
     stabilite: 3.0,
@@ -165,15 +186,16 @@ export const REGLAGES = {
     inertie: 130,
     voie: 0.98, rayonRoue: 0.26,
 
-    couple: 38,
+    couple: 58,                 // 38 avant l'arcade du 25/09/2026 (« repartir plus vite »)
     regimeCouple: 5600, regimeMax: 8600, ralenti: 1400,
-    rapports: [2.90, 1.95, 1.45, 1.15, 0.95], pont: 4.30, marche: 3.00,
+    rapports: [2.90, 1.95, 1.45, 1.15, 0.95], pont: 4.30, marche: 3.40,
     rendement: 0.90,
     freinMoteur: 5,
 
-    adherence: 1.15,
+    adherence: 1.30,            // 1,15 avant l'arcade : il freine et repart sans patiner
     repartAvant: 0.55,
-    freinCouple: 900,
+    freinCouple: 1200,          // 900 avant l'arcade
+    arcade: true,
 
     antipatinage: 0.90,
     stabilite: 3.0,
@@ -313,11 +335,14 @@ export function creerPhysique(reglage = REGLAGES.gt) {
     // 0,75 s, et pas 0,35 : à 0,35 s, finir un freinage touche par touche suffisait
     // à engager la marche arrière, et la voiture repartait en arrière toute seule
     // alors qu'on croyait s'arrêter. Il faut désormais **vouloir** reculer.
-    if (etat.rapport > 0 && freinIn > 0.5 && etat.arret > 0.75 && Math.abs(etat.u) < 0.35) {
+    // En arcade, on attend moins (voir `ARCADE`).
+    const attenteAr = r.arcade ? ARCADE.attenteArriere : 0.75;
+    const attenteAv = r.arcade ? ARCADE.attenteAvant : 0.5;
+    if (etat.rapport > 0 && freinIn > 0.5 && etat.arret > attenteAr && Math.abs(etat.u) < 0.35) {
       etat.rapport = -1; etat.cible = -1; etat.passage = 0; etat.arret = 0;
     } else if (etat.rapport < 0) {
       gaz = freinIn; frein = gazIn;              // en marche arrière, les pédales s'échangent
-      if (gazIn > 0.5 && etat.arret > 0.5 && etat.u > -0.35) {
+      if (gazIn > 0.5 && etat.arret > attenteAv && etat.u > -0.35) {
         etat.rapport = 1; etat.cible = 1; etat.arret = 0;
       }
     }
@@ -338,7 +363,9 @@ export function creerPhysique(reglage = REGLAGES.gt) {
     let force = 0;
     if (etat.passage <= 0 && etat.rapport !== 0) {
       const ratio = (etat.rapport < 0 ? -r.marche : r.rapports[etat.rapport - 1]) * r.pont;
-      const couple = coupleMoteur(r, etat.regime) * gaz - r.freinMoteur * (1 - gaz);
+      let couple = coupleMoteur(r, etat.regime) * gaz - r.freinMoteur * (1 - gaz);
+      // Arcade : la marche arrière pousse fort (« beaucoup plus vite »).
+      if (r.arcade && etat.rapport < 0 && couple > 0) couple *= ARCADE.coupleArriere;
       force = couple * ratio * r.rendement / r.rayonRoue;
     }
 
@@ -473,6 +500,14 @@ export function creerPhysique(reglage = REGLAGES.gt) {
         etat.lacet = etat.lacet * melange + lacetCine * (1 - melange);
         etat.v = etat.v * melange + vCine * (1 - melange);
       }
+    }
+
+    // **Arcade : on freine droit.** Frein appuyé, volant au centre, frein à
+    // main lâché : ce qui reste de rotation et de dérive s'éteint. Dès qu'on
+    // touche à la direction, le modèle reprend ses droits.
+    if (r.arcade && !cmd.main && frein > 0.25 && Math.abs(cmd.direction || 0) < 0.06) {
+      const k = Math.exp(-ARCADE.freinDroit * h);
+      etat.lacet *= k; etat.v *= k;
     }
 
     etat.yaw += etat.lacet * h;
