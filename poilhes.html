@@ -228,6 +228,7 @@
     <button data-mode="robot" title="Piloter le robot dans les rues">Robot</button>
     <button data-mode="voiture" title="Conduire la sportive dans les rues du village">Voiture</button>
     <button data-mode="trottinette" title="Traverser le village en trottinette électrique">Trottinette</button>
+    <button data-mode="quad" title="Le quad rouge et noir, tout éclairé">Quad</button>
     <button data-mode="chasseur" title="Survoler le village au chasseur">Chasseur</button>
   </div>
   <!-- Choix de la voiture : dans le panneau, sous les modes, là où on le cherche.
@@ -324,7 +325,7 @@
 <script src="./chasseur-model.js?v=poilhes-20260920"></script>
 <script src="./flight-model.js?v=poilhes-20260920"></script>
 <script type="module">
-import { startVillage } from './maps/poilhes-village.js?v=foule-20260924';
+import { startVillage } from './maps/poilhes-village.js?v=feux-20260925';
 const hud = document.getElementById('hud');
 if (matchMedia('(max-width: 640px)').matches) hud.classList.add('collapsed');
 document.getElementById('hud-title').addEventListener('click', () => hud.classList.toggle('collapsed'));

@@ -1,0 +1,38 @@
+{
+  "_doc": "Le plan du skatepark (25/09/2026) : dalle de 52 x 56 m (demi_u, demi_v), u vers l'est, v vers le sud, origine au centre. Chaque piece = un modele de perso/skatepark-stl/glb, pose par son centre (u, v), tourne de rot degres (sens direct vu du ciel), a l'echelle du script (echelle facultative, m par mm). Les bandes de lancement (beton bleu) poussent la trottinette. Modifier ici, puis : py scripts/poilhes/skatepark_modeles.py plan (image) et hauteurs (fichier du jeu).",
+  "demi_u": 26,
+  "demi_v": 28,
+  "pieces": [
+    { "nom": "mur nord G", "modele": "obj_15_Fingerboard_obstacles_11", "u": -8, "v": -22, "rot": 0 },
+    { "nom": "mur nord 1", "modele": "obj_16_Fingerboard_obstacles_2", "u": -4, "v": -22, "rot": 90 },
+    { "nom": "mur nord 2", "modele": "obj_16_Fingerboard_obstacles_2", "u": 0, "v": -22, "rot": 90 },
+    { "nom": "mur nord 3", "modele": "obj_16_Fingerboard_obstacles_2", "u": 4, "v": -22, "rot": 90 },
+    { "nom": "mur nord D", "modele": "obj_15_Fingerboard_obstacles_11", "u": 8, "v": -22, "rot": -90 },
+
+    { "nom": "quarter sud 1", "modele": "obj_1_Fingerboard_obstacles_1", "u": -4, "v": 22, "rot": -90 },
+    { "nom": "quarter sud 2", "modele": "obj_1_Fingerboard_obstacles_1", "u": 0, "v": 22, "rot": -90 },
+    { "nom": "quarter sud 3", "modele": "obj_1_Fingerboard_obstacles_1", "u": 4, "v": 22, "rot": -90 },
+
+    { "nom": "pyramide", "modele": "obj_4_Fingerboard_obstacles_2", "u": 0, "v": 0, "rot": 0 },
+
+    { "nom": "bank montee", "modele": "obj_11_Fingerboard_obstacles_5", "u": -18, "v": -6, "rot": -90 },
+    { "nom": "pad 1", "modele": "obj_14_Fingerboard_obstacles_6", "u": -18, "v": -2, "rot": 0 },
+    { "nom": "pad 2", "modele": "obj_14_Fingerboard_obstacles_6", "u": -18, "v": 2, "rot": 0 },
+    { "nom": "bank descente", "modele": "obj_11_Fingerboard_obstacles_5", "u": -18, "v": 6, "rot": 90 },
+
+    { "nom": "spine 1", "modele": "obj_5_Fingerboard_obstacles_1", "u": 18, "v": -2, "rot": 0 },
+    { "nom": "spine 2", "modele": "obj_5_Fingerboard_obstacles_1", "u": 18, "v": 2, "rot": 0 },
+
+    { "nom": "bosse E", "modele": "Cone_flat", "u": 10, "v": 10, "rot": 0 },
+    { "nom": "bosse O", "modele": "Cone_flat", "u": -10, "v": 10, "rot": 0 },
+
+    { "nom": "wallride", "modele": "Ramp_to_Wall", "u": 22, "v": 12, "rot": 0 },
+    { "nom": "table", "modele": "Table", "u": -10, "v": -13, "rot": 0 },
+    { "nom": "quarter E", "modele": "Quarter_pipe", "u": 10, "v": -13, "rot": 0 }
+  ],
+  "bandes": [
+    { "u0": 10, "v0": 18, "u1": 10, "v1": -8, "largeur": 3 },
+    { "u0": -10, "v0": 18, "u1": -10, "v1": -8, "largeur": 3 }
+  ],
+  "depart": { "u": 0, "v": 16, "cap_deg": 0 }
+}

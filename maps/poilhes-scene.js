@@ -7,7 +7,7 @@
  * Aucune allocation dans la boucle d'animation : vecteurs et tableaux réutilisés.
  */
 import * as THREE from 'three';
-import { construireSkatepark } from './poilhes-skatepark.js?v=figures-20260924';
+import { construireSkatepark, chargerParc } from './poilhes-skatepark.js?v=feux-20260925';
 
 import {
   facadeMaterial, roofMaterial, groundMaterial, waterMaterial, foliageMaterial, stoneMaterial, skyMaterial,
@@ -749,7 +749,10 @@ transformed.y += (position.y > 1.3 ? 1.0 : 0.0) * (vn(w0.xz * 2.3) - 0.5) * 0.35
   // donc pas de skatepark, et c'est le bon comportement.
   let parc = null;
   if (PARCS[village]) {
-    parc = construireSkatepark({ decor: { groundAt }, centre: PARCS[village] });
+    // Le plan et la grille de hauteurs des modules (skatepark-plan.json,
+    // skatepark-hauteurs.bin) se lisent avant : la construction reste synchrone.
+    const donnees = await chargerParc(BASE);
+    parc = construireSkatepark({ decor: { groundAt }, centre: PARCS[village], parc: donnees });
     cible.add(parc.root);
   }
 

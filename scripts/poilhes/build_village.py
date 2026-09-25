@@ -129,7 +129,14 @@ def main():
     log(t0, "eau, piscines, ponts, murs")
     water = water_mesh(bodies)
     pool_water, pool_rim = pools_mesh(pools, terrain)
-    bridges, decks = bridges_mesh(feats["construction_lineaire"], axes, terrain)
+    bridges, decks, axes_ponts = bridges_mesh(feats["construction_lineaire"], axes, terrain)
+    # Les axes des tabliers, pour les glissières et la grille d'adhérence côté jeu :
+    # par pont, [n, largeur, x, y, z, x, y, z, …] (repère du jeu, y = hauteur du tablier).
+    ponts_axes = []
+    for coords, width in axes_ponts:
+        ponts_axes.extend([float(len(coords)), float(width)])
+        ponts_axes.extend(coords.reshape(-1).tolist())
+    log(t0, f"  {len(axes_ponts)} tabliers de pont")
     walls = retaining_walls_mesh(feats["construction_lineaire"], terrain)
 
     log(t0, "éclairage public (nuit)")
@@ -168,6 +175,7 @@ def main():
                     ("ponts", bridges), ("soutenements", walls)):
         pk.add(name + "_pos", m.pos, "f32", 3)
         pk.add(name + "_rgb", m.col, "u8", 3)
+    pk.add("ponts_axes", np.array(ponts_axes, np.float32), "f32")
     # surface (toits, arbres) à 2 m, en décimètres : masquage des étiquettes, plancher du drone
     surf = np.nan_to_num(fill_nan(mns.copy())).reshape(LIDAR_PX // 4, 4, LIDAR_PX // 4, 4).max(axis=(1, 3))
     pk.add("surface", np.clip(np.round(surf * 10), 0, 65535), "u16")

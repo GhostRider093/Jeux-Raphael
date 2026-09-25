@@ -1,0 +1,20 @@
+{
+  "prompt": "A quad bike (four-wheeler ATV) in glossy red and matte black, with no rider and an empty black seat. Handlebars with mirrors, four big knobby black tires, red plastic fenders, black frame. Stylized game-ready vehicle, clean shapes, symmetric, single object, facing forward.",
+  "style": "realistic",
+  "modele": "latest",
+  "apercu_id": "01a0d63c-0b28-74eb-a87c-7b62d46c046d",
+  "refine_id": "01a0d63d-e532-7665-9117-85f33be9f5bb",
+  "credits": {
+    "avant": 1181,
+    "apres": 1121,
+    "cout": 60
+  },
+  "tache": {
+    "id": "01a0d63d-e532-7665-9117-85f33be9f5bb",
+    "mode": "refine",
+    "prompt": "A quad bike (four-wheeler ATV) in glossy red and matte black, with no rider and an empty black seat. Handlebars with mirrors, four big knobby black tires, red plastic fenders, black frame. Stylized game-ready vehicle, clean shapes, symmetric, single object, facing forward.",
+    "created_at": 1790300775741,
+    "finished_at": 1790300817443
+  },
+  "glb": "perso/quad-seul/quad-seul.glb"
+}

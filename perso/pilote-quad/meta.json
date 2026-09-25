@@ -1,0 +1,20 @@
+{
+  "prompt": "A young man alone, sitting in a quad bike riding pose with no vehicle: knees bent, feet apart, both arms reaching forward as if holding handlebars, head straight and looking forward. He wears a red baseball cap with a visor, a black jacket with red stripes, black trousers, black gloves and black boots. Stylized game-ready character, clean shapes, symmetric, single object, front view.",
+  "style": "realistic",
+  "modele": "latest",
+  "apercu_id": "01a0d63c-2432-7643-b965-8831b50b7765",
+  "refine_id": "01a0d63d-dc57-7370-850a-963fedb0905c",
+  "credits": {
+    "avant": 1161,
+    "apres": 1121,
+    "cout": 40
+  },
+  "tache": {
+    "id": "01a0d63d-dc57-7370-850a-963fedb0905c",
+    "mode": "refine",
+    "prompt": "A young man alone, sitting in a quad bike riding pose with no vehicle: knees bent, feet apart, both arms reaching forward as if holding handlebars, head straight and looking forward. He wears a red baseball cap with a visor, a black jacket with red stripes, black trousers, black gloves and black boots. Stylized game-ready character, clean shapes, symmetric, single object, front view.",
+    "created_at": 1790300773479,
+    "finished_at": 1790300814088
+  },
+  "glb": "perso/pilote-quad/pilote-quad.glb"
+}

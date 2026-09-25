@@ -20,7 +20,7 @@
  * Données : `scripts/poilhes/build_pays.py` (PAYS=canal).
  */
 import * as THREE from 'three';
-import { construireVillage, creerAmbiance, reliefLointain } from './poilhes-scene.js?v=qualite-20260924';
+import { construireVillage, creerAmbiance, reliefLointain } from './poilhes-scene.js?v=feux-20260925';
 
 const DOSSIER = (pays) => `maps/pays-${pays}/`;
 const HORS_SOL = -1e9;   // « pas de surface ici » — même convention que le village

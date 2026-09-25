@@ -33,6 +33,7 @@ une machine privée, à remplacer avant toute publication.
 |---|---|
 | `acclamation.mp3` | « bruit acclamation foule », 5,5 s, ré-encodé en 96 kbit/s. Joué à chaque figure réussie en trottinette (looping, 360, gros saut), à 13–22 % de volume selon le nombre de figures. Jamais sur une chute. Origine à préciser par Arnaud (banque de bruitages ?). |
 | `uh-oh.mp3` | « uh-oh », tiré par Arnaud avec yt-grab (`E:\projet\yt-grab\sorties`), ré-encodé en 96 kbit/s. Joué sur une chute en trottinette (réception à l'envers), à 35 %. Origine YouTube : droits à vérifier avant publication. |
+| `encouragements.mp3` | « Cris d'encouragements spectacle », 3,6 s, fourni par Arnaud le 25/09/2026, ré-encodé en 128 kbit/s. Deuxième acclamation de la foule sur une figure réussie (tirée au sort avec `acclamation.mp3`), à 22 %. Origine à vérifier avant publication. |
 
 ## Si le jeu doit être publié un jour
 

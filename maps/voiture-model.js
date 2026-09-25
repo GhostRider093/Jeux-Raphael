@@ -43,6 +43,14 @@ const TEINTE = 0xffffff;
 // carrosserie, repeinte pixel par pixel à l'arrivée.
 const TEINTES = { rouge: 0, bleu: 205 };
 const LONGUEUR = 4.42;         // longueur visée (m) : le modèle est mis à l'échelle dessus
+/**
+ * Échelle d'affichage de la berline — décision d'Arnaud du 25/09/2026 : « la
+ * voiture est trop grosse, 15 % de moins, notamment en largeur ». Elle faisait
+ * 4,42 × 1,98 m, plus large qu'une vraie berline (1,85) dans des rues de 3 m.
+ * Le pilote (`voiture-pilote.js`) lit la même constante pour ses roues et ses
+ * sondes de collision : la caisse et sa physique rétrécissent ensemble.
+ */
+export const ECHELLE = 0.85;
 
 const RAYON = 0.345;           // rayon de roue (m) — identique à `voiture-physique.js`
 // La voie est large : les roues affleurent les ailes (0,84 + demi-largeur ≈ 0,98,
@@ -551,6 +559,7 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
 
   const root = new THREE.Group();
   root.name = 'voiture';
+  root.scale.setScalar(ECHELLE);             // voir ECHELLE : tout le visuel rétrécit d'un coup
   const caisse = new THREE.Group();          // tout ce qui se penche dans les virages
   root.add(caisse);
   // Tout le procédural vit dans ce groupe : quand le modèle Meshy arrive, il
@@ -711,6 +720,7 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
   );
   ombre.rotation.x = -Math.PI / 2;
   ombre.renderOrder = 2;
+  ombre.scale.set(ECHELLE, ECHELLE, 1);      // l'ombre n'est pas fille de root
 
   // ── commandes d'affichage ────────────────────────────────────────────────
   let nuit = false;
@@ -980,7 +990,7 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
     // L'ombre de contact reprend l'empreinte réelle du modèle.
     installerFeux(boite);
     if (nuit) { nuit = false; setNuit(true); }   // la nuit était peut-être déjà tombée
-    ombre.scale.set((boite.max.x - boite.min.x) / 2.6 * 1.15, (boite.max.z - boite.min.z) / 5.0 * 1.1, 1);
+    ombre.scale.set((boite.max.x - boite.min.x) / 2.6 * 1.15 * ECHELLE, (boite.max.z - boite.min.z) / 5.0 * 1.1 * ECHELLE, 1);
     return {
       roues: 4,
       essieux: decoupe.roues.map((r) => ({ ...r.axe })),
@@ -996,6 +1006,6 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
     root, caisse, roues, ombre, phares, feux, pret,
     majRoues, setFreinage, setRecul, setNuit, setCouleur, setTeinte, teinte: () => teinteCourante,
     materiaux: { peinture, vitre, noir, chrome, gomme, jante },
-    dimensions: { longueur: 4.4, largeur: 1.98, empattement: ESSIEU_AR - ESSIEU_AV, rayonRoue: RAYON },
+    dimensions: { longueur: 4.4 * ECHELLE, largeur: 1.98 * ECHELLE, empattement: (ESSIEU_AR - ESSIEU_AV) * ECHELLE, rayonRoue: RAYON * ECHELLE },
   };
 }

@@ -1,0 +1,20 @@
+{
+  "prompt": "A young man standing upright in a relaxed A-pose, arms slightly away from the body, legs slightly apart, head straight looking forward. He wears a red baseball cap with a visor, black sunglasses, a black hooded jacket with red stripes on the sleeves and chest, black trousers, black gloves and black boots. Full body, alone, nothing around him, no props. Stylized game-ready humanoid character, clean shapes, symmetric, front view.",
+  "style": "realistic",
+  "modele": "latest",
+  "apercu_id": "01a0d63f-d40e-702c-9bd1-af896a927e2c",
+  "refine_id": "01a0d640-c636-746a-815f-0043b11d8aa9",
+  "credits": {
+    "avant": 1121,
+    "apres": 1091,
+    "cout": 30
+  },
+  "tache": {
+    "id": "01a0d640-c636-746a-815f-0043b11d8aa9",
+    "mode": "refine",
+    "prompt": "A young man standing upright in a relaxed A-pose, arms slightly away from the body, legs slightly apart, head straight looking forward. He wears a red baseball cap with a visor, black sunglasses, a black hooded jacket with red stripes on the sleeves and chest, black trousers, black gloves and black boots. Full body, alone, nothing around him, no props. Stylized game-ready humanoid character, clean shapes, symmetric, front view.",
+    "created_at": 1790300964419,
+    "finished_at": 1790301003731
+  },
+  "glb": "perso/pilote-quad-debout/pilote-quad-debout.glb"
+}

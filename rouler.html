@@ -274,6 +274,7 @@
   <div class="row">
     <button data-mode="trottinette" title="Traverser le village en trottinette électrique">Trottinette</button>
     <button data-mode="voiture" title="Berline bleue : traction, 380 N·m, elle pardonne">Berline</button>
+    <button data-mode="quad" title="Quad rouge et noir : quatre roues, il saute, tout éclairé">Quad</button>
   </div>
   <div class="row" id="choix-auto" hidden>
     <button data-auto="rouge" title="GT rouge">GT rouge</button>
@@ -368,6 +369,7 @@
         <div class="boutons">
           <button data-choix="engin" data-valeur="trottinette">Trottinette</button>
           <button data-choix="engin" data-valeur="voiture">Berline bleue</button>
+          <button data-choix="engin" data-valeur="quad">Quad</button>
         </div></div>
       <div class="groupe"><span class="etiquette">Qualité</span>
         <div class="boutons">
@@ -403,7 +405,7 @@
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
 <script type="module">
-import { startVillage } from './maps/poilhes-village.js?v=foule-20260924';
+import { startVillage } from './maps/poilhes-village.js?v=feux-20260925';
 import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
 
 const $ = (id) => document.getElementById(id);
@@ -419,12 +421,12 @@ document.querySelectorAll('#villages a').forEach((a) => a.classList.toggle('on',
 const accueil = $('accueil');
 const choix = {
   village,
-  engin: params.get('engin') === 'berline' ? 'voiture' : 'trottinette',
+  engin: params.get('engin') === 'berline' ? 'voiture' : params.get('engin') === 'quad' ? 'quad' : 'trottinette',
   qualite: lireChoix() || 'auto',
 };
 const LIBELLES = {
   village: { poilhes: 'Poilhes', capestang: 'Capestang' },
-  engin: { trottinette: 'Trottinette', voiture: 'Berline bleue' },
+  engin: { trottinette: 'Trottinette', voiture: 'Berline bleue', quad: 'Quad' },
   qualite: { auto: 'qualité auto', bas: 'qualité basse', moyen: 'qualité moyenne', eleve: 'qualité élevée' },
 };
 function peindreChoix() {
@@ -529,8 +531,28 @@ const CLE_MUSIQUE = 'poilhes-city-musique';
 // Cinq morceaux enchaînés, puis on recommence. Ordre voulu par Arnaud le 24/09 :
 // la variation d'une minute (5) ouvre, le titre complet (1) ferme.
 // On ne charge que celui qui joue.
-const PLAYLIST = [5, 2, 3, 4, 1].map((n) => `assets/musique/accueil-soul-run-${n}.mp3?v=musique-20260924b`);
+// Dix pistes depuis le 25/09/2026 : 6 à 10 sont cinq nouvelles versions
+// complètes de « Soul Run » (2 min 20 à 2 min 32) livrées par Arnaud.
+// **Ordre tiré au sort à chaque chargement de la page** (Arnaud, 25/09/2026 :
+// « à chaque fois on a la même musique qui commence, c'est un peu lourd » —
+// connexion, recommencer, retour à l'accueil : tout repasse par ici). On
+// retient la dernière piste entendue pour ne jamais rouvrir sur la même.
+const CLE_DERNIERE_PISTE = 'poilhes-city-derniere-piste';
+function melanger(liste) {
+  for (let i = liste.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [liste[i], liste[j]] = [liste[j], liste[i]];
+  }
+  return liste;
+}
+const ORDRE = melanger([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+try {
+  const derniere = +localStorage.getItem(CLE_DERNIERE_PISTE);
+  if (derniere && ORDRE[0] === derniere) ORDRE.push(ORDRE.shift());
+} catch (e) { /* mode privé */ }
+const PLAYLIST = ORDRE.map((n) => `assets/musique/accueil-soul-run-${n}.mp3?v=musique-20260925`);
 let piste = 0;
+const retenirPiste = () => { try { localStorage.setItem(CLE_DERNIERE_PISTE, String(ORDRE[piste])); } catch (e) { /* mode privé */ } };
 const musique = new Audio(PLAYLIST[0]);
 musique.loop = false; musique.preload = 'auto'; musique.volume = 0.35;
 musique.addEventListener('ended', () => {
@@ -542,21 +564,25 @@ let musiqueVoulue = true;
 try { musiqueVoulue = localStorage.getItem(CLE_MUSIQUE) !== '0'; } catch (e) { /* mode privé */ }
 const btnMusique = $('btn-musique');
 function peindreMusique() { btnMusique.setAttribute('aria-pressed', musiqueVoulue ? 'true' : 'false'); }
-// La playlist joue sur l'accueil **et en trottinette** (décision d'Arnaud du
-// 24/09) ; la berline a sa propre musique. Le moteur du village marque le
-// bouton du mode actif : c'est lui qu'on lit.
+// La playlist joue sur l'accueil, en trottinette **et en berline** (décision
+// d'Arnaud du 25/09/2026 : « les cinq musiques, tu les laisses, même pour la
+// voiture »). « Nitro Boost » reste sur le disque mais n'est plus jouée. Le
+// moteur du village marque le bouton du mode actif : c'est lui qu'on lit.
 const btnTrottinette = document.querySelector('[data-mode="trottinette"]');
+const btnBerline = document.querySelector('[data-mode="voiture"]');
+const btnQuad = document.querySelector('[data-mode="quad"]');
 const surAccueil = () => !accueil.hidden && !accueil.classList.contains('parti');
-const enTrottinette = () => btnTrottinette.classList.contains('on');
+const enSelle = () => btnTrottinette.classList.contains('on') || btnBerline.classList.contains('on') || btnQuad.classList.contains('on');
 function jouerMusique() {
-  if (!musiqueVoulue || !(surAccueil() || enTrottinette())) return;
+  if (!musiqueVoulue || !(surAccueil() || enSelle())) return;
   const p = musique.play();
-  if (p?.catch) p.catch(() => {});
+  if (p?.then) p.then(retenirPiste).catch(() => {}); else retenirPiste();
 }
-new MutationObserver(() => {
-  if (enTrottinette()) jouerMusique();
+const suivreMode = new MutationObserver(() => {
+  if (enSelle()) jouerMusique();
   else if (!surAccueil()) fondu(musique, 900);
-}).observe(btnTrottinette, { attributes: true, attributeFilter: ['class'] });
+});
+for (const b of [btnTrottinette, btnBerline, btnQuad]) suivreMode.observe(b, { attributes: true, attributeFilter: ['class'] });
 function auPremierGeste() { jouerMusique(); }
 btnMusique.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -577,18 +603,8 @@ function fondu(piste, duree = 1200) {
 }
 const fonduMusique = () => fondu(musique);
 
-// ─────────────────────────────── la musique de la berline
-// Le moteur du village marque le bouton du mode actif (`.on`) : on observe
-// celui de la berline, et la musique suit — elle démarre quand on monte dedans,
-// s'efface en fondu quand on en descend. Même préférence que l'accueil.
-const nitro = new Audio('assets/musique/berline-nitro-boost.mp3?v=musique-20260924');
-nitro.loop = true; nitro.preload = 'none'; nitro.volume = 0.28;
-const btnBerline = document.querySelector('[data-mode="voiture"]');
-new MutationObserver(() => {
-  const dedans = btnBerline.classList.contains('on');
-  if (dedans && musiqueVoulue) { nitro.currentTime = 0; const p = nitro.play(); if (p?.catch) p.catch(() => {}); }
-  else if (!dedans) fondu(nitro, 900);
-}).observe(btnBerline, { attributes: true, attributeFilter: ['class'] });
+// (La musique propre à la berline, « Nitro Boost », a été retirée le 25/09/2026 :
+// la playlist de l'accueil continue dans la voiture comme en trottinette.)
 peindreMusique();
 if (!accueil.hidden && params.get('go') !== '1') {
   jouerMusique();
@@ -597,13 +613,12 @@ if (!accueil.hidden && params.get('go') !== '1') {
 }
 
 $('btn-rouler').addEventListener('click', () => {
-  // En trottinette la playlist continue ; en berline elle laisse la place à Nitro Boost.
-  if (choix.engin === 'voiture') fonduMusique();
+  // La playlist continue, en trottinette comme en berline.
   if (choix.qualite === 'auto') oublierChoix(); else enregistrerChoix(choix.qualite);
   // Un autre village, c'est un autre paquet de données : on recharge la page
   // dessus, en sautant l'accueil (?go=1) puisque le choix est fait.
   if (choix.village !== village) {
-    location.href = `rouler.html?village=${choix.village}&engin=${choix.engin === 'voiture' ? 'berline' : 'trottinette'}&go=1`;
+    location.href = `rouler.html?village=${choix.village}&engin=${choix.engin === 'voiture' ? 'berline' : choix.engin}&go=1`;
     return;
   }
   accueil.classList.add('parti');
@@ -619,7 +634,7 @@ function lancer(engin) {
   const memorise = lireChoix();
   const loader = $('loader'), msg = $('load-msg');
   startVillage({
-    modes: ['trottinette', 'voiture'],
+    modes: ['trottinette', 'voiture', 'quad'],
     qualite: NIVEAUX[memorise || 'eleve'],
     voitureUnique: 'bleue',
     ouvrir: false,
@@ -637,7 +652,7 @@ function lancer(engin) {
     // La berline passe par son bouton, qui sait choisir la bleue.
     setTimeout(() => {
       if (engin === 'voiture') document.querySelector('[data-mode="voiture"]').click();
-      else jeu.setMode('trottinette');
+      else jeu.setMode(engin === 'quad' ? 'quad' : 'trottinette');
     }, 400);
   }).catch((err) => {
     console.error(err);

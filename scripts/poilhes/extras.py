@@ -96,25 +96,38 @@ def bridges_mesh(construction_lineaire, axes, terrain):
     m = Mesh()
     decks = []
     stone = [196, 170, 132]
-    lines = []
+    # **Le tablier suit le tronçon de route, pas la ligne « Pont ».** Jusqu'au
+    # 25/09/2026 on posait le tablier sur la ligne « Pont » de la BD TOPO (plus
+    # courte que le tronçon en position « au-dessus du sol ») et on sautait le
+    # tronçon : entre le bout du ruban de chaussée voisin et le tablier il
+    # restait 3 à 6 m de terrain creusé pour l'eau — un trou, et « on n'arrive
+    # pas à monter sur le pont » (Arnaud). Le tronçon relie les deux rubans
+    # voisins bout à bout ; la ligne « Pont » ne sert plus qu'aux passerelles
+    # sans route.
+    axes_ponts = []                 # [(coords xyz du tablier, largeur)] pour les glissières et l'adhérence
+    routes_ponts = [a["ligne"] for a in axes if a["pont"]]
+    for a in axes:
+        if not a["pont"]:
+            continue
+        emprise, axe = _bridge(a["ligne"], a["z"], a["largeur"] + 1.6, terrain, m, stone)
+        decks.append(emprise)
+        axes_ponts.append(axe)
     for f in construction_lineaire:
         if f["properties"].get("nature") != "Pont":
             continue
         cs = f["geometry"]["coordinates"]
         line = LineString([to_local(c[0], c[1]) for c in cs])
+        if any(line.distance(r) < 3 for r in routes_ponts):
+            continue                  # une route passe déjà là : c'est son tablier qu'on garde
         zs = [c[2] for c in cs]
-        near = [a for a in axes if a["ligne"].distance(line) < 3]
-        width = (max(a["largeur"] for a in near) + 1.6) if near else 3.0
-        lines.append(line)
-        decks.append(_bridge(line, zs, width, terrain, m, stone))
-    for a in axes:
-        if not a["pont"] or any(a["ligne"].distance(l) < 3 for l in lines):
-            continue
-        decks.append(_bridge(a["ligne"], a["z"], a["largeur"] + 1.6, terrain, m, stone))
-    return m, decks
+        emprise, axe = _bridge(line, zs, 3.0, terrain, m, stone)
+        decks.append(emprise)
+        axes_ponts.append(axe)
+    return m, decks, axes_ponts
 
 
 def _bridge(line, zs, width, terrain, mesh, rgb):
+    """-> (emprise, axe) ; axe = (coords xyz dans le repère du jeu, largeur)."""
     coords = np.array(line.coords)
     zs = np.array(zs, float)
     bad = zs < -500
@@ -127,8 +140,16 @@ def _bridge(line, zs, width, terrain, mesh, rgb):
     d1 = coords[-1] - coords[-2]
     coords = np.vstack([coords[0] - d0 / np.hypot(*d0) * 2, coords, coords[-1] + d1 / np.hypot(*d1) * 2])
     zs = np.r_[zs[0], zs, zs[-1]]
+    # Aux deux bouts, le tablier se pose à la hauteur du ruban voisin (terrain +
+    # 5 cm, comme roads.py) : pas de marche à l'entrée du pont. Au milieu il
+    # garde l'altitude de la BD TOPO, sans jamais passer sous le terrain.
+    sol = terrain.at(coords[:, 0], coords[:, 1])
+    zs = np.maximum(zs, sol)
+    for k in (0, 1, len(zs) - 2, len(zs) - 1):
+        zs[k] = sol[k] + 0.06
     _ribbon(LineString(coords), width, zs + 0.05, mesh, rgb)
-    return LineString(coords).buffer(width / 2, cap_style="flat")
+    axe = (np.c_[coords[:, 0], zs + 0.05, -coords[:, 1]], width)
+    return LineString(coords).buffer(width / 2, cap_style="flat"), axe
 
 
 def retaining_walls_mesh(construction_lineaire, terrain):

@@ -173,6 +173,8 @@ le menu (« Visiter Poilhes en 3D »). Survol, Balade à pied (collisions), Dron
 | `maps/poilhes-jet.js` | Mode « Chasseur » : survol du village avec l'appareil partagé |
 | `maps/poilhes-scene.js` | **Le décor seul** : relief, bâtiments, eau, arbres, vignes, ciel, et les fonctions qui les interrogent |
 | `maps/poilhes-world.js` | Adaptateur : présente le village au moteur des Mondes comme un monde ordinaire |
+| `maps/glissieres.js` | Glissières au bord de toutes les rues : lames visibles (tirées du ruban de chaussée) + bande de retenue `glissiereAt` lue par la berline comme un mur ; rien aux carrefours, devant le skatepark ni dans les façades Depuis le 25/09/2026 : lames et bande de retenue aussi sur les tabliers de pont (tableau `ponts_axes` de build_village, `[n, largeur, x, y, z, …]` par tablier), et `creerAdherence` marque les tabliers comme chaussée |
+| `maps/quad.js` | Le quad (25/09/2026) : quad Meshy seul + pilote riggé assis (mains au guidon, tête qui suit le volant), quatre roues découpées par essieu (les avant braquent), éclairage complet posé d'après la boîte englobante (phares + faisceaux, barre LED, feux arrière/stop, recul, quatre clignotants automatiques, X = détresse). Présenté au pilote comme une voiture (`construireEnginQuad`) ; réglages `REGLAGES.quad` |
 | `scripts/meshy-fusion.py` | Un lot d'animations Meshy (un GLB par clip) → un seul GLB |
 | `scripts/goblins/` | Le jeu de figurines 3MF → cinq GLB jouables (`parse_3mf.py`, `build.py`, `peindre.py`) |
 | `scripts/blender-mech.py` | Mech FBX (142 Mo) → `assets/mech/mech.glb` (1,6 Mo : LOD0, PBR, 7 animations) + gltf-transform |
@@ -1012,7 +1014,7 @@ Mesuré sur la ligne est à 41 km/h : **1,5 s d'air, 3,4 m de haut, 16,6 m de lo
 
 | Fichier | Rôle |
 | --- | --- |
-| `maps/poilhes-skatepark.js` | Le parc entier : `profil(u, v)`, le maillage qui en découle, les plots |
+| `maps/poilhes-skatepark.js` | Le parc entier : `profil(u, v)`, le maillage qui en découle, les plots **Refait le 25/09/2026** : plus rien de modelé à la main. Le parc = une dalle + des modules 3D (`assets/skatepark/*.glb`, lots fingerboard mis à l'échelle) posés d'après `maps/poilhes/skatepark-plan.json` ; la physique lit `skatepark-hauteurs.bin` (dessus des modules rastérisé au pas de 10 cm par `scripts/poilhes/skatepark_modeles.py hauteurs`). Changer le parc = éditer le plan, relancer `plan` (image) puis `hauteurs` |
 | `maps/poilhes-scene.js` → `PARCS` | Où le poser, par village ; `walkableAt` l'inclut |
 
 **Une seule fonction décrit le parc.** `profil(u, v)` rend la hauteur du béton au-dessus du

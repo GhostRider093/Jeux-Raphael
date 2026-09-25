@@ -11,15 +11,18 @@ import { OrbitControls } from '../libs/OrbitControls.module.js';
 import {
   facadeMaterial, roofMaterial, groundMaterial, waterMaterial, foliageMaterial, stoneMaterial, skyMaterial,
 } from './poilhes-shaders.js';
-import { construireVillage } from './poilhes-scene.js?v=qualite-20260924';
+import { construireVillage } from './poilhes-scene.js?v=feux-20260925';
 import { createRobot } from './poilhes-robot.js?v=voiture-20260921';
 import { createEnemies } from './poilhes-enemies.js?v=voiture-20260921';
 import { createJet } from './poilhes-jet.js?v=voiture-20260921';
-import { creerPilote, creerAdherence } from './voiture-pilote.js?v=foule-20260924';
+// **Une seule version** pour les deux imports de voiture-pilote.js : deux
+// `?v=` différents font deux modules, et le `TOUCHER` réglé par le panneau
+// n'était plus celui que lisait le pilote.
+import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=feux-20260925';
 import { poserEpicerie, poserBlasonClub, EPICERIE } from './poilhes-commerces.js?v=voiture-20260921';
 import { construireTrottinette } from './trottinette.js?v=pilote-20260922';
-import { TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=recul-20260924';
-import { monterPanneau as monterReglages, appliquerMemorise } from './reglages.js?v=reglages-20260924';
+import { creerGlissieres } from './glissieres.js?v=feux-20260925';
+import { monterPanneau as monterReglages, appliquerMemorise } from './reglages.js?v=feux-20260925';
 
 const BASE = 'maps/poilhes/';
 const EYE = 1.68;              // hauteur des yeux du promeneur (m)
@@ -260,14 +263,32 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   // la grille d'adhérence rasterise les rubans de chaussée (une centaine de
   // milliers de triangles), et il n'y a aucune raison de faire attendre
   // quelqu'un qui vient seulement survoler le village.
-  let auto = null, deuxRoues = null;
+  let auto = null, deuxRoues = null, quad = null, routes = null, glissieres = null;
+  /**
+   * La grille des chaussées et les glissières, partagées par les deux engins
+   * et construites au premier qui roule. Les glissières (`glissieres.js`)
+   * bordent toutes les rues : lames visibles pour tout le monde, bande de
+   * retenue lue par la berline (la trottinette passe au travers, voir le pilote).
+   */
+  function routesEtGlissieres() {
+    if (!routes) {
+      routes = creerAdherence([{ decor }]);
+      glissieres = creerGlissieres({ decor, surRoute: routes.surRoute, blockedAt, ombres: renderer.shadowMap.enabled });
+      if (glissieres.segments) {
+        decor.root.add(glissieres.root);
+        console.info(`[village] glissières : ${glissieres.segments} lames, ${glissieres.poteaux} poteaux, ${glissieres.longueur} m`);
+      }
+    }
+    return { routes, glissieres };
+  }
   /** La trottinette : même pilote, même physique, autre engin. */
   function piloteTrottinette() {
     if (deuxRoues) return deuxRoues;
-    const routes = creerAdherence([{ decor }]);
+    const { routes, glissieres } = routesEtGlissieres();
     deuxRoues = creerPilote({
       scene, camera, renderer, keys, engin: 'trottinette',
       solAt: walkableAt, blockedAt, adherenceAt: routes.adherenceAt, surRoute: routes.surRoute,
+      glissiereAt: glissieres.segments ? glissieres.glissiereAt : null,
       bounds: decor.bounds - 60,
       turboAt: decor.parc ? decor.parc.turboAt : null,   // les bandes bleues du skatepark
     });
@@ -275,13 +296,30 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     return deuxRoues;
   }
 
+  /** Le quad (25/09/2026) : même pilote, même physique, quatre roues et un pilote riggé dessus. */
+  function piloteQuad() {
+    if (quad) return quad;
+    const { routes, glissieres } = routesEtGlissieres();
+    quad = creerPilote({
+      scene, camera, renderer, keys, engin: 'quad',
+      solAt: walkableAt, blockedAt, adherenceAt: routes.adherenceAt, surRoute: routes.surRoute,
+      glissiereAt: glissieres.segments ? glissieres.glissiereAt : null,
+      bounds: decor.bounds - 60,
+      turboAt: decor.parc ? decor.parc.turboAt : null,
+    });
+    quad.setNuit(+timeInput.value < 7.4 || +timeInput.value > 20.2);
+    appliquerMemorise(quad, TOUCHER);
+    return quad;
+  }
+
   function pilote() {
     if (auto) return auto;
-    const routes = creerAdherence([{ decor }]);
+    const { routes, glissieres } = routesEtGlissieres();
     auto = creerPilote({
       scene, camera, renderer, keys,
       solAt: walkableAt,              // tablier du pont du canal compris
       blockedAt, adherenceAt: routes.adherenceAt, surRoute: routes.surRoute,
+      glissiereAt: glissieres.segments ? glissieres.glissiereAt : null,
       bounds: decor.bounds - 60,
     });
     auto.setNuit(+timeInput.value < 7.4 || +timeInput.value > 20.2);
@@ -383,6 +421,12 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       walker.yaw = auto.etat.yaw;
       autoEl.hidden = true;
     }
+    if (prev === 'quad' && next !== 'quad') {
+      quad.exit();
+      placeWalker(quad.position.x, quad.position.z);
+      walker.yaw = quad.etat.yaw;
+      autoEl.hidden = true;
+    }
     if (prev === 'robot' && next !== 'robot') {
       robot.exit();
       ennemis.clear();
@@ -399,10 +443,14 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     $('help-walk').innerHTML = isTouch && mode === 'robot'
       ? 'Pouce gauche : avancer · glisser à droite : viser · '
         + `<button class="mini" id="btn-laser">Laser</button> <button class="mini" data-robot="titan">Titan</button> <button class="mini" data-robot="mech">Mech</button>`
-      : isTouch && mode === 'voiture'
+      : isTouch && (mode === 'voiture' || mode === 'quad')
       ? 'Pouce gauche : haut pour accélérer, bas pour freiner, côtés pour tourner · <b>MAIN</b> : frein à main'
       : isTouch
       ? 'Pouce gauche : avancer · glisser à droite : regarder'
+      : mode === 'quad'
+        ? 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> frein à main · <b>X</b> feux de détresse · '
+          + '<b>V</b> caméra · <b>R</b> remettre sur la route · <b>M</b> son du moteur · <b>P</b> au skatepark · '
+          + 'les clignotants suivent le guidon, les feux suivent l’heure'
       : mode === 'trottinette'
         ? 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> sauter · en l’air : <b>F</b> looping, <b>G</b> 360, '
           + 'flèches haut / bas pour incliner · <b>V</b> caméra · <b>R</b> se remettre en selle · '
@@ -453,6 +501,18 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       if (document.pointerLockElement) document.exitPointerLock();
       if (ennemis) ennemis.clear();
       piloteTrottinette().enter(from.x, from.z, cap);
+      autoEl.hidden = false;
+      return;
+    }
+    if (mode === 'quad') {
+      const from = prev === 'survol' ? controls.target : walker.pos;
+      const cap = prev === 'survol'
+        ? Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z) + Math.PI
+        : walker.yaw;
+      placeWalker(from.x, from.z);
+      if (document.pointerLockElement) document.exitPointerLock();
+      if (ennemis) ennemis.clear();
+      piloteQuad().enter(from.x, from.z, cap);
       autoEl.hidden = false;
       return;
     }
@@ -621,7 +681,14 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       if (e.code === 'KeyM') { deuxRoues.basculerSon(); }
       if (e.code === 'Space') e.preventDefault();
     }
-    if ((mode === 'chasseur' || mode === 'voiture' || mode === 'trottinette')
+    if (mode === 'quad') {
+      if (e.code === 'KeyV') quad.basculerVue();
+      if (e.code === 'KeyR') quad.redresser();
+      if (e.code === 'KeyP' && decor.parc) { const d = decor.parc.depart; quad.placer(d.x, d.z, d.cap); }
+      if (e.code === 'KeyM') { quad.basculerSon(); }
+      if (e.code === 'Space') e.preventDefault();
+    }
+    if ((mode === 'chasseur' || mode === 'voiture' || mode === 'trottinette' || mode === 'quad')
         && e.code.startsWith('Arrow')) e.preventDefault();
   });
   addEventListener('keyup', (e) => keys.delete(e.code));
@@ -740,11 +807,13 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     () => {
       if (mode === 'robot') robot.setTrigger(true);
       else if (mode === 'voiture') auto.setMain(true);
+      else if (mode === 'quad') quad.setMain(true);
       else if (mode === 'trottinette') deuxRoues.setMain(true);      // SAUT
     },
     () => {
       if (mode === 'robot') robot.setTrigger(false);
       else if (mode === 'voiture') auto.setMain(false);
+      else if (mode === 'quad') quad.setMain(false);
       else if (mode === 'trottinette') deuxRoues.setMain(false);
     });
   btnCourse.addEventListener('click', () => {
@@ -756,6 +825,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   btnVue.addEventListener('click', () => {
     if (mode === 'chasseur') jet.basculerVue();
     else if (mode === 'voiture') auto.basculerVue();
+    else if (mode === 'quad') quad.basculerVue();
     else if (mode === 'trottinette') deuxRoues.basculerVue();
     else if (mode === 'robot') robot.zoom(robot.state.dist > 22 ? -4000 : 4000);
   });
@@ -767,12 +837,12 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     if (tactileEl.hidden === actif) tactileEl.hidden = !actif;
     // En voiture, le gros bouton devient le frein à main : c'est la commande
     // qu'on garde sous le pouce, comme le tir en robot.
-    btnFeu.style.display = (mode === 'robot' || mode === 'voiture' || mode === 'trottinette') ? '' : 'none';
-    btnFeu.textContent = mode === 'voiture' ? 'MAIN' : mode === 'trottinette' ? 'SAUT' : 'TIR';
+    btnFeu.style.display = (mode === 'robot' || mode === 'voiture' || mode === 'quad' || mode === 'trottinette') ? '' : 'none';
+    btnFeu.textContent = (mode === 'voiture' || mode === 'quad') ? 'MAIN' : mode === 'trottinette' ? 'SAUT' : 'TIR';
     btnCourse.style.display = (mode === 'robot' || mode === 'balade' || mode === 'drone' || mode === 'trottinette') ? '' : 'none';
     btnCourse.textContent = mode === 'trottinette' ? 'Flip' : 'Cours';
     btnCourse.classList.toggle('on', mode !== 'trottinette' && touchMove.run);
-    btnVue.style.display = (mode === 'robot' || mode === 'chasseur' || mode === 'voiture' || mode === 'trottinette') ? '' : 'none';
+    btnVue.style.display = (mode === 'robot' || mode === 'chasseur' || mode === 'voiture' || mode === 'quad' || mode === 'trottinette') ? '' : 'none';
     if (!actif) rangerManche();
   }
 
@@ -1026,7 +1096,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
 
   function montrerReglages(remonter = false) {
     if (!reglagesEl) return;
-    const engin = mode === 'voiture' ? auto : mode === 'trottinette' ? deuxRoues : null;
+    const engin = mode === 'voiture' ? auto : mode === 'trottinette' ? deuxRoues : mode === 'quad' ? quad : null;
     if (!engin) { reglagesEl.hidden = true; return; }
     if (!remonter && reglages && !reglagesEl.hidden) { reglagesEl.hidden = true; return; }
     if (reglages) reglages.demonter();
@@ -1050,6 +1120,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       setTime(pendingTime);
       // phares et feux de la voiture : ils suivent l'heure du village
       if (auto) auto.setNuit(pendingTime < 7.4 || pendingTime > 20.2);
+      if (quad) quad.setNuit(pendingTime < 7.4 || pendingTime > 20.2);
       pendingTime = null;
     }
 
@@ -1075,6 +1146,10 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       deuxRoues.update(dt, touchMove);
       majAuto(deuxRoues);
       focus.copy(deuxRoues.position);
+    } else if (mode === 'quad') {
+      quad.update(dt, touchMove);
+      majAuto(quad);
+      focus.copy(quad.position);
     } else if (mode === 'robot') {
       robot.update(dt, touchMove);
       ennemis.update(dt, proie);
@@ -1121,6 +1196,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     blockedAt, walkableAt, surfaceAt, keys, step: stepWalker, startTour, stopTour, tick, robot, ennemis, jet,
     get voiture() { return auto; },
     get trottinette() { return deuxRoues; },
+    get quad() { return quad; },
     get mode() { return mode; },
   };
   return window.RaphaelPoilhes;

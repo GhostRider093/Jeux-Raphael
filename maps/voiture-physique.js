@@ -149,6 +149,43 @@ export const REGLAGES = {
     scx: 0.55,
     roulement: 0.020,
   },
+
+  /**
+   * Le quad (25/09/2026) : quatre roues, moteur thermique monocylindre, pilote
+   * dessus. Léger et court, il tourne court ; haut sur pattes, il roule un peu
+   * dans les virages. Pas d'appui aérodynamique, beaucoup de traînée (le pilote
+   * est dans le vent) : il plafonne vers 90 km/h.
+   */
+  quad: {
+    nom: 'Quad',
+    motrice: 'arriere',
+    masse: 330,                 // 250 kg de quad + le pilote
+    avant: 0.60, arriere: 0.63, // empattement 1,23 m (mesuré sur le modèle)
+    hauteurCG: 0.55,
+    inertie: 130,
+    voie: 0.98, rayonRoue: 0.26,
+
+    couple: 38,
+    regimeCouple: 5600, regimeMax: 8600, ralenti: 1400,
+    rapports: [2.90, 1.95, 1.45, 1.15, 0.95], pont: 4.30, marche: 3.00,
+    rendement: 0.90,
+    freinMoteur: 5,
+
+    adherence: 1.15,
+    repartAvant: 0.55,
+    freinCouple: 900,
+
+    antipatinage: 0.90,
+    stabilite: 3.0,
+    equilibre: 1.05,
+
+    braquageMax: 0.62,
+    braquageVite: 0.18,
+    vitesseBraquage: 3.6,
+    appui: 0,
+    scx: 1.05,
+    roulement: 0.030,
+  },
 };
 
 /** Couple moteur (N·m) au régime demandé : plateau large, chute franche au rupteur. */

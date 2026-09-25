@@ -18,7 +18,7 @@
  * Le même banc tourne en ligne de commande : `node scripts/banc-voiture.mjs gt`.
  * Ce fichier ne touche au DOM que dans `monterPanneau`.
  */
-import { creerPhysique, REGLAGES } from './voiture-physique.js?v=voiture-20260921';
+import { creerPhysique, REGLAGES } from './voiture-physique.js?v=feux-20260925';
 
 // ─────────────────────────────────────────────── le schéma
 const P = (cle, nom, unite, min, max, pas, aide) => ({ cle, nom, unite, min, max, pas, aide });
@@ -251,6 +251,10 @@ export function monterPanneau({ racine, pilote, toucher = null, saut = null, bas
     ? { groupe: 'Assistance de conduite', params: [
         { cle: 'assistance', nom: 'Assistance', bool: true,
           aide: 'Le mur devient un rail, rappel doux vers la route, dégagement automatique quand on est coincé.' },
+        // Les glissières au bord des rues (glissieres.js) : retenue physique,
+        // proposée seulement quand le village en a construit.
+        ...(pilote.setGlissieres ? [{ cle: 'glissieres', nom: 'Glissières', bool: true,
+          aide: 'Les glissières au bord des rues retiennent l’engin sur la chaussée. Décoché : on passe au travers.' }] : []),
       ] }
     : null;
   if (SCHEMA_ASSISTANCE) groupes.push(SCHEMA_ASSISTANCE);
@@ -278,6 +282,7 @@ export function monterPanneau({ racine, pilote, toucher = null, saut = null, bas
     const cible = cibleDe(g);
     if (cible === reglage) pilote.regler({ [p.cle]: v });
     else if (p.bool && p.cle === 'assistance') pilote.setAssistance(v);
+    else if (p.bool && p.cle === 'glissieres') pilote.setGlissieres(v);
     else cible[p.cle] = v;
   }
 

@@ -1,0 +1,32 @@
+{
+  "prompt": "A young man standing in an A-pose: arms held straight and slightly away from the body at 30 degrees, hands open, legs straight and slightly apart, head straight looking forward. He wears a red baseball cap with a visor, black sunglasses, a plain black zip-up jacket with red stripes on the sleeves and a red band across the chest, black trousers, black gloves and black boots. Full body, alone, nothing around him, no props, no hood. Stylized game-ready humanoid character for rigging, clean shapes, symmetric, front view.",
+  "style": "realistic",
+  "modele": "latest",
+  "apercu_id": "01a0d644-cfff-77ca-b0ea-0b5ea31670db",
+  "refine_id": "01a0d645-c109-7602-a0b9-b5fc777d099c",
+  "credits": {
+    "avant": 1061,
+    "apres": 1026,
+    "cout": 35
+  },
+  "tache": {
+    "id": "01a0d645-c109-7602-a0b9-b5fc777d099c",
+    "mode": "refine",
+    "prompt": "A young man standing in an A-pose: arms held straight and slightly away from the body at 30 degrees, hands open, legs straight and slightly apart, head straight looking forward. He wears a red baseball cap with a visor, black sunglasses, a plain black zip-up jacket with red stripes on the sleeves and a red band across the chest, black trousers, black gloves and black boots. Full body, alone, nothing around him, no props, no hood. Stylized game-ready humanoid character for rigging, clean shapes, symmetric, front view.",
+    "created_at": 1790301290782,
+    "finished_at": 1790301332606
+  },
+  "glb": "perso/pilote-quad-apose/pilote-quad-apose.glb",
+  "rigging": {
+    "id": "01a0d648-576c-718b-acc2-041ef9ba656a",
+    "taille_m": 1.6,
+    "fichiers": {
+      "rigged_character_fbx_url": "perso/pilote-quad-apose/pilote-quad-apose-rigged_character_fbx_url.fbx",
+      "rigged_character_glb_url": "perso/pilote-quad-apose/pilote-quad-apose-rigged_character_glb_url.glb"
+    },
+    "credits": {
+      "avant": 1026,
+      "apres": 1021
+    }
+  }
+}

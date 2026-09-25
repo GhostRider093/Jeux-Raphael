@@ -24,6 +24,12 @@
  *     s'efface dès que le joueur braque ; une voiture coincée contre un mur,
  *     gaz enfoncé, s'en dégage toute seule. Le but : que tout le monde puisse
  *     se balader sans se battre avec les murs. Voir `rappelRoute` ;
+ *   — **les glissières** (`state.glissieres`, berline seulement, 25/09/2026) :
+ *     `glissiereAt(x, z)` vient de `glissieres.js` — une bande de retenue
+ *     derrière chaque lame posée au bord des rues. Le pilote la lit comme un
+ *     mur (`obstacleAt`), donc avec l'assistance la glissière est un rail : on
+ *     se trompe de trajectoire, on frotte, on continue. La caméra, elle,
+ *     ignore les glissières (34 cm de haut, elle passe au-dessus) ;
  *   — une caméra amortie qui suit la trajectoire, pas le capot : en glissade on
  *     voit où l'on va, ce qui est la seule façon de rattraper une glissade ;
  *   — le son du moteur, synthétisé au régime (rien à télécharger), le crissement
@@ -34,9 +40,10 @@
  * particules sont réservés une fois pour toutes.
  */
 import * as THREE from 'three';
-import { construireVoiture } from './voiture-model.js?v=recul-20260924';
-import { creerPhysique, REGLAGES } from './voiture-physique.js?v=voiture-20260921';
+import { construireVoiture, ECHELLE } from './voiture-model.js?v=feux-20260925';
+import { creerPhysique, REGLAGES } from './voiture-physique.js?v=feux-20260925';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
+import { construireEnginQuad } from './quad.js?v=feux-20260925';
 
 const GRAVITE = 9.81;
 // Toucher du volant, **selon la vitesse** — comme une vraie voiture.
@@ -90,6 +97,11 @@ const VUES_AUTO = [
 // pilote — c'était bien lui. Visée à 6 m (`avance` × 3) et 4,05 m plus bas :
 // 34°, ce qui met les poignées (59°) dans le cadre et laisse l'horizon haut.
 const VUE_GUIDON = { dist: 0.0, haut: 1.58, avance: 2.0, fov: 80, recul: 0.02, viseHaut: -4.05 };
+// Sur le quad, la vue « capot » de la voiture tombait dans le dos du pilote
+// (constat du 25/09/2026). Ses yeux sont à 1,68 m, sa visière à ~20 cm devant
+// le centre de l'engin : la caméra passe 38 cm devant, à hauteur d'yeux, et
+// regarde la route un peu en contrebas.
+const VUE_QUAD = { dist: 0.0, haut: 1.70, avance: 2.0, fov: 78, recul: 0.38, viseHaut: -2.2 };
 
 /** Facteur de lissage exponentiel : indépendant de la cadence d'images. */
 const lissage = (taux, dt) => 1 - Math.exp(-taux * dt);
@@ -144,6 +156,28 @@ export function creerAdherence(villages) {
     // ce qui autorise `R` à nous y remettre en selle : le point de départ se
     // cherche sur la chaussée.
     if (decor.parc) decor.parc.marquerAdherence(marquer);
+    // Les tabliers de pont (25/09/2026) : pas de ruban, donc pas marqués jusqu'ici.
+    // Sans cela, sur un pont, le rappel vers la route tirait la voiture… dans
+    // le canal, et `R` ne trouvait pas de chaussée. `ponts_axes` : [n, largeur,
+    // x, y, z, …] par tablier (build_village.py).
+    try {
+      const axes = decor.arr('ponts_axes');
+      let k = 0;
+      while (axes && k + 2 <= axes.length) {
+        const np = axes[k] | 0, w = axes[k + 1];
+        k += 2;
+        for (let i = 0; i + 1 < np && k + 6 <= axes.length; i++, k += 3) {
+          const ax = axes[k], az = axes[k + 2], bx = axes[k + 3], bz = axes[k + 5];
+          const L = Math.hypot(bx - ax, bz - az) || 1;
+          const nx = -(bz - az) / L, nz = (bx - ax) / L;
+          for (let t = 0; t <= L; t += 0.5) {
+            const px = ax + (bx - ax) * (t / L), pz = az + (bz - az) * (t / L);
+            for (let u = -w / 2; u <= w / 2; u += 0.5) marquer(px + nx * u, pz + nz * u);
+          }
+        }
+        k += 3;                                        // le dernier point du tablier
+      }
+    } catch (e) { /* village sans ponts */ }
     cartes.push({ grille, n, demi, x: v.x || 0, z: v.z || 0 });
   }
 
@@ -549,23 +583,26 @@ function creerSon({ electrique = false } = {}) {
  * Crée le mode Voiture.
  *
  * @param {object} o { scene, camera, renderer, solAt, blockedAt, adherenceAt,
- *                     keys, bounds, surRoute }
+ *                     keys, bounds, surRoute, glissiereAt }
  */
 export function creerPilote({
   scene, camera, renderer = null, solAt, blockedAt = () => false,
   adherenceAt = () => 1, surRoute = null, keys, bounds = 2900, couleur = 0xc21d24,
-  engin = 'voiture', turboAt = null,
+  engin = 'voiture', turboAt = null, glissiereAt = null,
 }) {
   // Le pilote mène ce qu'on lui donne : une voiture, ou la trottinette rendue
   // sous la même forme. Tout le reste — suspension, collisions, caméra, son —
   // ne change pas d'une ligne.
   const surDeuxRoues = engin === 'trottinette';
+  // Le quad (25/09/2026) : quatre roues comme une voiture, mais court, léger,
+  // sans caisse qui roule, et il saute (seuil d'envol bas, comme la trottinette).
+  const surQuad = engin === 'quad';
   // **Le seuil d'envol appartient à l'engin.** Il valait 8 m/s pour tout le
   // monde — au-dessus de la vitesse de pointe de la trottinette (6,9 m/s) : elle
   // ne pouvait littéralement pas décoller, et un tremplin n'était qu'une bosse
   // dont on glissait. Une voiture, elle, ne doit pas s'envoler au moindre
   // trottoir : son seuil ne bouge pas.
-  const SEUIL_ENVOL = surDeuxRoues ? 1.5 : 8;
+  const SEUIL_ENVOL = surDeuxRoues ? 1.5 : (surQuad ? 3 : 8);
   // Depuis le 24/09/2026, la trottinette ne décolle plus sur un seuil de
   // hauteur mais sur une comparaison d'accélérations (voir `update`) : le
   // seuil de vitesse n'est plus qu'un garde-fou contre le sur-place.
@@ -576,13 +613,15 @@ export function creerPilote({
   // un vrai pilote pose le pied : on ne cherche pas l'angle d'une moto de
   // course sur une trottinette de village.
   // (`SAUT_TROTTINETTE.pencheMax`)
-  const VUES = surDeuxRoues ? [VUES_AUTO[0], VUES_AUTO[1], VUE_GUIDON] : VUES_AUTO;
+  const VUES = surDeuxRoues ? [VUES_AUTO[0], VUES_AUTO[1], VUE_GUIDON]
+             : surQuad ? [VUES_AUTO[0], VUES_AUTO[1], VUE_QUAD] : VUES_AUTO;
   const voiture = surDeuxRoues ? construireEnginTrottinette({ renderer })
-                               : construireVoiture({ renderer, couleur });
+                : surQuad ? construireEnginQuad({ renderer })
+                          : construireVoiture({ renderer, couleur });
   // On part sur une copie du réglage : `changerReglage` écrit dedans, et deux
   // voitures ne doivent pas se partager le même objet.
   const { etat, pas, poser, changerReglage, reglage } =
-    creerPhysique({ ...(surDeuxRoues ? REGLAGES.trottinette : REGLAGES.gt) });
+    creerPhysique({ ...(surDeuxRoues ? REGLAGES.trottinette : surQuad ? REGLAGES.quad : REGLAGES.gt) });
   const son = creerSon({ electrique: surDeuxRoues });
 
   const root = voiture.root;
@@ -614,15 +653,25 @@ export function creerPilote({
   // l'engin retombait 75 cm sous la rampe qu'il était en train de monter.
   // Les deux roues réelles sont donc doublées côte à côte : le code de
   // suspension ne change pas d'une ligne, il lit enfin les bonnes distances.
+  // La berline est affichée à `ECHELLE` (0,85 depuis le 25/09/2026, « 15 % de
+  // moins, notamment en largeur ») : roues, empattement, voie et sondes suivent,
+  // sinon la physique roulerait sur une voiture qui n'est plus celle qu'on voit.
+  // Le quad : roues mesurées sur le modèle (voie 0,98 m, empattement 1,23 m,
+  // 1,85 × 1,23 m hors tout), à l'échelle 1.
+  const E = (surDeuxRoues || surQuad) ? 1 : ECHELLE;
   const ROUES = surDeuxRoues
     ? [[-0.26, -0.58], [0.26, -0.58], [-0.26, 0.57], [0.26, 0.57]]
-    : [[-0.80, -1.34], [0.80, -1.34], [-0.80, 1.32], [0.80, 1.32]];
-  const EMPATTEMENT = surDeuxRoues ? 1.15 : 2.66;   // pour l'assiette : tangage
-  const VOIE = surDeuxRoues ? 0.52 : 1.60;          // pour l'assiette : roulis
+    : surQuad
+    ? [[-0.49, -0.62], [0.49, -0.62], [-0.49, 0.61], [0.49, 0.61]]
+    : [[-0.80 * E, -1.34 * E], [0.80 * E, -1.34 * E], [-0.80 * E, 1.32 * E], [0.80 * E, 1.32 * E]];
+  const EMPATTEMENT = surDeuxRoues ? 1.15 : surQuad ? 1.23 : 2.66 * E;   // pour l'assiette : tangage
+  const VOIE = surDeuxRoues ? 0.52 : surQuad ? 0.98 : 1.60 * E;          // pour l'assiette : roulis
   // Sondes de collision : quatre coins et deux flancs, en coordonnées voiture.
   const SONDES = surDeuxRoues
     ? [[-0.30, -1.05], [0.30, -1.05], [-0.30, 1.05], [0.30, 1.05], [-0.32, 0], [0.32, 0]]
-    : [[-0.92, -2.02], [0.92, -2.02], [-0.92, 2.02], [0.92, 2.02], [-0.98, 0], [0.98, 0]];
+    : surQuad
+    ? [[-0.58, -0.92], [0.58, -0.92], [-0.58, 0.92], [0.58, 0.92], [-0.62, 0], [0.62, 0]]
+    : [[-0.92 * E, -2.02 * E], [0.92 * E, -2.02 * E], [-0.92 * E, 2.02 * E], [0.92 * E, 2.02 * E], [-0.98 * E, 0], [0.98 * E, 0]];
 
   const state = {
     y: 0, vy: 0, enLair: false, tangage: 0, roulis: 0,
@@ -636,12 +685,18 @@ export function creerPilote({
     chute: 0, figure: null, figureN: 0, turbo: 0,
     vue: 0, dist: VUES[0].dist, fov: VUES[0].fov,
     choc: 0, vueForcee: false, allumage: 0,
+    // Clignotants automatiques du quad : côté allumé, et jusqu'à quand (ms).
+    clignoCote: 0, clignoJusqua: 0,
     // Assistance de conduite (voir l'en-tête) : coincé depuis combien de temps,
     // direction de la route la plus proche, prochain balayage de la grille.
     assistance: !surDeuxRoues, coince: 0, versRoute: null, prochainScan: 0, horsRoute: 0,
+    // Les glissières retiennent la berline ; la trottinette passe au travers
+    // (Arnaud la refait lui-même). Case à cocher dans l'outil de réglage.
+    glissieres: !surDeuxRoues && !!glissiereAt,
     // Les réglages de l'assistance, modifiables à chaud (voir l'en-tête).
     reglagesAssistance: {
-      rail: 0.66,          // part de la vitesse d'impact renvoyée le long du mur
+      rail: 0.5,           // part de la vitesse d'impact renvoyée le long du mur (0,66 avant le 25/09)
+      pousse: 0.07,        // m par image de dégagement hors d'un mur, au plus (0,14 avant le 25/09)
       realigner: 1.2,      // rad/s de réalignement de la caisse sur le mur touché
       degager: 0.6,        // m/s de recul quand on est coincé gaz enfoncé
       rappelVolant: 0.45,  // part du volant que le rappel vers la route peut prendre
@@ -786,8 +841,26 @@ export function creerPilote({
     cmd.saut = surDeuxRoues && (tenue('Space') || mainTactile);
     cmd.flip = surDeuxRoues && tenue('KeyF');
     cmd.spin = surDeuxRoues && tenue('KeyG');
+    // Clignotants (quad) : ils suivent le volant tout seuls — un coup de guidon
+    // franc d'un côté les allume, ils restent une seconde après qu'on a
+    // redressé. X : feux de détresse, tant qu'on l'appuie.
+    if (voiture.setClignotant) {
+      const franc = Math.abs(cmd.direction) > 0.45 ? Math.sign(cmd.direction) : 0;
+      if (franc) { state.clignoCote = franc; state.clignoJusqua = performance.now() + 1000; }
+      const auto = performance.now() < state.clignoJusqua ? state.clignoCote : 0;
+      voiture.setClignotant(tenue('KeyX') ? 2 : (auto || 0));
+    }
     cmd.cabre = surDeuxRoues ? THREE.MathUtils.clamp((avance ? 1 : 0) - (recule ? 1 : 0) - doigt.y, -1, 1) : 0;
   }
+
+  // ── obstacles ────────────────────────────────────────────────────────────
+  /**
+   * Ce contre quoi la carrosserie bute : les murs et l'eau du décor, plus la
+   * bande de retenue des glissières quand elles sont actives. C'est la seule
+   * fonction que lisent les collisions, le rappel et le placement — la caméra
+   * garde `blockedAt`, une glissière ne lui cache rien.
+   */
+  const obstacleAt = (x, z) => blockedAt(x, z) || (state.glissieres && glissiereAt(x, z));
 
   // ── entrée, sortie ───────────────────────────────────────────────────────
   /** Cherche la route la plus proche, sinon la première cellule libre. */
@@ -797,7 +870,7 @@ export function creerPilote({
       for (let r = 0; r <= 90 && !trouve; r += 2) {
         for (let a = 0; a < Math.PI * 2; a += r ? 1.6 / r : 7) {
           const ex = x + Math.cos(a) * r, ez = z + Math.sin(a) * r;
-          if (surRoute(ex, ez) && !blockedAt(ex, ez)) { px = ex; pz = ez; trouve = true; break; }
+          if (surRoute(ex, ez) && !obstacleAt(ex, ez)) { px = ex; pz = ez; trouve = true; break; }
         }
       }
     }
@@ -805,7 +878,7 @@ export function creerPilote({
       for (let r = 0; r <= 60 && !trouve; r += 1) {
         for (let a = 0; a < Math.PI * 2; a += r ? 1.2 / r : 7) {
           const ex = x + Math.cos(a) * r, ez = z + Math.sin(a) * r;
-          if (!blockedAt(ex, ez)) { px = ex; pz = ez; trouve = true; break; }
+          if (!obstacleAt(ex, ez)) { px = ex; pz = ez; trouve = true; break; }
         }
       }
     }
@@ -821,6 +894,18 @@ export function creerPilote({
         const accord = d + 8 * Math.cos(a - yaw);
         if (accord > meilleur) { meilleur = accord; capChoisi = a; }
       }
+    }
+    // **Au milieu de la rue** (Arnaud, 25/09/2026 : « le R doit vraiment nous
+    // remettre au milieu de la route, c'est très important »). Le point trouvé
+    // ci-dessus est le plus proche, donc au bord ; on mesure la chaussée à
+    // gauche et à droite du cap choisi et l'on se recentre.
+    if (surRoute && trouve) {
+      const rx = Math.cos(capChoisi), rz = -Math.sin(capChoisi);   // « droite » pour ce cap
+      let dD = 0, dG = 0;
+      while (dD < 12 && surRoute(px + rx * (dD + 0.25), pz + rz * (dD + 0.25)) && !blockedAt(px + rx * (dD + 0.25), pz + rz * (dD + 0.25))) dD += 0.25;
+      while (dG < 12 && surRoute(px - rx * (dG + 0.25), pz - rz * (dG + 0.25)) && !blockedAt(px - rx * (dG + 0.25), pz - rz * (dG + 0.25))) dG += 0.25;
+      const recentre = (dD - dG) / 2;
+      px += rx * recentre; pz += rz * recentre;
     }
     poser(px, pz, capChoisi);
     state.y = solAt(px, pz) + GARDE;
@@ -977,8 +1062,11 @@ export function creerPilote({
   // La foule acclame une figure réussie — léger, en fond, jamais sur une chute.
   // Un enregistrement (assets/sons/acclamation.mp3, 5,5 s), rejoué du début à
   // chaque figure ; il suit le bouton du son (M) comme les autres bruitages.
-  const acclamation = new Audio('assets/sons/acclamation.mp3?v=foule-20260924');
-  acclamation.preload = 'auto';
+  // Deux enregistrements depuis le 25/09/2026 (« Cris d'encouragements
+  // spectacle », 3,6 s, fourni par Arnaud) : la foule ne dit pas toujours la
+  // même chose, on tire au sort.
+  const acclamations = ['assets/sons/acclamation.mp3?v=foule-20260924', 'assets/sons/encouragements.mp3?v=foule-20260925']
+    .map((src) => { const a = new Audio(src); a.preload = 'auto'; return a; });
   // … et « uh-oh » sur une chute (assets/sons/uh-oh.mp3).
   const uhOh = new Audio('assets/sons/uh-oh.mp3?v=foule-20260924');
   uhOh.preload = 'auto';
@@ -989,7 +1077,7 @@ export function creerPilote({
     const p = piste.play();
     if (p?.catch) p.catch(() => {});
   }
-  const acclamer = (force) => jouerUneFois(acclamation, 0.22 * force);
+  const acclamer = (force) => jouerUneFois(acclamations[Math.random() < 0.5 ? 0 : 1], 0.22 * force);
 
   function atterrir() {
     const toursFlip = Math.round(state.tangageAir / (2 * Math.PI));
@@ -1042,12 +1130,12 @@ export function creerPilote({
       const lx = SONDES[i][0], lz = SONDES[i][1];
       const px = etat.x + c * lx - s * lz;
       const pz = etat.z - s * lx - c * lz;
-      if (!blockedAt(px, pz)) continue;
+      if (!obstacleAt(px, pz)) continue;
       touche++;
       for (let k = 0; k < 8; k++) {
         const a = (k / 8) * Math.PI * 2;
         const dx = Math.cos(a), dz = Math.sin(a);
-        if (!blockedAt(px + dx * 1.5, pz + dz * 1.5)) { normale.x += dx; normale.y += dz; }
+        if (!obstacleAt(px + dx * 1.5, pz + dz * 1.5)) { normale.x += dx; normale.y += dz; }
       }
     }
     if (!touche) return;
@@ -1063,7 +1151,10 @@ export function creerPilote({
     // Dégagement progressif : 6 cm par image et par sonde au lieu de 16. Une
     // poussée trop franche fait rebondir la voiture entre deux murs d'une ruelle,
     // et c'est ce va-et-vient qu'on voyait comme un tremblement.
-    const pousse = Math.min(0.14, 0.055 * touche);
+    // Adouci le 25/09/2026 (« les rebonds sont un peu trop forts ») : 3 cm par
+    // sonde, 7 cm au plus — la composante qui rentre est de toute façon retirée
+    // plus bas, la poussée n'a qu'à résorber la pénétration d'une image.
+    const pousse = Math.min(state.reglagesAssistance.pousse, 0.03 * touche);
     etat.x += normale.x * pousse;
     etat.z += normale.y * pousse;
     if (vn < 0 && state.assistance) {
@@ -1096,7 +1187,7 @@ export function creerPilote({
       // une façade renvoie une voiture, elle ne la catapulte pas. Le glissement
       // le long du mur, lui, est à peine freiné, sinon frôler un angle arrête
       // net une voiture lancée et l'on passe son temps à repartir de zéro.
-      const nx = vx - vn * normale.x * 1.02, nz = vz - vn * normale.y * 1.02;
+      const nx = vx - vn * normale.x * 1.0, nz = vz - vn * normale.y * 1.0;
       const fx = nx * 0.95, fz = nz * 0.95;
       etat.u = -(fx * s + fz * c);
       etat.v = fx * c - fz * s;
@@ -1145,7 +1236,7 @@ export function creerPilote({
         for (let k = 0; k < 16; k++) {
           const a = (k / 16) * Math.PI * 2;
           const ex = etat.x + Math.cos(a) * r, ez = etat.z + Math.sin(a) * r;
-          if (surRoute(ex, ez) && !blockedAt(ex, ez)) { trouve = { dx: Math.cos(a), dz: Math.sin(a), dist: r }; break; }
+          if (surRoute(ex, ez) && !obstacleAt(ex, ez)) { trouve = { dx: Math.cos(a), dz: Math.sin(a), dist: r }; break; }
         }
       }
       state.versRoute = trouve;
@@ -1359,7 +1450,10 @@ export function creerPilote({
           etat.u = Math.min(etat.u + 18 * dt, SAUT_TROTTINETTE.turboMax);
           state.turbo = 0.25;
         }
-      } else if (chuteNecessaire < chuteLibre && etat.vitesse > SEUIL_ENVOL) {
+      } else if (surQuad && chuteNecessaire < chuteLibre && etat.vitesse > SEUIL_ENVOL) {
+        // Seul le quad décolle encore à quatre roues. **La berline ne saute
+        // plus** (Arnaud, 25/09/2026 : « le saut, c'est un vrai problème ») :
+        // elle suit le sol par sa suspension, même au bout d'un tremplin.
         state.enLair = true;
         // **On est projeté, on ne tombe pas.** Repartir à la vitesse de chute
         // libre revenait à glisser du bout du tremplin : la roue quittait le
@@ -1467,7 +1561,7 @@ export function creerPilote({
         debattement[i] += (vise - debattement[i]) * lissage(14, dt);
       }
     }
-    voiture.majRoues(etat.braquage, etat.rotationRoue, debattement);
+    voiture.majRoues(etat.braquage, etat.rotationRoue / E, debattement);   // roue plus petite : tourne plus vite
     voiture.setFreinage(etat.freinage > 0);
     if (voiture.setRecul) voiture.setRecul(etat.rapport < 0);
     state.chocSon *= Math.exp(-dt / 0.25);
@@ -1549,7 +1643,7 @@ export function creerPilote({
   let choix = 'rouge';
   function choisirVoiture(nom) {
     const v = VOITURES[nom];
-    if (surDeuxRoues || !v || nom === choix) return choix;
+    if (surDeuxRoues || surQuad || !v || nom === choix) return choix;
     choix = nom;
     changerReglage(v.reglage);
     voiture.setTeinte(v.teinte);
@@ -1568,6 +1662,8 @@ export function creerPilote({
     reglage, regler: changerReglage,
     setAssistance: (on) => { state.assistance = !!on; state.coince = 0; state.versRoute = null; },
     reglagesAssistance: state.reglagesAssistance,
+    // Les glissières ne se proposent que si le village en a construit.
+    ...(glissiereAt ? { setGlissieres: (on) => { state.glissieres = !!on; state.coince = 0; } } : {}),
     get position() { return position; },
   };
 }
