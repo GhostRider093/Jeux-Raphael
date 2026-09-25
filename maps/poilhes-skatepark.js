@@ -36,6 +36,109 @@ const BISEAU = 1.6;                // sur quelle largeur la dalle rejoint l'herb
 /** Le centre du parc, en coordonnées du village (mesuré, pas choisi au hasard). */
 export const CENTRE = { x: 6.75, z: 133 };
 
+// ─────────────────────────────────────────────────────────── les matières
+/**
+ * Textures **générées** (Arnaud, 25/09/2026 : « mettre de la texture sur le
+ * pump park ») : rien à télécharger, un canvas de 512 px par matière.
+ *  - béton : gris moyen granuleux, quelques taches plus sombres ;
+ *  - contreplaqué : les modules en bois du lot FreeCAD (table, half-pipe,
+ *    quarter, wallride, bosse), veines longues et vis ;
+ *  - acier galvanisé : les rails.
+ * Les GLB n'ont pas d'UV : on les projette par boîte (`uvParBoite`), une tuile
+ * de 2 m ; la dalle reçoit des UV monde (1 tuile = 3 m) et garde ses couleurs
+ * par sommet pour les bandes bleues et la ligne de départ.
+ */
+const TEXTURES = {};
+function texture(nom) {
+  if (TEXTURES[nom]) return TEXTURES[nom];
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  let graine = nom.length * 977;
+  const alea = () => { graine = (graine * 1103515245 + 12345) & 0x7fffffff; return graine / 0x7fffffff; };
+  if (nom === 'beton') {
+    g.fillStyle = '#9a9d9f'; g.fillRect(0, 0, 512, 512);
+    const img = g.getImageData(0, 0, 512, 512), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { const b = (alea() - 0.5) * 34; d[i] += b; d[i + 1] += b; d[i + 2] += b + (alea() - 0.5) * 6; }
+    g.putImageData(img, 0, 0);
+    for (let k = 0; k < 140; k++) {                                   // taches et granulats
+      g.fillStyle = 'rgba(' + (60 + alea() * 40 | 0) + ',' + (60 + alea() * 40 | 0) + ',' + (65 + alea() * 40 | 0) + ',' + (0.05 + alea() * 0.12) + ')';
+      g.beginPath(); g.ellipse(alea() * 512, alea() * 512, 3 + alea() * 26, 2 + alea() * 14, alea() * 3.14, 0, 6.29); g.fill();
+    }
+    g.strokeStyle = 'rgba(70,72,76,.35)'; g.lineWidth = 1.2;         // joints de dalle
+    g.beginPath(); g.moveTo(0, 256); g.lineTo(512, 256); g.moveTo(256, 0); g.lineTo(256, 512); g.stroke();
+  } else if (nom === 'bois') {
+    g.fillStyle = '#c9a56a'; g.fillRect(0, 0, 512, 512);
+    for (let y = 0; y < 512; y += 2) {                                  // veines
+      const t = Math.sin(y * 0.11 + Math.sin(y * 0.021) * 3) * 0.5 + 0.5;
+      g.fillStyle = 'rgba(' + (120 + t * 40 | 0) + ',' + (80 + t * 30 | 0) + ',' + (35 + t * 20 | 0) + ',' + (0.10 + alea() * 0.12) + ')';
+      g.fillRect(0, y, 512, 1 + (alea() < 0.3 ? 1 : 0));
+    }
+    const img = g.getImageData(0, 0, 512, 512), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { const b = (alea() - 0.5) * 18; d[i] += b; d[i + 1] += b * 0.9; d[i + 2] += b * 0.7; }
+    g.putImageData(img, 0, 0);
+    g.strokeStyle = 'rgba(70,45,20,.45)'; g.lineWidth = 2;            // joints de plaques
+    g.beginPath(); g.moveTo(0, 0.5); g.lineTo(512, 0.5); g.moveTo(0.5, 0); g.lineTo(0.5, 512); g.stroke();
+    g.fillStyle = 'rgba(60,60,62,.85)';                                // vis
+    for (let k = 0; k < 24; k++) { g.beginPath(); g.arc(20 + (k % 6) * 94, 24 + Math.floor(k / 6) * 150, 2.6, 0, 6.29); g.fill(); }
+  } else {                                                              // acier
+    g.fillStyle = '#b7bcc1'; g.fillRect(0, 0, 512, 512);
+    const img = g.getImageData(0, 0, 512, 512), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { const b = (alea() - 0.5) * 22; d[i] += b; d[i + 1] += b; d[i + 2] += b + 4; }
+    g.putImageData(img, 0, 0);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  TEXTURES[nom] = t;
+  return t;
+}
+const MATIERES = {};
+function matiere(nom) {
+  if (MATIERES[nom]) return MATIERES[nom];
+  const m = nom === 'bois'
+    ? new THREE.MeshStandardMaterial({ map: texture('bois'), color: 0xd8c39a, roughness: 0.78, metalness: 0.0 })
+    : nom === 'acier'
+    ? new THREE.MeshStandardMaterial({ map: texture('acier'), color: 0xd0d4d8, roughness: 0.38, metalness: 0.75 })
+    : new THREE.MeshStandardMaterial({ map: texture('beton'), color: 0xb9b3aa, roughness: 0.94, metalness: 0.0 });
+  MATIERES[nom] = m;
+  return m;
+}
+/** La matière d'un modèle d'après son nom : lot FreeCAD en bois, rails en acier, le reste en béton. */
+function matiereDe(modele) {
+  if (/^Rail$/i.test(modele)) return 'acier';
+  if (/^(Cone_flat|Mini_Halfpipe|Quarter_pipe|Ramp_to_Wall|Table)/i.test(modele)) return 'bois';
+  return 'beton';
+}
+/**
+ * UV par projection sur les trois axes : chaque triangle est projeté sur le
+ * plan le plus proche de sa normale. `echelle` convertit les unités du modèle
+ * en mètres, `tuile` est la taille d'une répétition (m).
+ */
+function uvParBoite(geometrie, echelle, tuile = 2) {
+  const geo = geometrie.index ? geometrie.toNonIndexed() : geometrie.clone();
+  const pos = geo.attributes.position, n = pos.count;
+  const uv = new Float32Array(n * 2);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), nrm = new THREE.Vector3(), ca = new THREE.Vector3();
+  const k = echelle / tuile;
+  for (let i = 0; i < n; i += 3) {
+    a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1); c.fromBufferAttribute(pos, i + 2);
+    ca.subVectors(c, a);
+    nrm.subVectors(b, a).cross(ca);
+    const ax = Math.abs(nrm.x), ay = Math.abs(nrm.y), az = Math.abs(nrm.z);
+    for (let j = 0; j < 3; j++) {
+      const p = j === 0 ? a : j === 1 ? b : c;
+      let u, v;
+      if (az >= ax && az >= ay) { u = p.x; v = p.y; } else if (ay >= ax) { u = p.x; v = p.z; } else { u = p.y; v = p.z; }
+      uv[(i + j) * 2] = u * k; uv[(i + j) * 2 + 1] = v * k;
+    }
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.computeVertexNormals();
+  return geo;
+}
+
 /** Marche adoucie : 0 avant, 1 après, sans angle vif. */
 const lisse = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
@@ -134,7 +237,10 @@ export function construireSkatepark({ decor, centre = CENTRE, parc = null }) {
   const nu = Math.round((2 * U) / PAS) + 1, nv = Math.round((2 * V) / PAS) + 1;
   const pos = new Float32Array(nu * nv * 3);
   const col = new Float32Array(nu * nv * 3);
-  const ASPHALTE = new THREE.Color(0x4f545c), BETON = new THREE.Color(0x8d959b);
+  const uvs = new Float32Array(nu * nv * 2);
+  // Éclaircis le 26/09/2026 : la couleur par sommet se multiplie désormais par
+  // la texture béton, l'ancien gris foncé donnait une dalle noire au soleil couchant.
+  const ASPHALTE = new THREE.Color(0xa3a8ae), BETON = new THREE.Color(0xc4cace);
   const TURBO = new THREE.Color(0x2a63c9), TURBO_CLAIR = new THREE.Color(0x9ec3ff), BLANC = new THREE.Color(0xe8ecef);
   const teinte = new THREE.Color();
   const dep = plan.depart || { u: 0, v: 16, cap_deg: 0 };
@@ -146,6 +252,7 @@ export function construireSkatepark({ decor, centre = CENTRE, parc = null }) {
       pos[k * 3] = u;
       pos[k * 3 + 1] = decor.groundAt(cx + u, cz + v) + dalle(u, v);
       pos[k * 3 + 2] = v;
+      uvs[k * 2] = u / 3; uvs[k * 2 + 1] = v / 3;
       teinte.copy(Math.abs(u) > U - BISEAU || Math.abs(v) > V - BISEAU ? BETON : ASPHALTE);
       const b = bande(u, v);
       if (b) teinte.copy(((b.t % 1.6) + 1.6) % 1.6 < 0.45 ? TURBO_CLAIR : TURBO);
@@ -166,6 +273,7 @@ export function construireSkatepark({ decor, centre = CENTRE, parc = null }) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
   geo.computeVertexNormals();
   geo.computeBoundingSphere();
@@ -173,7 +281,7 @@ export function construireSkatepark({ decor, centre = CENTRE, parc = null }) {
   // milieu d'un village peint par des shaders maison (voir l'ancienne version) —
   // à pleine luminance le béton virait au blanc.
   const beton = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-    color: 0x959595, vertexColors: true, roughness: 1.0, metalness: 0,
+    map: texture('beton'), color: 0xf3eee6, vertexColors: true, roughness: 1.0, metalness: 0,
   }));
   beton.castShadow = false;
   beton.receiveShadow = true;
@@ -192,20 +300,24 @@ export function construireSkatepark({ decor, centre = CENTRE, parc = null }) {
       if (!cache.has(nom)) cache.set(nom, loader.loadAsync(`assets/skatepark/${nom}.glb?v=pilote-20260925`));
       return cache.get(nom);
     };
-    // Béton clair, à facettes : les STL n'ont pas de normales lissées, et sans
-    // normales du tout un MeshStandardMaterial rend noir (vu au premier essai).
-    const materiau = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.92, metalness: 0.0, flatShading: true });
+    // Chaque module reçoit sa matière (béton, bois, acier) et des UV projetés
+    // par boîte : les STL n'ont ni UV ni normales (sans normales, un
+    // MeshStandardMaterial rend noir — vu au premier essai).
+    const geometries = new Map();       // modèle → géométrie avec UV, partagée
     for (const p of pieces) {
       charger(p.modele).then((g) => {
         const modele = g.scene.clone(true);
+        const e = p.echelle || (p.modele.startsWith('obj_') ? 0.040 : p.modele.startsWith('Tech') ? 0.015 : 0.030);
+        const mat = matiere(matiereDe(p.modele));
         modele.traverse((o) => {
           if (!o.isMesh) return;
-          if (!o.geometry.attributes.normal) { o.geometry = o.geometry.clone(); o.geometry.computeVertexNormals(); }
-          o.material = materiau; o.castShadow = true; o.receiveShadow = true;
+          const cle = p.modele + ':' + o.name + ':' + e;
+          if (!geometries.has(cle)) geometries.set(cle, uvParBoite(o.geometry, e, 2));
+          o.geometry = geometries.get(cle);
+          o.material = mat; o.castShadow = true; o.receiveShadow = true;
         });
         // le GLB est déjà en unités « modèle » (mm) : on applique l'échelle du script
         const boite = new THREE.Box3().setFromObject(modele);
-        const e = p.echelle || (p.modele.startsWith('obj_') ? 0.040 : p.modele.startsWith('Tech') ? 0.015 : 0.030);
         const dedans = new THREE.Group();
         dedans.add(modele);
         modele.scale.setScalar(e);

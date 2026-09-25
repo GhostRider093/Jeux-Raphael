@@ -157,6 +157,10 @@ def composer(plan, pas=PAS):
                 h = H[j, i]
                 if h < 0:
                     continue
+                # relief_max : une barre de rail à 2 m rastérisée devient un mur
+                # invisible ; on plafonne le relief senti par les roues.
+                if p.get('relief_max') is not None:
+                    h = min(h, float(p['relief_max']))
                 u = p['u'] + x0 + i * pas
                 v = p['v'] - (y0 + j * pas)
                 cu, cv = int(round((u + U) / pas)), int(round((v + V) / pas))

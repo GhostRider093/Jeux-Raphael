@@ -121,7 +121,8 @@
   #accueil .composition {
     /* 125vh : sur un écran peu haut, la composition rétrécit pour laisser
        « Rouler » visible sans défiler. */
-    --largeur: min(1190px, 98vw, 92vh);
+    /* Réduit le 26/09/2026 : les trois cartes d'engin prennent la place sous le titre. */
+    --largeur: min(860px, 96vw, 52vh);
     /* Agencement d'Arnaud, 24/09/2026 (mode ?agencer=1). Le village déborde
        volontairement de la composition : il fait le décor du titre. */
     --village-l: 173.2; --village-x: -6.6; --village-y: -10.3;
@@ -157,6 +158,41 @@
   #accueil .agenceur-aide { color: var(--dim); white-space: normal; max-width: 300px; margin-bottom: 6px; }
   #accueil.agencer .calque.choisi { outline: 2px solid var(--accent); }
   #accueil .accroche { margin: 0; color: #e6ebf2; text-shadow: 0 1px 6px rgba(0,0,0,.8); font-size: 15px; text-align: center; max-width: 560px; }
+  /* ── Les trois cartes : trottinette, berline, quad (Arnaud, 25/09/2026 :
+     « une belle page d'accueil avec trois choix, de belles images, qu'on puisse
+     écrire dessus »). Chaque carte est une capture du jeu à l'heure dorée, un
+     voile dégradé et le texte par-dessus. Cliquer = choisir l'engin ET partir. */
+  #accueil .engins { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
+                     width: min(1180px, calc(100vw - 32px)); margin-top: 6px; }
+  #accueil .engin { position: relative; aspect-ratio: 4 / 3; border-radius: 18px; overflow: hidden; cursor: pointer;
+                    border: 2px solid rgba(255,255,255,.14); background: #141922; padding: 0; text-align: left; color: #fff;
+                    box-shadow: 0 18px 40px rgba(0,0,0,.5); transition: transform .28s ease, border-color .28s ease, box-shadow .28s ease;
+                    transform: translateY(0); font: inherit; }
+  #accueil .engin img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block;
+                        transition: transform .6s ease; }
+  #accueil .engin::after { content: ""; position: absolute; inset: 0;
+                           background: linear-gradient(180deg, rgba(8,10,16,0) 38%, rgba(8,10,16,.55) 68%, rgba(8,10,16,.92) 100%); }
+  #accueil .engin .texte { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 72px 15px 18px; z-index: 1; display: grid; gap: 3px; }
+  #accueil .engin .nom { font-size: clamp(19px, 2.1vw, 26px); font-weight: 800; letter-spacing: .2px; line-height: 1.05;
+                         text-shadow: 0 2px 8px rgba(0,0,0,.7); }
+  #accueil .engin .lieu { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+  #accueil .engin .detail { color: #d9dfe8; font-size: 13px; line-height: 1.35; }
+  #accueil .engin .detail b { color: #fff; }
+  #accueil .engin .badge { position: absolute; top: 12px; left: 12px; z-index: 1; padding: 5px 10px; border-radius: 999px;
+                           background: rgba(14,18,26,.72); border: 1px solid rgba(255,255,255,.18); font-size: 11px; font-weight: 700;
+                           letter-spacing: .6px; text-transform: uppercase; color: #fff; backdrop-filter: blur(6px); }
+  #accueil .engin:hover, #accueil .engin:focus-visible { transform: translateY(-6px); border-color: var(--accent);
+                           box-shadow: 0 26px 50px rgba(0,0,0,.6), 0 0 0 4px rgba(255,207,74,.18); outline: none; }
+  #accueil .engin:hover img { transform: scale(1.06); }
+  #accueil .engin.on { border-color: var(--accent); }
+  #accueil .engin .go { position: absolute; right: 14px; bottom: 14px; z-index: 2; width: 42px; height: 42px; border-radius: 50%;
+                        background: var(--accent); color: #1b1600; display: grid; place-items: center; font-size: 20px; font-weight: 900;
+                        box-shadow: 0 8px 20px rgba(0,0,0,.45); opacity: .92; }
+  @media (max-width: 900px) {
+    #accueil .engins { grid-template-columns: 1fr; width: min(520px, calc(100vw - 32px)); }
+    #accueil .engin { aspect-ratio: 16 / 9; }
+    #accueil .composition { --largeur: min(860px, 96vw, 34vh); }
+  }
   /* Les réglages (village, engin, qualité) vivent derrière un hamburger en haut
      à droite : l'accueil ne montre que le logo et « Rouler ». */
   #accueil .coin { position: absolute; top: 14px; right: 14px; display: flex; gap: 8px; align-items: center; z-index: 2; }
@@ -175,7 +211,7 @@
   #accueil .groupe .etiquette { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
   #accueil .groupe .boutons { display: flex; gap: 6px; flex-wrap: wrap; }
   #accueil .groupe button { flex: 1; min-width: 88px; padding: 9px 8px; }
-  #btn-rouler { flex: 0 0 auto; margin-top: 18px; padding: 14px 64px; font-size: 19px; font-weight: 700; background: var(--accent); color: #1b1600;
+  #btn-rouler { display: none; flex: 0 0 auto; margin-top: 18px; padding: 14px 64px; font-size: 19px; font-weight: 700; background: var(--accent); color: #1b1600;
                 border-color: var(--accent); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
   #btn-rouler:hover { background: #ffd970; }
   #accueil .aide { margin: 2px 0 0; color: var(--dim); font-size: 12px; text-align: center; }
@@ -385,7 +421,39 @@
       <img class="calque blason" data-calque="blason" src="assets/accueil/blason.webp" alt="" draggable="false">
       <img class="calque titre" data-calque="titre" src="assets/accueil/titre-texte.webp?v=chrome-20260924" alt="Poilhes City" draggable="false">
     </div>
-    <p class="accroche">Trottinette et berline dans les rues du village, reconstruit d’après le LiDAR et les photos de l’IGN.</p>
+    <p class="accroche">Choisis ton engin : le village est reconstruit d’après le LiDAR et les photos de l’IGN.</p>
+    <div class="engins" id="engins">
+      <button class="engin" type="button" data-engin="trottinette">
+        <img src="assets/accueil/engins/trottinette-roule.webp?v=accueil-20260926" alt="">
+        <span class="badge">Freestyle</span>
+        <span class="texte">
+          <span class="lieu">Départ · pump track du stade</span>
+          <span class="nom">Trottinette électrique</span>
+          <span class="detail"><b>Espace</b> saute · <b>F</b> looping · <b>G</b> 360 · bandes bleues à 41 km/h</span>
+        </span>
+        <span class="go">›</span>
+      </button>
+      <button class="engin" type="button" data-engin="voiture">
+        <img src="assets/accueil/engins/berline-roule.webp?v=accueil-20260926" alt="">
+        <span class="badge">Arcade</span>
+        <span class="texte">
+          <span class="lieu">Départ · entrée du village</span>
+          <span class="nom">Berline bleue</span>
+          <span class="detail">Elle freine droit et repart fort · <b>Espace</b> frein à main · les glissières te gardent sur la route</span>
+        </span>
+        <span class="go">›</span>
+      </button>
+      <button class="engin" type="button" data-engin="quad">
+        <img src="assets/accueil/engins/quad-roule.webp?v=accueil-20260926" alt="">
+        <span class="badge">Tout terrain</span>
+        <span class="texte">
+          <span class="lieu">Départ · porte d’Ensérune</span>
+          <span class="nom">Quad rouge et noir</span>
+          <span class="detail">Il saute et fait les mêmes figures que la trottinette · tout éclairé, clignotants au guidon</span>
+        </span>
+        <span class="go">›</span>
+      </button>
+    </div>
     <button id="btn-rouler" type="button">Rouler</button>
     <p class="resume" id="resume-choix"></p>
     <p class="aide">Flèches ou <b>ZQSD</b> · <b>Espace</b> saute · en l’air <b>F</b> looping, <b>G</b> 360 · <b>P</b> au skatepark · <b>V</b> caméra</p>
@@ -431,6 +499,7 @@ const LIBELLES = {
 };
 function peindreChoix() {
   accueil.querySelectorAll('[data-choix]').forEach((b) => b.classList.toggle('on', choix[b.dataset.choix] === b.dataset.valeur));
+  accueil.querySelectorAll('.engin').forEach((b) => b.classList.toggle('on', choix.engin === b.dataset.engin));
   $('resume-choix').innerHTML = `<b>${LIBELLES.village[choix.village] || choix.village}</b> · <b>${LIBELLES.engin[choix.engin]}</b> · ${LIBELLES.qualite[choix.qualite]}`;
 }
 // Le hamburger : un clic ouvre, un clic dehors ou Échap referme.
@@ -612,6 +681,13 @@ if (!accueil.hidden && params.get('go') !== '1') {
   document.addEventListener('keydown', auPremierGeste, { once: true, capture: true });
 }
 
+// Les trois cartes : on choisit l'engin et on part dans la foulée.
+accueil.querySelectorAll('.engin').forEach((b) => b.addEventListener('click', (e) => {
+  e.stopPropagation();
+  choix.engin = b.dataset.engin;
+  peindreChoix();
+  $('btn-rouler').click();
+}));
 $('btn-rouler').addEventListener('click', () => {
   // La playlist continue, en trottinette comme en berline.
   if (choix.qualite === 'auto') oublierChoix(); else enregistrerChoix(choix.qualite);
