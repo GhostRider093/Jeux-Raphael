@@ -20,6 +20,7 @@ import { createJet } from './poilhes-jet.js?v=voiture-20260921';
 // n'était plus celui que lisait le pilote.
 import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=pilote-20260925';
 import { poserEpicerie, poserBlasonClub, EPICERIE } from './poilhes-commerces.js?v=voiture-20260921';
+import { poserMairie } from './poilhes-mairie.js?v=mairie-20260926';
 import { construireTrottinette } from './trottinette.js?v=pilote-20260922';
 import { creerGlissieres } from './glissieres.js?v=pilote-20260925';
 import { monterPanneau as monterReglages, appliquerMemorise } from './reglages.js?v=pilote-20260925';
@@ -189,6 +190,9 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   const epicerie = poserEpicerie({ scene, decor, loader: decor.loader });
   // Le blason du club, devant le stade — chargé sans bloquer l'entrée au village.
   poserBlasonClub({ scene, decor }).catch((err) => console.warn('Blason du club :', err));
+  // La mairie : tour de l'horloge, entrée, drapeaux et la place avec sa fontaine
+  // (26/09/2026). Posée sur la façade trouvée au rayon, comme l'épicerie.
+  try { poserMairie({ scene, decor }); } catch (err) { console.warn('Mairie :', err); }
   // La trottinette et son pilote, garées devant l'épicerie. Le groupe de la
   // devanture donne l'orientation : on se range le long de la façade, pas en
   // travers de la rue.

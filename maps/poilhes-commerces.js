@@ -115,7 +115,7 @@ function pancarte(texte) {
  *
  * @returns {{point: THREE.Vector3, cap: number}|null} cap = rotation Y (rad)
  */
-function chercherFacade(murs, blockedAt, x, z, y) {
+export function chercherFacade(murs, blockedAt, x, z, y) {
   const rayon = new THREE.Raycaster();
   rayon.far = 18;
   const origine = new THREE.Vector3(x, y, z);

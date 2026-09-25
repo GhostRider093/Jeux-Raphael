@@ -273,3 +273,38 @@ au lieu de renvoyer.
   la campagne), trottinette au départ du pump track. `window.jeu` exposé pour les tests.
 - Vérifié en vrai Chrome : les trois engins naissent au bon endroit et roulent ; quad
   0,3 m de saut sur le plat, marche arrière 35 km/h en 2,5 s, freinage droit (−0,6°).
+
+### Fait — deuxième et troisième lots (poussés)
+
+- **Accueil** (`rouler.html`) : trois cartes illustrées (captures du jeu à 18 h 36 /
+  17 h 12, `assets/accueil/engins/*.webp`), badge, lieu de départ, nom, commandes ;
+  un clic choisit l'engin et part. Le titre est réduit (52 vh) pour laisser la place.
+  Mobile : une colonne, cartes 16/9.
+- **Skatepark** : textures générées (béton / contreplaqué / acier), UV par boîte pour
+  les GLB sans UV, dalle éclaircie (les couleurs par sommet se multiplient désormais
+  par la texture). Neuf modules de plus au plan : mini half-pipe (ouest), escalier à
+  rail (NE), quarters d'angle (NO, SE, SO), deux banks + coin (est), box (nord).
+  `relief_max` (script + plan) : half-pipe plafonné à 3 m (son garde-corps), escalier
+  à 1,55 m. `skatepark-hauteurs.bin` régénéré.
+- **Mairie et place** (`maps/poilhes-mairie.js`, nouveau) : tour de l'horloge (fût
+  3 m, cadrans, beffroi, cloche, flèche d'ardoise, girouette) qui traverse le toit,
+  entrée (porte à deux battants, marches, balcon fer forgé, plaque MAIRIE, devise,
+  deux drapeaux, lanternes), place pavée avec fontaine, quatre bancs, quatre
+  lampadaires 21 m au nord de l'étiquette (premier disque libre : ni bâti, ni eau,
+  ni route). Trois essais pour la façade : la plus proche était le mur arrière,
+  puis un rayon parti de l'intérieur touchait la maison d'en face (murs à une
+  face) ; la bonne : rayon tiré **depuis la place**, orientation par la **normale
+  du mur**.
+
+### Pas fait / à valider par Arnaud
+
+- **L'Ostal Louis** n'a pas été retouché : il a déjà sa devanture 3D Meshy, et je
+  ne vois pas sur quoi Arnaud bute sans lui. À regarder ensemble.
+- **Glissières dans les Mondes** (`mondes.html?map=poilhes`, `world-game.js`) : pas
+  branchées ; Poilhes City (`rouler.html`) les a partout.
+- **Le son électrique** : câblé sans l'avoir entendu (variante B). Les trois WAV sont
+  dans Downloads ; les constantes sont dans `SON_ELECTRIQUE` (voiture-pilote.js).
+- **L'arcade** : réglé au banc et en Chrome sans fenêtre, pas au volant. Les
+  constantes sont dans `ARCADE` et `REGLAGES.*` ; le panneau T les règle à chaud.
+- Les captures des cartes de l'accueil sont des vues arrière du jeu ; Qwen-Image
+  (local) pourrait faire des illustrations plus « affiche » si Arnaud préfère.
