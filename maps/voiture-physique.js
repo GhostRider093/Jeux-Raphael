@@ -48,6 +48,45 @@ const ARCADE = {
   coupleArriere: 1.6,     // multiplicateur du couple en marche arrière
 };
 
+/**
+ * **La loi arcade** (26/09/2026). Arnaud, après avoir roulé sur le mode
+ * `ARCADE` ci-dessus : « c'est catastrophique, on comprend rien — il faut que
+ * ce soit arcade, mais jouable ». Le modèle de pneus restait dessous, et quatre
+ * aides se disputaient le volant par-dessus : on ne savait jamais qui tournait.
+ *
+ * Ici, plus de pneus. Chaque commande a **un** effet, toujours le même :
+ *   — gaz : on accélère vers `vmax`, fort au départ, de moins en moins près du
+ *     plafond ; pied levé, on roule en roue libre ;
+ *   — frein : on s'arrête droit, à `freinArcade` m/s² ; tenu à l'arrêt, il
+ *     recule (et les gaz ramènent en avant) ;
+ *   — volant : il donne une **vitesse de rotation**, pleine dès `vitesseVirage`,
+ *     un peu moindre à fond ; nulle à l'arrêt — un engin ne pivote pas sur place ;
+ *   — l'accroche (`grip`) redresse la vitesse dans l'axe de la caisse **sans en
+ *     perdre** : on tourne, on ne freine pas en tournant ;
+ *   — frein à main (berline, quad) : l'accroche tombe, la rotation monte, ça
+ *     glisse — on relâche, ça se remet droit tout seul ;
+ *   — le sol : hors du bitume, la vitesse de pointe baisse (`horsRoute`) ;
+ *     en l'air (`mu` quasi nul), on ne tourne ni n'accélère.
+ *
+ * Réglages par engin dans `REGLAGES` (`loi: 'arcade'` et les clés ci-dessous),
+ * panneau T, groupe « Arcade ». Le modèle de pneus reste en place pour un
+ * engin qui n'a pas `loi: 'arcade'`.
+ */
+export const ARCADE_DEFAUT = {
+  vmax: 38,            // m/s en pointe (137 km/h)
+  vmaxArriere: 9,      // m/s en marche arrière
+  accel: 8,            // m/s² au départ
+  roueLibre: 2.2,      // m/s² de ralentissement pied levé
+  freinArcade: 16,     // m/s² au freinage
+  virage: 1.7,         // rad/s de rotation, volant à fond
+  vitesseVirage: 7,    // m/s : en dessous, la rotation se réduit (pas de pivot sur place)
+  reponse: 9,          // 1/s : vitesse à laquelle la rotation suit le volant
+  grip: 9,             // 1/s : vitesse à laquelle la trajectoire rejoint l'axe de la caisse
+  gripMain: 1.1,       // 1/s au frein à main : la glisse
+  virageMain: 1.45,    // la rotation est multipliée d'autant au frein à main
+  horsRoute: 0.55,     // vitesse de pointe dans l'herbe (µ = 0,74), en part de vmax
+};
+
 export const REGLAGES = {
   /** Sportive GT : moteur avant, **propulsion**, châssis vif et rattrapable. */
   gt: {
@@ -69,6 +108,7 @@ export const REGLAGES = {
     repartAvant: 0.64,          // part du freinage sur l'avant
     freinCouple: 5200,          // couple de freinage total maxi (N·m aux roues) — 3400 avant l'arcade
     arcade: true,
+    loi: 'arcade', vmax: 44, accel: 9.5, virage: 1.75, grip: 8, gripMain: 0.9, virageMain: 1.6,
 
     // Aides de conduite — c'est ce qui sépare une voiture qu'on conduit d'un
     // châssis de course qui part en tête-à-queue au premier coup de gaz.
@@ -114,6 +154,7 @@ export const REGLAGES = {
     repartAvant: 0.68,
     freinCouple: 4600,          // 3100 avant l'arcade
     arcade: true,
+    loi: 'arcade', vmax: 38, accel: 8, virage: 1.7, grip: 9,
 
     antipatinage: 0.86,
     stabilite: 3.0,
@@ -158,6 +199,9 @@ export const REGLAGES = {
     adherence: 1.05,
     repartAvant: 0.55,
     freinCouple: 190,
+    // Arcade : 25 km/h, elle tourne court et ne glisse jamais (pas de frein à main).
+    loi: 'arcade', vmax: 6.9, vmaxArriere: 2.5, accel: 3.2, roueLibre: 0.9, freinArcade: 7,
+    virage: 2.3, vitesseVirage: 2.2, reponse: 11, grip: 14, horsRoute: 0.75,
 
     antipatinage: 0.88,
     stabilite: 3.6,
@@ -196,6 +240,9 @@ export const REGLAGES = {
     repartAvant: 0.55,
     freinCouple: 1200,          // 900 avant l'arcade
     arcade: true,
+    // Arcade : 90 km/h, nerveux, tout-terrain (il perd peu hors du bitume).
+    loi: 'arcade', vmax: 25, vmaxArriere: 6, accel: 7.5, freinArcade: 13,
+    virage: 2.1, vitesseVirage: 4.5, reponse: 10, grip: 7, gripMain: 1.3, horsRoute: 0.85,
 
     antipatinage: 0.90,
     stabilite: 3.0,
@@ -209,6 +256,12 @@ export const REGLAGES = {
     roulement: 0.030,
   },
 };
+
+// Les engins arcade reçoivent d'emblée les valeurs qu'ils ne précisent pas :
+// le panneau T les affiche toutes et sait y revenir (« Réinitialiser »).
+for (const r of Object.values(REGLAGES)) {
+  if (r.loi === 'arcade') for (const c in ARCADE_DEFAUT) if (r[c] === undefined) r[c] = ARCADE_DEFAUT[c];
+}
 
 /** Couple moteur (N·m) au régime demandé : plateau large, chute franche au rupteur. */
 function coupleMoteur(r, rpm) {
@@ -244,6 +297,9 @@ function forcePneu(derive, charge, mu) {
 export function creerPhysique(reglage = REGLAGES.gt) {
   const r = reglage;
   const L = r.avant + r.arriere;
+  // Un engin arcade reçoit les valeurs par défaut qu'il ne précise pas : le
+  // panneau T doit pouvoir toutes les afficher.
+  if (r.loi === 'arcade') for (const c in ARCADE_DEFAUT) if (r[c] === undefined) r[c] = ARCADE_DEFAUT[c];
 
   const etat = {
     x: 0, z: 0, yaw: 0,
@@ -317,10 +373,109 @@ export function creerPhysique(reglage = REGLAGES.gt) {
   function pas(dt, cmd, mu = 1) {
     const sous = Math.ceil(dt / PAS_MAX) || 1;
     const h = dt / sous;
-    for (let k = 0; k < sous; k++) integrer(h, cmd, mu);
+    const loi = r.loi === 'arcade' ? integrerArcade : integrer;
+    for (let k = 0; k < sous; k++) loi(h, cmd, mu);
     etat.vitesse = Math.hypot(etat.u, etat.v);
     etat.kmh = Math.round(etat.vitesse * 3.6);
     etat.freinage = (cmd.main || (cmd.frein > 0.05 && etat.u > 0.5)) ? 1 : 0;
+  }
+
+  /**
+   * Un pas de la **loi arcade** (voir `ARCADE_DEFAUT`). Les clés sont relues à
+   * chaque pas : le panneau T les change à chaud.
+   */
+  function integrerArcade(h, cmd, muSol) {
+    const k = (c) => (r[c] !== undefined ? r[c] : ARCADE_DEFAUT[c]);
+    const gazIn = cmd.gaz || 0, freinIn = cmd.frein || 0;
+    const dir = cmd.direction || 0, main = !!cmd.main;
+    const enAir = muSol < 0.2;           // le pilote passe 0,06 quand les roues ne touchent rien
+
+    // ── marche arrière : frein tenu à l'arrêt, gaz tenus pour repartir ────
+    if (Math.abs(etat.u) < 0.6) etat.arret += h; else etat.arret = 0;
+    let gaz = gazIn, frein = freinIn;
+    if (etat.rapport > 0 && freinIn > 0.5 && etat.arret > 0.25) {
+      etat.rapport = -1; etat.arret = 0;
+    } else if (etat.rapport < 0) {
+      gaz = freinIn; frein = gazIn;      // en marche arrière, les pédales s'échangent
+      if (gazIn > 0.5 && etat.arret > 0.2) { etat.rapport = 1; etat.arret = 0; }
+    }
+    const sens = etat.rapport < 0 ? -1 : 1;
+
+    // ── vitesse de pointe selon le sol ────────────────────────────────────
+    // µ vaut 1 sur le bitume, 0,74 dans l'herbe (moyenne des quatre roues).
+    const herbe = Math.min(1, Math.max(0, (1 - muSol) / 0.26));
+    const vmax = (sens > 0 ? k('vmax') : k('vmaxArriere')) * (1 - (1 - k('horsRoute')) * herbe);
+
+    // ── longitudinal, dans le sens de marche ──────────────────────────────
+    let vf = etat.u * sens;
+    let acc = 0;
+    if (vf < 0) {
+      // on roule à rebours du rapport (après un choc) : on revient à zéro
+      vf = Math.min(0, vf + (6 + k('accel') * gaz) * h);
+    } else if (!enAir) {
+      if (gaz > 0.02 && vf < vmax) { const x = vf / vmax; acc += k('accel') * gaz * (1 - x * x); }
+      if (gaz <= 0.02) acc -= k('roueLibre');
+      // au-dessus du plafond (sortie de route, bande de lancement) : on y revient en douceur
+      if (vf > vmax) acc -= Math.min(6, (vf - vmax) * 1.5);
+      if (frein > 0.02) acc -= k('freinArcade') * frein;
+      if (main) acc -= 2.5;
+      vf = Math.max(0, vf + acc * h);
+    }
+    // Garde-fou : quoi qu'il arrive (choc, bande de lancement), jamais plus du
+    // double de la vitesse de pointe.
+    if (vf > 2 * k('vmax')) vf = 2 * k('vmax');
+    etat.u = vf * sens;
+
+    // ── rotation : le volant donne une vitesse de rotation ────────────────
+    const vAbs = Math.abs(etat.u);
+    const bas = Math.min(1, vAbs / k('vitesseVirage'));
+    const haut = 1 - 0.45 * Math.min(1, vAbs / Math.max(1, k('vmax')));
+    // direction positive = à droite ; lacet positif = à gauche (repère Three.js)
+    let vise = enAir ? 0 : -dir * k('virage') * bas * haut * (etat.u < 0 ? -1 : 1);
+    if (main && !enAir) vise *= k('virageMain');
+    etat.lacet += (vise - etat.lacet) * (1 - Math.exp(-k('reponse') * (enAir ? 0.15 : 1) * h));
+
+    // ── accroche : la trajectoire rejoint l'axe de la caisse ──────────────
+    // La caisse a tourné, la vitesse monde non : elle apparaît de côté…
+    {
+      const d = etat.lacet * h, cd = Math.cos(d), sd = Math.sin(d);
+      const u0 = etat.u;
+      etat.u = u0 * cd - etat.v * sd;
+      etat.v = etat.v * cd + u0 * sd;
+    }
+    if (!enAir) {
+      const vitesse = Math.hypot(etat.u, etat.v);
+      const grip = (main ? k('gripMain') : k('grip')) * Math.max(0.6, Math.min(1, muSol));
+      etat.v *= Math.exp(-grip * h);
+      // … et l'accroche la remet dans l'axe **sans la perdre** (un peu, en glisse).
+      const uNet = Math.sqrt(Math.max(0, vitesse * vitesse - etat.v * etat.v)) * (etat.u < 0 ? -1 : 1);
+      etat.u = main ? etat.u + (uNet - etat.u) * 0.6 : uNet;
+    }
+    if (Math.abs(etat.u) < 0.05 && gaz < 0.02) { etat.u = 0; etat.v *= 0.8; etat.lacet *= 0.8; }
+
+    // ── ce que lisent la caisse, le son et la fumée ───────────────────────
+    etat.ax = acc * sens;
+    etat.charge = Math.max(-1.4, Math.min(1.4, -etat.u * etat.lacet / G));
+    etat.glisseAr = Math.atan2(etat.v, Math.max(2.2, vAbs));
+    etat.glisseAv = etat.glisseAr * 0.5;
+    etat.patinage = enAir ? 0 : (main && vAbs > 4 ? 1.3 : (gaz > 0.8 && vf < 3 && vf > 0.2 ? 1.12 : 0));
+    const vitesseBraq = r.braquageMax * (1 - 0.6 * Math.min(1, vAbs / Math.max(1, k('vmax'))));
+    etat.braquage += (dir * vitesseBraq - etat.braquage) * Math.min(1, 10 * h);
+    // Une boîte pour l'oreille : le rapport suit la vitesse, le régime monte dans chaque rapport.
+    const n = r.rapports.length;
+    const x = Math.min(0.999, vAbs / Math.max(1, sens > 0 ? k('vmax') : k('vmaxArriere')));
+    if (sens > 0) { etat.rapport = Math.min(n, 1 + Math.floor(x * n)); etat.cible = etat.rapport; }
+    const dans = n > 1 && sens > 0 ? x * n - (etat.rapport - 1) : x;
+    const plein = r.regimeMax - 400 - r.ralenti;
+    etat.regime = vAbs < 0.3 && gaz < 0.05 ? r.ralenti
+      : r.ralenti + plein * (n > 1 && sens > 0 ? 0.3 + 0.7 * dans : 0.15 + 0.85 * dans) * (gaz > 0.05 ? 1 : 0.8);
+    etat.passage = 0;
+
+    etat.yaw += etat.lacet * h;
+    const s = Math.sin(etat.yaw), c = Math.cos(etat.yaw);
+    etat.x += (-s * etat.u + c * etat.v) * h;
+    etat.z += (-c * etat.u - s * etat.v) * h;
+    etat.rotationRoue += (etat.u / r.rayonRoue) * h;
   }
 
   function integrer(h, cmd, muSol) {

@@ -460,7 +460,7 @@ async function startWorld() {
     if (ligne) ligne.textContent = message;
   };
   const chargeurReleve = { village: ['./poilhes-world.js?v=voiture-20260921', 'buildPoilhesWorld'],
-                           pays: ['./pays-world.js?v=voiture-20260921', 'buildPaysWorld'] }[world.terrainSource];
+                           pays: ['./pays-world.js?v=arcade-20260926b', 'buildPaysWorld'] }[world.terrainSource];
   const built = chargeurReleve
     ? await (await import(chargeurReleve[0]))[chargeurReleve[1]](
         scene, world, releve, { renderer, camera, leger: isMobileDevice })
@@ -529,13 +529,21 @@ async function startWorld() {
   let auto = null;
   const tactileAuto = { x: 0, y: 0, active: false };
   if (mode.type === 'drive') {
-    const { creerPilote, creerAdherence } = await import('./voiture-pilote.js?v=pilote-20260925');
+    const { creerPilote, creerAdherence } = await import('./voiture-pilote.js?v=arcade-20260926b');
     // Les rubans de chaussée du village donnent la grille d'adhérence : du
     // bitume sous les roues, de la terre à côté. Hors monde relevé, on s'en
     // passe et tout le sol se vaut.
     const routes = built.villages
       ? creerAdherence(built.villages)
       : { adherenceAt: () => 0.88, surRoute: null };
+    // Le couloir de la course (26/09/2026) est de la chaussée : hors village,
+    // les données n'ont pas de ruban de route, et la course se roulait sur
+    // l'adhérence de l'herbe.
+    if (built.couloirAt && routes.surRoute) {
+      const { surRoute, adherenceAt } = routes;
+      routes.surRoute = (x, z) => surRoute(x, z) || built.couloirAt(x, z);
+      routes.adherenceAt = (x, z) => (built.couloirAt(x, z) ? 1 : adherenceAt(x, z));
+    }
     auto = creerPilote({
       scene, camera, renderer,
       // Le catalogue dit quel engin : la voiture, ou la trottinette.
@@ -546,6 +554,7 @@ async function startWorld() {
       blockedAt: built.blockedAt || (() => false),
       adherenceAt: routes.adherenceAt,
       surRoute: routes.surRoute,
+      glissiereAt: built.glissiereAt || null,
       bounds: built.bounds,
     });
     player.visible = false;          // la voiture est le corps du joueur ; la silhouette ne sert plus

@@ -9,7 +9,7 @@
  */
 import * as THREE from 'three';
 import { construirePays } from './pays-scene.js?v=voiture-20260921';
-import { construireCourseRoute } from './course-route.js?v=voiture-20260921';
+import { construireCourseRoute } from './course-route.js?v=arcade-20260926b';
 
 // Le pays fait 8 km de côté : le plan lointain du moteur (4 200 m) couperait
 // l'horizon en plein milieu, et le second village disparaîtrait par intermittence.
@@ -75,6 +75,11 @@ export async function buildPaysWorld(scene, world, onProgress, { renderer, camer
     // `scripts/poilhes/route_pays.py`. Absent, la course retombe sur les points
     // du catalogue.
     url: `maps/pays-${world.pays || 'canal'}/route.json`,
+    // Les glissières de la course, seulement dans la campagne (26/09/2026).
+    glissieres: {
+      horsVillage: (x, z) => !decor.villages.some((v) => Math.abs(x - v.x) < v.demi + 4 && Math.abs(z - v.z) < v.demi + 4),
+      ombres: !!(renderer && renderer.shadowMap.enabled),
+    },
   });
 
   return {
@@ -92,6 +97,9 @@ export async function buildPaysWorld(scene, world, onProgress, { renderer, camer
     solAt: (x, z) => decor.walkableAt(x, z),
     blockedAt: (x, z) => decor.blockedAt(x, z),
     villages: decor.villages,
+    // Les glissières de la course et son couloir (compté comme chaussée).
+    glissiereAt: portes.glissieres && portes.glissieres.segments ? portes.glissieres.glissiereAt : null,
+    couloirAt: portes.glissieres ? portes.glissieres.couloirAt : null,
     bounds: decor.bounds - 100,
     tick: (dt) => {
       decor.tick(dt);

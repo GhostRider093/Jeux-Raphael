@@ -18,12 +18,14 @@ import { createJet } from './poilhes-jet.js?v=voiture-20260921';
 // **Une seule version** pour les deux imports de voiture-pilote.js : deux
 // `?v=` différents font deux modules, et le `TOUCHER` réglé par le panneau
 // n'était plus celui que lisait le pilote.
-import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=pilote-20260925';
+import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=arcade-20260926b';
 import { poserEpicerie, poserBlasonClub, EPICERIE } from './poilhes-commerces.js?v=voiture-20260921';
 import { poserMairie } from './poilhes-mairie.js?v=mairie-20260926';
+import { poserEnseignes } from './poilhes-enseignes.js?v=enseignes-20260926c';
+import { creerSurvols } from './survol-rafale.js?v=survol-20260926';
 import { construireTrottinette } from './trottinette.js?v=pilote-20260922';
 import { creerGlissieres } from './glissieres.js?v=pilote-20260925';
-import { monterPanneau as monterReglages, appliquerMemorise } from './reglages.js?v=pilote-20260925';
+import { monterPanneau as monterReglages, appliquerMemorise } from './reglages.js?v=arcade-20260926b';
 
 const BASE = 'maps/poilhes/';
 const EYE = 1.68;              // hauteur des yeux du promeneur (m)
@@ -96,7 +98,7 @@ function sunDirection(lat, lon, date, hours, out) {
  *   elle-même (`loader.classList.add('done')`), par exemple après une mesure.
  * @returns {Promise<object>} ce qui est aussi exposé dans `window.RaphaelPoilhes`
  */
-export async function startVillage({ modes = null, qualite = null, voitureUnique = null, ouvrir = true } = {}) {
+export async function startVillage({ modes = null, qualite = null, voitureUnique = null, ouvrir = true, survols = false } = {}) {
   const veut = (m) => !modes || modes.includes(m);
   const setProgress = (f, msg) => {
     $('load-bar').style.width = `${Math.round(f * 100)}%`;
@@ -193,6 +195,14 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   // La mairie : tour de l'horloge, entrée, drapeaux et la place avec sa fontaine
   // (26/09/2026). Posée sur la façade trouvée au rayon, comme l'épicerie.
   try { poserMairie({ scene, decor }); } catch (err) { console.warn('Mairie :', err); }
+  // Les enseignes des commerces (26/09/2026) : bandeau sur la façade et
+  // enseigne drapeau, pour que les boutiques ressortent dans la rue.
+  try { poserEnseignes({ scene, decor }); } catch (err) { console.warn('Enseignes :', err); }
+  // Un Rafale passe de temps en temps au-dessus du village (Poilhes City).
+  let survol = null;
+  if (survols) {
+    try { survol = creerSurvols({ scene, camera, solAt: (x, z) => decor.groundAt(x, z) }); } catch (err) { console.warn('Survol :', err); }
+  }
   // La trottinette et son pilote, garées devant l'épicerie. Le groupe de la
   // devanture donne l'orientation : on se range le long de la façade, pas en
   // travers de la rue.
@@ -277,7 +287,15 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   function routesEtGlissieres() {
     if (!routes) {
       routes = creerAdherence([{ decor }]);
-      glissieres = creerGlissieres({ decor, surRoute: routes.surRoute, blockedAt, ombres: renderer.shadowMap.enabled });
+      // **Plus de glissières dans les villages** (Arnaud, 26/09/2026 : « on
+      // enlève toutes les barrières des routes, finalement c'est pas du tout
+      // une bonne idée ; on les laisse que sur la route entre Poilhes et
+      // Capestang, où il y a la course »). Celles de la course sont posées par
+      // `course-route.js`. Remettre `VILLAGE_GLISSIERES = true` pour les revoir.
+      const VILLAGE_GLISSIERES = false;
+      glissieres = VILLAGE_GLISSIERES
+        ? creerGlissieres({ decor, surRoute: routes.surRoute, blockedAt, ombres: renderer.shadowMap.enabled })
+        : { segments: 0 };
       if (glissieres.segments) {
         decor.root.add(glissieres.root);
         console.info(`[village] glissières : ${glissieres.segments} lames, ${glissieres.poteaux} poteaux, ${glissieres.longueur} m`);
@@ -1205,6 +1223,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     get trottinette() { return deuxRoues; },
     get quad() { return quad; },
     get mode() { return mode; },
+    get survol() { return survol; },
   };
   return window.RaphaelPoilhes;
 }

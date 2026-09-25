@@ -312,6 +312,10 @@
     <button data-mode="voiture" title="Berline bleue : traction, 380 N·m, elle pardonne">Berline</button>
     <button data-mode="quad" title="Quad rouge et noir : quatre roues, il saute, tout éclairé">Quad</button>
   </div>
+  <div class="row" id="row-boucle" hidden>
+    <button id="btn-boucle" title="La boucle du village : départ à l'entrée, le gros pont, un tour chronométré">🏁 Course · 1 tour</button>
+    <button id="btn-classement" title="Les dix meilleurs temps de la boucle">🏆 <span id="record">Classement</span></button>
+  </div>
   <div class="row" id="choix-auto" hidden>
     <button data-auto="rouge" title="GT rouge">GT rouge</button>
     <button data-auto="bleue" class="on" title="Berline bleue">Berline bleue</button>
@@ -473,8 +477,9 @@
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
 <script type="module">
-import { startVillage } from './maps/poilhes-village.js?v=pilote-20260925';
+import { startVillage } from './maps/poilhes-village.js?v=arcade-20260926g';
 import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
+import { creerCourseBoucle } from './maps/course-boucle.js?v=arcade-20260926d';
 
 const $ = (id) => document.getElementById(id);
 const hud = $('hud');
@@ -725,8 +730,20 @@ function lancer(engin) {
     qualite: NIVEAUX[memorise || 'eleve'],
     voitureUnique: 'bleue',
     ouvrir: false,
+    survols: true,                    // un Rafale passe de temps en temps (26/09/2026)
   }).then(async (jeu) => {
     window.jeu = jeu;                 // poignée de console et de test
+    // La boucle du village (26/09/2026) : seulement si le village en a une.
+    creerCourseBoucle({ jeu, village }).then((course) => {
+      if (!course) return;
+      window.courseBoucle = course;
+      $('row-boucle').hidden = false;
+      $('btn-boucle').addEventListener('click', (e) => { e.currentTarget.blur(); course.demarrer(); });
+      $('btn-classement').addEventListener('click', (e) => { e.currentTarget.blur(); course.montrerClassement(); });
+      const majRecord = () => { const r = course.record(); $('record').textContent = r ? `Record ${r.texte}` : 'Classement'; };
+      course.onChange = majRecord;
+      majRecord();
+    });
     appliquer(jeu, NIVEAUX[memorise || 'eleve']);
     const panneau = monterPanneau({ racine: $('qualite'), jeu, initial: memorise || 'eleve' });
     if (!memorise) {

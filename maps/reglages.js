@@ -18,13 +18,29 @@
  * Le même banc tourne en ligne de commande : `node scripts/banc-voiture.mjs gt`.
  * Ce fichier ne touche au DOM que dans `monterPanneau`.
  */
-import { creerPhysique, REGLAGES } from './voiture-physique.js?v=pilote-20260925';
+import { creerPhysique, REGLAGES } from './voiture-physique.js?v=arcade-20260926b';
 
 // ─────────────────────────────────────────────── le schéma
 const P = (cle, nom, unite, min, max, pas, aide) => ({ cle, nom, unite, min, max, pas, aide });
 
 /** Paramètres de la physique, communs aux trois engins. */
 export const SCHEMA_PHYSIQUE = [
+  // La loi arcade (26/09/2026) : ce groupe suffit à régler un engin en `loi: 'arcade'` ;
+  // les groupes suivants ne servent plus qu'au modèle de pneus (et au son pour le moteur).
+  { groupe: 'Arcade', params: [
+    P('vmax', 'Vitesse de pointe', 'm/s', 3, 70, 0.5, 'Sur le bitume. 38 m/s = 137 km/h.'),
+    P('accel', 'Accélération', 'm/s²', 1, 20, 0.1, 'Au départ ; elle s’essouffle en approchant de la pointe.'),
+    P('freinArcade', 'Freinage', 'm/s²', 2, 30, 0.5, 'Freinage franc et droit.'),
+    P('roueLibre', 'Roue libre', 'm/s²', 0, 6, 0.1, 'Ralentissement pied levé.'),
+    P('vmaxArriere', 'Pointe en arrière', 'm/s', 1, 20, 0.5, 'Frein tenu à l’arrêt = marche arrière.'),
+    P('virage', 'Rotation', 'rad/s', 0.3, 4, 0.05, 'Vitesse de rotation volant à fond. Plus haut : tourne plus court.'),
+    P('vitesseVirage', 'Rotation pleine dès', 'm/s', 0.5, 20, 0.1, 'En dessous, la rotation se réduit : on ne pivote pas sur place.'),
+    P('reponse', 'Réponse', '1/s', 1, 25, 0.5, 'Vitesse à laquelle la rotation suit le volant. Haut : direct ; bas : doux.'),
+    P('grip', 'Accroche', '1/s', 0.5, 25, 0.1, 'Vitesse à laquelle la trajectoire rejoint l’axe de la caisse. Bas : ça glisse.'),
+    P('gripMain', 'Accroche au frein à main', '1/s', 0.1, 10, 0.1, 'Plus bas : plus de glisse.'),
+    P('virageMain', 'Rotation au frein à main', '×', 1, 3, 0.05, 'Multiplie la rotation quand on tire le frein à main.'),
+    P('horsRoute', 'Pointe dans l’herbe', '×', 0.2, 1, 0.01, 'Part de la vitesse de pointe gardée hors du bitume.'),
+  ] },
   { groupe: 'Moteur', params: [
     P('couple', 'Couple maxi', 'N·m', 5, 900, 1, 'La poussée du moteur à son meilleur régime. Tout part de là.'),
     P('regimeCouple', 'Régime du couple', 'tr/min', 500, 9000, 50, 'Où le couple culmine ; au-dessus et en dessous, il retombe.'),
@@ -189,7 +205,9 @@ export function lignesBanc(m) {
 }
 
 // ─────────────────────────────────────────────── mémoire et échange
-const CLE = (nom) => `nova.reglages.${nom.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+// `v2` : les réglages mémorisés avant la loi arcade (26/09/2026) visaient le
+// modèle de pneus ; on ne les réapplique pas par-dessus.
+const CLE = (nom) => `nova.reglages.v2.${nom.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
 export function lireMemorise(nom) {
   try { const v = localStorage.getItem(CLE(nom)); return v ? JSON.parse(v) : null; } catch { return null; }

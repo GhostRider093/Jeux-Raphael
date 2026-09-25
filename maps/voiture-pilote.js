@@ -41,7 +41,7 @@
  */
 import * as THREE from 'three';
 import { construireVoiture, ECHELLE } from './voiture-model.js?v=pilote-20260925';
-import { creerPhysique, REGLAGES } from './voiture-physique.js?v=pilote-20260925';
+import { creerPhysique, REGLAGES } from './voiture-physique.js?v=arcade-20260926b';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
 import { construireEnginQuad } from './quad.js?v=pilote-20260925';
 
@@ -59,8 +59,11 @@ const GRAVITE = 9.81;
 // Objet exporté et **lu à chaque image** : l'outil de réglage (`maps/reglages.js`,
 // touche T) le modifie à chaud. Les valeurs ci-dessous sont celles du fichier.
 export const TOUCHER = {
-  monteeArret: 1.9, monteeLancee: 3.4,
-  expoArret: 2.3, expoLancee: 1.55,
+  // 26/09/2026, loi arcade : le volant donne directement une vitesse de
+  // rotation, il peut donc répondre plus vite et plus droit (1,9 / 3,4 et
+  // 2,3 / 1,55 avant, du temps du modèle de pneus).
+  monteeArret: 4.0, monteeLancee: 4.5,
+  expoArret: 1.6, expoLancee: 1.35,
   vitessePleine: 26,               // m/s (≈ 95 km/h) : au-delà, le toucher ne change plus
   retourVolant: 9.0,
 };
@@ -1223,14 +1226,22 @@ export function creerPilote({
       const vt = vx * tx0 + vz * tz0;
       const sens = vt >= 0 ? 1 : -1;
       const tx = tx0 * sens, tz = tz0 * sens;
-      const vitesse = Math.abs(vt) * (douce ? 0.995 : 0.97) + (-vn) * rail;
+      // Jamais plus vite qu'avant le choc (26/09/2026) : la loi arcade ne perd
+      // rien en virage, elle ramenait la caisse contre la lame à chaque image,
+      // et chaque contact ajoutait `rail` fois la vitesse d'impact — mesuré,
+      // 114 km/h devenaient 2 000 km/h en une demi-seconde.
+      const vitesse = Math.min(Math.hypot(vx, vz),
+        Math.abs(vt) * (douce ? 0.995 : 0.97) + (-vn) * rail);
       const fx = tx * vitesse, fz = tz * vitesse;
       etat.u = -(fx * s + fz * c);
       etat.v = fx * c - fz * s;
       etat.lacet *= douce ? 0.85 : 0.55;
       // La caisse se réaligne sur la rue : un petit pas de cap vers le mur,
       // dans le sens où l'on roule. Pas à l'arrêt, une voiture garée ne pivote pas.
-      if (Math.abs(etat.u) > 1.5) {
+      // En loi arcade, jamais (26/09/2026, Arnaud : « à pleine vitesse elle
+      // tourne toute seule, on sait pas pourquoi ») : frôler une façade faisait
+      // pivoter la caisse d'office. On glisse le long du mur, cap inchangé.
+      if (Math.abs(etat.u) > 1.5 && reglage.loi !== 'arcade') {
         const capMur = Math.atan2(-tx, -tz);
         let ecart = capMur - etat.yaw;
         ecart = Math.atan2(Math.sin(ecart), Math.cos(ecart));
@@ -1411,9 +1422,14 @@ export function creerPilote({
     state.horsRoute = horsRoute;
     // Assistance : l'herbe tient moins mal — deux roues dans le bas-côté
     // tirent encore, mais ne retournent plus la voiture.
-    if (state.assistance) mu = 1 - (1 - mu) * (1 - state.reglagesAssistance.herbe);
+    // En loi arcade (26/09/2026), ni l'un ni l'autre : l'herbe ralentit
+    // franchement (c'est ce qui dit « tu sors de la route »), et personne ne
+    // tourne le volant à la place du joueur — c'était l'une des aides qui
+    // rendaient la conduite incompréhensible.
+    const arcade = reglage.loi === 'arcade';
+    if (state.assistance && !arcade) mu = 1 - (1 - mu) * (1 - state.reglagesAssistance.herbe);
     // Le rappel vers la route tourne le volant : il passe avant la physique.
-    rappelRoute(dt);
+    if (!arcade) rappelRoute(dt);
     // En l'air, les roues ne tiennent rien : on ne pilote pas un avion.
     pas(dt, cmd, state.enLair ? 0.06 : mu);
     collisions(dt);
