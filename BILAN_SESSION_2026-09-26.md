@@ -146,3 +146,16 @@ Tous sont du décor (on passe au travers).
   playlist (10 « Soul Run », ordre au hasard) dans les Mondes (chasseur, berline, trottinette — donc la course
   Poilhes–Capestang) et la visite de Poilhes (`poilhes.html`), avec un bouton ♪ ; préférence partagée avec Poilhes
   City (`poilhes-city-musique`). Poilhes City : l'hélico a aussi droit à la playlist. Vérifié : lecture au premier clic.
+
+## Suite — le multijoueur en ligne (local, pas encore sur le serveur)
+
+- Serveur : `multiplayer/village.py` (branché dans `app.py`) — `WS /api/village/ws/{village}?pseudo=…`, salons de
+  8 (poilhes, capestang, puis « -2 »…), relais des états 12×/s, départ commun (dans 4 s), résultats diffusés ;
+  `GET/POST /api/village/classement/{village}` (meilleur temps par pseudo, `config/race-leaderboards/boucle-*.json`).
+- Jeu : `maps/multijoueur.js` — bouton 🌐 En ligne (seulement si `/api/health` répond), pseudo, panneau du salon,
+  avatars avec le vrai engin (berline bleue, quad, trottinette, gunship) + pseudo, positions lissées ; 🏁 en ligne =
+  départ pour tout le salon ; arrivée annoncée (`course.onArrivee`). Le 🏆 affiche aussi le **classement en ligne**.
+- Vérifié : deux faux joueurs WebSocket (salon, états, départ, résultats, départ d'un joueur), puis deux navigateurs
+  Chrome sur un serveur de test local (port 8011) : chacun voit l'autre, départ commun, résultats identiques.
+- **Reste** : faire tourner le serveur Python sur le VPS 212 et router `/api/` (WebSocket compris) — aujourd'hui le
+  site est statique (nginx:alpine). À faire avec l'accord d'Arnaud.

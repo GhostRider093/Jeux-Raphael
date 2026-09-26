@@ -14,6 +14,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel
 
 from multiplayer.routes import router as multiplayer_router
+from multiplayer.village import router as village_router
 
 ROOT = Path(__file__).resolve().parent
 PROFILE_DIR = ROOT / "config" / "gamepad-profiles"
@@ -43,6 +44,7 @@ failed_attempts: dict[str, list[float]] = {}
 
 app = FastAPI(title="Nova Flight Service", version="2.0.0")
 app.include_router(multiplayer_router)
+app.include_router(village_router)   # le salon de village, Poilhes City (26/09/2026)
 
 
 class ClaimBody(BaseModel):

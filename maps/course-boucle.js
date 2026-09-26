@@ -126,7 +126,25 @@ export async function creerCourseBoucle({ jeu, village }) {
   const fin = document.createElement('div'); fin.id = 'boucle-fin'; document.body.appendChild(fin);
 
   // ── l'état de la course ─────────────────────────────────────────────────
-  let onChange = null;
+  let onChange = null, onArrivee = null;
+  // Le classement **partagé** (serveur, `multiplayer/village.py`) : s'il répond,
+  // il s'affiche sous le classement de ce navigateur ; sinon, rien ne change.
+  const API = `/api/village/classement/${village}`;
+  async function enLigne(action = null) {
+    try {
+      const r = await fetch(API, action ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(action) } : { cache: 'no-store' });
+      if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) return null;
+      return await r.json();
+    } catch { return null; }
+  }
+  function peindreEnLigne(reponse, pseudo = null) {
+    const el = fin.querySelector('#boucle-enligne');
+    if (!el || !reponse) return;
+    const e = reponse.entrees || [];
+    el.innerHTML = '<div style="margin-top:8px;font-weight:700">🌍 Classement en ligne</div>' + (e.length
+      ? `<table>${e.slice(0, 10).map((r, i) => `<tr class="${pseudo && r.pseudo === pseudo ? 'moi' : ''}"><td>${i + 1}.</td><td>${r.pseudo}</td><td>${r.engin || ''}</td><td class="t"><b>${chrono(r.temps)}</b></td></tr>`).join('')}</table>`
+      : '<p>Personne encore : à toi !</p>');
+  }
   const course = { actif: false, phase: null, t: 0, decompte: 0, tour: 1, passage: 0, tours: [], debutTour: 0, engin: null };
 
   function piloteCourant() {
@@ -185,9 +203,10 @@ export async function creerCourseBoucle({ jeu, village }) {
   function montrerClassement() {
     if (course.actif) return;
     fin.innerHTML = `<h2>🏆 Classement</h2><div>Boucle de ${village.charAt(0).toUpperCase() + village.slice(1)} · ${(data.longueur / 1000).toFixed(1).replace('.', ',')} km × ${TOURS} tour${TOURS > 1 ? 's' : ''}</div>`
-      + tableau(null)
+      + tableau(null) + '<div id="boucle-enligne"></div>'
       + `<button class="go" id="boucle-courir">Courir</button><button id="boucle-fermer">Fermer</button>`;
     fin.style.display = 'block';
+    enLigne().then((r) => peindreEnLigne(r));
     fin.querySelector('#boucle-courir').onclick = () => demarrer();
     fin.querySelector('#boucle-fermer').onclick = () => { fin.style.display = 'none'; };
   }
@@ -228,9 +247,10 @@ export async function creerCourseBoucle({ jeu, village }) {
       + `<div>${course.tours.map((t, i) => `Tour ${i + 1} : ${chrono(t)}`).join(' · ')} — ${nomEngin}</div>`
       + `<div style="margin-top:10px"><input id="boucle-nom" maxlength="16" placeholder="Ton nom" value="${lireNom().replace(/"/g, '')}">`
       + `<button class="go" id="boucle-enr">Enregistrer</button></div><div id="boucle-rang" style="font-weight:700;margin-top:6px"></div>`
-      + `<div id="boucle-table"></div>`
+      + `<div id="boucle-table"></div><div id="boucle-enligne"></div>`
       + `<button class="go" id="boucle-rejouer">Rejouer</button><button id="boucle-fermer">Fermer</button>`;
     fin.style.display = 'block';
+    if (onArrivee) onArrivee(Math.round(temps * 10) / 10, course.engin);    // le salon en ligne, s'il y en a un
     const montrer = (moi) => { fin.querySelector('#boucle-table').innerHTML = tableau(moi); };
     montrer(null);
     let enregistre = false;
@@ -249,6 +269,7 @@ export async function creerCourseBoucle({ jeu, village }) {
       const rang = lireClassement(village).findIndex((r) => r.date === moi.date);
       fin.querySelector('#boucle-rang').textContent = rang < 0 ? 'Hors du top 10' : rang === 0 ? '🥇 Nouveau record !' : `${rang + 1}ᵉ place`;
       if (onChange) onChange();
+      enLigne({ pseudo: nom, temps: moi.temps, engin: nomEngin }).then((r) => peindreEnLigne(r, nom));
     };
     fin.querySelector('#boucle-enr').onclick = enregistrer;
     fin.querySelector('#boucle-nom').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') enregistrer(); });
@@ -338,6 +359,8 @@ export async function creerCourseBoucle({ jeu, village }) {
     record: () => { const r = lireClassement(village)[0]; return r ? { ...r, texte: chrono(r.temps) } : null; },
     /** Appelé quand un temps entre au classement. */
     set onChange(f) { onChange = f; },
+    /** Appelé à l'arrivée avec (temps, engin) — le multijoueur l'annonce au salon. */
+    set onArrivee(f) { onArrivee = f; },
     get actif() { return course.actif; },
     longueur: data.longueur, tours: TOURS,
     classement: () => lireClassement(village),

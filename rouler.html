@@ -317,6 +317,7 @@
     <button id="btn-boucle" title="La boucle du village : départ à l'entrée, le gros pont, un tour chronométré">🏁 Course · 1 tour</button>
     <button id="btn-classement" title="Les dix meilleurs temps de la boucle">🏆 <span id="record">Classement</span></button>
     <button id="btn-volant" title="Régler ton volant (Thrustmaster T150…)">🎮 Volant</button>
+    <button id="btn-enligne" hidden title="Jouer en ligne avec d'autres (salon du village)">🌐 En ligne</button>
   </div>
   <div class="row" id="choix-auto" hidden>
     <button data-auto="rouge" title="GT rouge">GT rouge</button>
@@ -481,7 +482,8 @@
 <script type="module">
 import { startVillage } from './maps/poilhes-village.js?v=helico-20260926c';
 import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
-import { creerCourseBoucle } from './maps/course-boucle.js?v=arcade-20260926p';
+import { creerCourseBoucle } from './maps/course-boucle.js?v=multi-20260926';
+import { creerMultijoueur } from './maps/multijoueur.js?v=multi-20260926';
 import { poserFigurants } from './maps/poilhes-figurants.js?v=figurants-20260926h';
 import { volant } from './maps/volant.js?v=volant-20260926g';
 window.volant = volant;
@@ -753,7 +755,19 @@ function lancer(engin) {
       if (!course) return;
       window.courseBoucle = course;
       $('row-boucle').hidden = false;
-      $('btn-boucle').addEventListener('click', (e) => { e.currentTarget.blur(); course.demarrer(); });
+      // Le multijoueur (26/09/2026) : seulement si le serveur de jeu répond.
+      creerMultijoueur({ jeu, village, course }).then((multi) => {
+        if (!multi) return;
+        window.multi = multi;
+        $('btn-enligne').hidden = false;
+        $('btn-enligne').addEventListener('click', (e) => {
+          e.currentTarget.blur();
+          if (multi.connecte) { multi.sortir(); e.currentTarget.textContent = '🌐 En ligne'; }
+          else { multi.entrer(); e.currentTarget.textContent = '🌐 Quitter'; }
+        });
+      });
+      // En ligne, 🏁 donne le départ à tout le salon ; seul, il part tout de suite.
+      $('btn-boucle').addEventListener('click', (e) => { e.currentTarget.blur(); if (window.multi && window.multi.connecte) window.multi.demanderDepart(); else course.demarrer(); });
       $('btn-classement').addEventListener('click', (e) => { e.currentTarget.blur(); course.montrerClassement(); });
       const majRecord = () => { const r = course.record(); $('record').textContent = r ? `Record ${r.texte}` : 'Classement'; };
       course.onChange = majRecord;
