@@ -188,6 +188,26 @@
   #accueil .engin .go { position: absolute; right: 14px; bottom: 14px; z-index: 2; width: 42px; height: 42px; border-radius: 50%;
                         background: var(--accent); color: #1b1600; display: grid; place-items: center; font-size: 20px; font-weight: 900;
                         box-shadow: 0 8px 20px rgba(0,0,0,.45); opacity: .92; }
+  /* ── Deuxième étape (Arnaud, 27/09/2026 : « quand on choisit berline bleue,
+     on choisit course ou mode libre ») : la carte cliquée cède la place à
+     ce choix ; « Retour » ramène aux trois engins. */
+  #accueil .modes { display: grid; gap: 14px; justify-items: center; width: min(760px, calc(100vw - 32px)); margin-top: 6px; }
+  #accueil .engins[hidden], #accueil .modes[hidden] { display: none; }
+  #accueil .modes .question { margin: 0; font-size: clamp(20px, 2.2vw, 26px); font-weight: 800; text-align: center;
+                              text-shadow: 0 2px 8px rgba(0,0,0,.7); }
+  #accueil .modes .question small { display: block; color: var(--accent); font-size: 12px; text-transform: uppercase;
+                                    letter-spacing: 1px; font-weight: 700; margin-bottom: 4px; }
+  #accueil .modes .choix-modes { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; width: 100%; }
+  #accueil .mode { flex: 1 1 200px; max-width: 240px; display: grid; gap: 6px; justify-items: center; padding: 20px 16px 18px;
+                   border-radius: 18px; border: 2px solid rgba(255,255,255,.14); background: rgba(14,18,26,.82); color: #fff;
+                   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 18px 40px rgba(0,0,0,.5);
+                   cursor: pointer; font: inherit; text-align: center; transition: transform .25s ease, border-color .25s ease; }
+  #accueil .mode[hidden] { display: none; }
+  #accueil .mode .ico { font-size: 34px; line-height: 1; }
+  #accueil .mode .nom { font-size: 20px; font-weight: 800; }
+  #accueil .mode .detail { color: #d9dfe8; font-size: 13px; line-height: 1.35; }
+  #accueil .mode:hover, #accueil .mode:focus-visible { transform: translateY(-5px); border-color: var(--accent); outline: none; }
+  #accueil .modes .retour { background: rgba(14,18,26,.72); border-color: var(--line); color: var(--dim); padding: 8px 18px; border-radius: 12px; }
   @media (max-width: 900px) {
     #accueil .engins { grid-template-columns: 1fr; width: min(520px, calc(100vw - 32px)); }
     #accueil .engin { aspect-ratio: 16 / 9; }
@@ -465,6 +485,24 @@
         <span class="go">›</span>
       </button>
     </div>
+    <div class="modes" id="modes" hidden>
+      <p class="question"><small id="modes-engin">Berline bleue</small>Course ou mode libre ?</p>
+      <div class="choix-modes">
+        <button class="mode" type="button" data-mode-jeu="libre">
+          <span class="ico">🧭</span><span class="nom">Mode libre</span>
+          <span class="detail">Le village pour toi, sans chrono</span>
+        </button>
+        <button class="mode" type="button" data-mode-jeu="0">
+          <span class="ico">🏁</span><span class="nom">Course 1</span>
+          <span class="detail" data-detail-course="0">Un tour chronométré, départ derrière la ligne</span>
+        </button>
+        <button class="mode" type="button" data-mode-jeu="1">
+          <span class="ico">🏁</span><span class="nom">Course 2</span>
+          <span class="detail" data-detail-course="1">La deuxième boucle du village</span>
+        </button>
+      </div>
+      <button class="retour" type="button" id="modes-retour">‹ Changer d’engin</button>
+    </div>
     <button id="btn-rouler" type="button">Rouler</button>
     <p class="resume" id="resume-choix"></p>
     <p class="aide">Flèches ou <b>ZQSD</b> · <b>Espace</b> saute · en l’air <b>F</b> looping, <b>G</b> 360 · <b>P</b> au skatepark · <b>V</b> caméra</p>
@@ -508,7 +546,12 @@ const choix = {
   village,
   engin: params.get('engin') === 'berline' ? 'voiture' : params.get('engin') === 'quad' ? 'quad' : 'trottinette',
   qualite: lireChoix() || 'auto',
+  // 'libre', ou l'indice de la course (0, 1) : on part directement sur la ligne
+  jeu: /^[01]$/.test(params.get('course') || '') ? params.get('course') : 'libre',
 };
+// Les courses de chaque village (fichiers maps/<village>/boucle*.json) :
+// Poilhes n'en a qu'une, Capestang deux (26/09/2026).
+const NB_COURSES = { poilhes: 1, capestang: 2 };
 const LIBELLES = {
   village: { poilhes: 'Poilhes', capestang: 'Capestang' },
   engin: { trottinette: 'Trottinette', voiture: 'Berline bleue', quad: 'Quad' },
@@ -701,26 +744,48 @@ if (!accueil.hidden && params.get('go') !== '1') {
 }
 
 // Les trois cartes : on choisit l'engin et on part dans la foulée.
+// Cliquer une carte ouvre la deuxième étape : course ou mode libre.
+function montrerModes(ouvert) {
+  $('engins').hidden = ouvert;
+  $('modes').hidden = !ouvert;
+  if (!ouvert) return;
+  $('modes-engin').textContent = `${LIBELLES.engin[choix.engin]} · ${LIBELLES.village[choix.village] || choix.village}`;
+  const nb = NB_COURSES[choix.village] || 0;
+  accueil.querySelectorAll('[data-mode-jeu]').forEach((m) => {
+    if (m.dataset.modeJeu !== 'libre') m.hidden = +m.dataset.modeJeu >= nb;
+  });
+  accueil.querySelector('[data-mode-jeu="libre"]').focus();
+}
 accueil.querySelectorAll('.engin').forEach((b) => b.addEventListener('click', (e) => {
   e.stopPropagation();
   choix.engin = b.dataset.engin;
   peindreChoix();
+  montrerModes(true);
+}));
+accueil.querySelectorAll('[data-mode-jeu]').forEach((m) => m.addEventListener('click', (e) => {
+  e.stopPropagation();
+  choix.jeu = m.dataset.modeJeu;
   $('btn-rouler').click();
 }));
+$('modes-retour').addEventListener('click', (e) => { e.stopPropagation(); montrerModes(false); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('modes').hidden && menuAccueil.hidden && !accueil.hidden) montrerModes(false);
+});
 $('btn-rouler').addEventListener('click', () => {
   // La playlist continue, en trottinette comme en berline.
   if (choix.qualite === 'auto') oublierChoix(); else enregistrerChoix(choix.qualite);
   // Un autre village, c'est un autre paquet de données : on recharge la page
   // dessus, en sautant l'accueil (?go=1) puisque le choix est fait.
   if (choix.village !== village) {
-    location.href = `rouler.html?village=${choix.village}&engin=${choix.engin === 'voiture' ? 'berline' : choix.engin}&go=1`;
+    const course = choix.jeu === 'libre' ? '' : `&course=${choix.jeu}`;
+    location.href = `rouler.html?village=${choix.village}&engin=${choix.engin === 'voiture' ? 'berline' : choix.engin}${course}&go=1`;
     return;
   }
   accueil.classList.add('parti');
   setTimeout(() => { accueil.hidden = true; }, 750);
-  lancer(choix.engin);
+  lancer(choix.engin, choix.jeu);
 });
-if (params.get('go') === '1') { accueil.hidden = true; lancer(choix.engin); }
+if (params.get('go') === '1') { accueil.hidden = true; lancer(choix.engin, choix.jeu); }
 
 // ─────────────────────────────── le jeu
 // Points de départ par engin et par village (repère du jeu, cap en radians,
@@ -738,7 +803,7 @@ const DEPARTS = {
     voiture: { x: -41.12, z: 209.43, cap: -0.6575 },
   },
 };
-function lancer(engin) {
+function lancer(engin, modeJeu = 'libre') {
   // Premier lancement (ou « Auto ») : rien de mémorisé. On charge en Élevé, on
   // mesure, on conseille — et le conseil s'applique, une fois. Ensuite le joueur décide.
   const memorise = lireChoix();
@@ -757,7 +822,7 @@ function lancer(engin) {
     // La boucle du village (26/09/2026) : seulement si le village en a une.
     // Les courses du village : la boucle, et une 2e si le village en a une
     // (Capestang, 26/09/2026). Une seule est affichée à la fois.
-    Promise.all([
+    const coursesPretes = Promise.all([
       creerCourseBoucle({ jeu, village, titre: 'Course 1' }),
       creerCourseBoucle({ jeu, village, fichier: 'boucle-2.json', piste: `${village}-2`, titre: 'Course 2', visible: false }),
     ]).then(([course1, course2]) => {
@@ -796,6 +861,12 @@ function lancer(engin) {
       function majRecord() { const r = course.record(); $('record').textContent = r ? `Record ${r.texte}` : 'Classement'; }
       courses.forEach((c) => { c.onChange = majRecord; });
       majRecord();
+      // Pour le départ choisi à l'accueil : la course n°i (la 1re si absente).
+      return (i) => {
+        const b = document.querySelector(`[data-piste="${i}"]`);
+        if (courses[i] && b && !$('row-pistes').hidden) b.click();
+        course.demarrer();
+      };
     });
     appliquer(jeu, NIVEAUX[memorise || 'eleve']);
     const panneau = monterPanneau({ racine: $('qualite'), jeu, initial: memorise || 'eleve' });
@@ -815,6 +886,9 @@ function lancer(engin) {
       // track du stade, la berline à l'entrée du village, le quad de l'autre côté.
       const d = (DEPARTS[village] || {})[engin];
       const pilote = engin === 'voiture' ? jeu.voiture : engin === 'quad' ? jeu.quad : jeu.trottinette;
+      // Course choisie à l'accueil : on file derrière la ligne, décompte lancé
+      // (quel que soit l'engin, même sans point de départ propre au village).
+      if (modeJeu !== 'libre') coursesPretes.then((partir) => { if (partir) partir(+modeJeu); });
       if (!d || !pilote) return;
       if (d === 'parc') { if (jeu.decor && jeu.decor.parc) { const p = jeu.decor.parc.depart; pilote.placer(p.x, p.z, p.cap); } }
       else {
