@@ -18,19 +18,20 @@ paire par le plus court chemin (Dijkstra). Sortie : `maps/<village>/boucle.json`
 import heapq
 import json
 import math
+import os
 import pathlib
 
 import numpy as np
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent.parent
-VILLAGE = "poilhes"
+VILLAGE = os.environ.get("VILLAGE", "poilhes").strip().lower()   # VILLAGE=capestang py …
 DOSSIER = RACINE / "maps" / VILLAGE
 
 # Les étapes, dans l'ordre (repère Three.js du village : x à l'est, z au sud).
 # 26/09/2026, 2e version : la 1re passait par des ruelles de 2 à 3 m (« un truc
 # très très serré ») ; celle-ci ne prend que les rues larges (voir `LARGEUR`) et
 # repasse le gros pont au retour — le pont du centre fait 3 m.
-ETAPES = [
+ETAPES_POILHES = [
     (-249.4, -6.4),     # l'entrée du village (départ de la berline, avenue de Capestang)
     (-151.0, 83.0),     # le gros pont du canal, rive ouest…
     (-129.0, 103.0),    # … rive est
@@ -41,6 +42,18 @@ ETAPES = [
     (-129.0, 103.0),    # le gros pont, dans l'autre sens
     (-151.0, 83.0),
 ]
+# Capestang (26/09/2026, « les mêmes lignes, les mêmes croix ») : les grandes
+# artères seulement — l'avenue en diagonale, une traversée du centre vers l'est,
+# le boulevard du sud, et retour par l'avenue.
+ETAPES_CAPESTANG = [
+    (-46.0, 206.0),     # le départ, sur l'avenue en diagonale
+    (140.0, -35.0),     # on la remonte vers le nord-est
+    (293.0, -24.0),     # la rue du centre, vers l'est
+    (337.0, 304.0),     # on descend jusqu'au boulevard
+    (53.0, 299.0),      # le boulevard vers l'ouest
+    (-106.0, 293.0),    # le carrefour de l'avenue
+]
+ETAPES = {"poilhes": ETAPES_POILHES, "capestang": ETAPES_CAPESTANG}[VILLAGE]
 # Coût d'un mètre selon la largeur de la chaussée : une ruelle de 3 m n'est
 # prise que si elle évite un très long détour.
 def cout_largeur(w):

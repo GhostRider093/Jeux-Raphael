@@ -603,7 +603,7 @@ export const WORLD_MAPS = [
     layout: 'village', population: { trees: 0, rocks: 0, buildings: 0, towers: 0, crystals: 0 },
     spawn: { ground: [-60, 0, 120], air: [40, 230, 620] }, mission: 'Visite du village',
     objectives: ['Survoler le canal du Midi', 'Se poser place de la Mairie', 'Nettoyer le village des gobelins'],
-    modes: ['chasseur', 'voiture', 'berline', 'trottinette', 'robot']
+    modes: ['chasseur', 'berline', 'trottinette', 'robot']
   },
   {
     id: 'capestang', name: 'Capestang', icon: '⛪', category: 'Village réel · Hérault', seed: 0, size: 7000,
@@ -615,7 +615,7 @@ export const WORLD_MAPS = [
     layout: 'village', population: { trees: 0, rocks: 0, buildings: 0, towers: 0, crystals: 0 },
     spawn: { ground: [-40, 0, 90], air: [60, 240, 700] }, mission: 'Reconnaissance du canal',
     objectives: ['Passer au ras de la collégiale', 'Suivre le canal du Midi', 'Se poser sur la place'],
-    modes: ['chasseur', 'voiture', 'berline', 'trottinette', 'robot']
+    modes: ['chasseur', 'berline', 'trottinette', 'robot']
   },
   {
     // Un « pays » : les deux villages relevés dans la même carte, à leur écart
@@ -639,7 +639,7 @@ export const WORLD_MAPS = [
                  'Revenir se poser sur la place de Poilhes'],
     // La voiture rejoint le chasseur : quatre kilomètres de campagne entre les
     // deux villages, c'est une route, pas seulement un couloir aérien.
-    modes: ['chasseur', 'voiture', 'berline', 'trottinette'],
+    modes: ['chasseur', 'berline', 'trottinette'],   // GT rouge retirée le 26/09/2026 (« une catastrophe »)
     // ── La course Poilhes → Capestang ──────────────────────────────────────
     // Onze portes au sol, 3 561 m de parcours, un S léger pour que ce soit un
     // tracé et non une ligne droite. Les pentes relevées sur le relief du pays

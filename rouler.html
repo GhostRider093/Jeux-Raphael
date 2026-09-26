@@ -480,8 +480,8 @@
 <script type="module">
 import { startVillage } from './maps/poilhes-village.js?v=arcade-20260926n';
 import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
-import { creerCourseBoucle } from './maps/course-boucle.js?v=arcade-20260926d';
-import { poserFigurants } from './maps/poilhes-figurants.js?v=figurants-20260926e';
+import { creerCourseBoucle } from './maps/course-boucle.js?v=arcade-20260926p';
+import { poserFigurants } from './maps/poilhes-figurants.js?v=figurants-20260926g';
 import { volant } from './maps/volant.js?v=volant-20260926g';
 window.volant = volant;
 document.getElementById('btn-volant').addEventListener('click', (e) => { e.currentTarget.blur(); volant.regler(); });
@@ -724,6 +724,10 @@ const DEPARTS = {
     quad: { x: 211.9, z: 10.3, cap: 1.38 },
     trottinette: 'parc',
   },
+  // Capestang (26/09/2026) : la berline au départ de la boucle, sur l'avenue.
+  capestang: {
+    voiture: { x: -41.12, z: 209.43, cap: -0.6575 },
+  },
 };
 function lancer(engin) {
   // Premier lancement (ou « Auto ») : rien de mémorisé. On charge en Élevé, on
@@ -740,7 +744,7 @@ function lancer(engin) {
     window.jeu = jeu;                 // poignée de console et de test
     // Les figurants (26/09/2026) : cycliste sur la boucle, policier au départ,
     // stégosaure, Carole et les mafieux devant l'Ostal Louis.
-    if (village === 'poilhes') poserFigurants({ jeu, village }).then((f) => { window.figurants = f; });
+    poserFigurants({ jeu, village }).then((f) => { window.figurants = f; });
     // La boucle du village (26/09/2026) : seulement si le village en a une.
     creerCourseBoucle({ jeu, village }).then((course) => {
       if (!course) return;

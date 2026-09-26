@@ -122,3 +122,16 @@ Tous sont du décor (on passe au travers).
 - `volant-enregistreur.html` : enregistre 25 s de gestes guidés → JSON dans Téléchargements (diagnostic).
 - Vérifié avec volant et PS4 **simulés** (pas encore avec le vrai T150 : le problème décrit par Arnaud venait
   du site en ligne, qui n'avait pas encore ce code).
+
+## Suite — départ lancé, GT retirée, Capestang, hélicoptère
+
+- **« J'ai fait plusieurs tours, ça ne s'est pas arrêté, pas de classement »** : le chrono n'existait qu'après 🏁.
+  Désormais **départ lancé** : franchir la ligne dans le sens de la course, en roulant, lance le chrono (6 s de
+  répit après une arrivée). Points de passage plus tolérants (22 m, un point raté validé par l'un des 3 suivants).
+- **GT rouge retirée** (« une catastrophe ») : plus dans les modes des mondes relevés, lien de l'accueil vers la
+  berline, touche C inactive, un ancien lien `mode=voiture` mène à la berline.
+- **Capestang** : même boucle (`VILLAGE=capestang py scripts/poilhes/boucle_village.py`), triangle de 1 470 m sur
+  les grandes artères (avenue en diagonale, centre, boulevard sud), 84 m en rue étroite ; départ de la berline sur
+  la ligne ; figurants aussi (sans l'Ostal Louis ni le terrain de foot).
+- **Hélicoptère** (`maps/helicoptere.js`) construit en volumes (rouge et blanc, rotors, gyrophare), orbite de 170 m
+  à 60 m au-dessus de la boucle, penché ; son de pales synthétisé.

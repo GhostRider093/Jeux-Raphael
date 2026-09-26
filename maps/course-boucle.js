@@ -22,7 +22,8 @@ import * as THREE from 'three';
 import { construireFleches } from './fleches-sol.js?v=arcade-20260926b';
 
 const ECART_PASSAGE = 50;      // m entre deux points de passage
-const RAYON_PASSAGE = 16;      // m : on est passé quand on en est plus près
+const RAYON_PASSAGE = 22;      // m : on est passé quand on en est plus près (16 avant le 26/09 : trop juste)
+const RATTRAPAGE = 3;          // un point raté est validé si l'on atteint l'un des N suivants
 const RAYON_ARRIVEE = 11;      // m autour de la ligne
 const DECOMPTE = 3;            // s
 const NOM_ENGIN = { voiture: 'Berline', quad: 'Quad', trottinette: 'Trottinette' };
@@ -183,7 +184,7 @@ export async function creerCourseBoucle({ jeu, village }) {
   /** Le classement à tout moment (bouton 🏆 de la page). */
   function montrerClassement() {
     if (course.actif) return;
-    fin.innerHTML = `<h2>🏆 Classement</h2><div>Boucle de Poilhes · ${(data.longueur / 1000).toFixed(1).replace('.', ',')} km × ${TOURS} tour${TOURS > 1 ? 's' : ''}</div>`
+    fin.innerHTML = `<h2>🏆 Classement</h2><div>Boucle de ${village.charAt(0).toUpperCase() + village.slice(1)} · ${(data.longueur / 1000).toFixed(1).replace('.', ',')} km × ${TOURS} tour${TOURS > 1 ? 's' : ''}</div>`
       + tableau(null)
       + `<button class="go" id="boucle-courir">Courir</button><button id="boucle-fermer">Fermer</button>`;
     fin.style.display = 'block';
@@ -191,7 +192,34 @@ export async function creerCourseBoucle({ jeu, village }) {
     fin.querySelector('#boucle-fermer').onclick = () => { fin.style.display = 'none'; };
   }
 
+  /**
+   * **Départ lancé** (Arnaud, 26/09/2026 : « j'ai fait plusieurs tours, ça ne
+   * s'est pas arrêté, pas de classement » — le chrono n'existait qu'après le
+   * bouton 🏁). Franchir la ligne dans le sens de la course, en roulant, lance
+   * le chrono sans décompte. Six secondes de répit après une arrivée.
+   */
+  let etaitSurLaLigne = false, repitJusqua = 0;
+  function departLance() {
+    const p = piloteCourant();
+    if (!p || fin.style.display === 'block' || performance.now() < repitJusqua) { etaitSurLaLigne = false; return; }
+    const d = data.depart;
+    const sur = Math.hypot(p.etat.x - d.x, p.etat.z - d.z) < 8;
+    let ecartCap = p.etat.yaw - d.cap;
+    ecartCap = Math.atan2(Math.sin(ecartCap), Math.cos(ecartCap));
+    if (sur && !etaitSurLaLigne && p.etat.u > 2 && Math.abs(ecartCap) < 0.9) {
+      Object.assign(course, {
+        actif: true, phase: 'course', t: 0, decompte: 0, tour: 1, passage: 0, tours: [], debutTour: 0, engin: jeu.mode,
+      });
+      hud.style.display = 'block';
+      decompteEl.textContent = 'GO !';
+      decompteEl.style.display = 'flex';
+      setTimeout(() => { if (course.phase === 'course') decompteEl.style.display = 'none'; }, 700);
+    }
+    etaitSurLaLigne = sur;
+  }
+
   function terminer() {
+    repitJusqua = performance.now() + 6000;
     course.actif = false; course.phase = 'fini';
     hud.style.display = 'none';
     const temps = course.t;
@@ -235,7 +263,7 @@ export async function creerCourseBoucle({ jeu, village }) {
     requestAnimationFrame(image);
     const dt = Math.min(0.1, (maintenant - avant) / 1000);
     avant = maintenant;
-    if (!course.actif) return;
+    if (!course.actif) { departLance(); return; }
     const p = piloteCourant();
     if (!p || jeu.mode !== course.engin) { abandonner(); return; }
 
@@ -256,8 +284,12 @@ export async function creerCourseBoucle({ jeu, village }) {
     course.t += dt;
     const x = p.etat.x, z = p.etat.z;
     if (course.passage < passages.length) {
-      const c = passages[course.passage];
-      if (Math.hypot(x - c.x, z - c.z) < RAYON_PASSAGE) course.passage++;
+      // Un point un peu raté (une autre rue, un coin coupé) ne bloque plus le
+      // tour : atteindre l'un des suivants le valide aussi.
+      for (let j = course.passage; j < Math.min(passages.length, course.passage + RATTRAPAGE); j++) {
+        const c = passages[j];
+        if (Math.hypot(x - c.x, z - c.z) < RAYON_PASSAGE) { course.passage = j + 1; break; }
+      }
     } else {
       const d = data.depart;
       if (Math.hypot(x - d.x, z - d.z) < RAYON_ARRIVEE) {

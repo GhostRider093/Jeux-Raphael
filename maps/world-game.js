@@ -24,6 +24,8 @@ const thumbnailMode = params.get('thumbnail') === '1';
 const isMobileDevice = window.matchMedia('(pointer: coarse)').matches
   || Math.min(window.innerWidth, window.innerHeight) < 700;
 let selectedMode = getMode(params.get('mode')).id;
+// Un ancien lien vers la GT rouge (retirée le 26/09/2026) mène à la berline bleue.
+if (selectedMode === 'voiture') selectedMode = 'berline';
 const world = requestedMap ? getWorld(requestedMap) : null;
 // Le repli sur un mode supporte etait pose sur le lien de l'atlas seulement :
 // une URL tapee ou un favori lancait encore un mode au sol sur un circuit
@@ -1261,7 +1263,9 @@ async function startWorld() {
     // Le son du moteur est muet par défaut ; M l'allume, et le coupe à nouveau.
     if (event.code === 'KeyM' && mode.type === 'drive') auto?.basculerSon();
     // C : GT rouge (propulsion) ↔ berline bleue (traction), la seconde pardonne tout.
-    if (event.code === 'KeyC' && mode.type === 'drive') {
+    // La GT rouge est retirée (Arnaud, 26/09/2026 : « une catastrophe, on la
+    // retire ») : C ne bascule plus, la berline bleue reste.
+    if (false && event.code === 'KeyC' && mode.type === 'drive') {
       auto?.choisirVoiture(auto.voitureChoisie() === 'rouge' ? 'bleue' : 'rouge');
     }
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
