@@ -135,3 +135,9 @@ Tous sont du décor (on passe au travers).
   la ligne ; figurants aussi (sans l'Ostal Louis ni le terrain de foot).
 - **Hélicoptère** (`maps/helicoptere.js`) construit en volumes (rouge et blanc, rotors, gyrophare), orbite de 170 m
   à 60 m au-dessus de la boucle, penché ; son de pales synthétisé.
+- **Hélicoptère, 2e version** (« celui-là est dégueulasse, je veux qu'on prenne celui que je t'ai donné ») :
+  le « Desert Viper Gunship » Meshy d'Arnaud (27,6 Mo → 1 Mo, `assets/fun/helicoptere.glb`), module
+  `maps/poilhes-helico.js`. Rotor principal **découpé au chargement** (triangles du haut du modèle, même tampon,
+  deux index) pour tourner. Au repos il orbite au-dessus de la boucle ; bouton **Hélico** (mode `helico` du
+  village) : on le prend là où il vole. Z/↑ avancer, S/↓ reculer, Q/D pivoter, Espace monter, Maj descendre,
+  V caméra ; PS4 stick + R2/L2. L'hélicoptère construit en volumes (`maps/helicoptere.js`) est supprimé.

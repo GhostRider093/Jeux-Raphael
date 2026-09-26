@@ -19,7 +19,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
-import { creerHelicoptere } from './helicoptere.js?v=helico-20260926';
 
 const DOSSIER = 'assets/fun/';
 export const FIGURANTS = {
@@ -96,11 +95,13 @@ export async function poserFigurants({ jeu, village }) {
     const d = boucle.depart;
     const droite = (cap) => [Math.cos(cap), -Math.sin(cap)];   // la droite pour un cap (avant = −z)
 
-    // L'hélicoptère (26/09/2026) tourne au-dessus de la boucle, centré sur elle.
-    try {
+    // L'hélicoptère d'Arnaud (poilhes-helico.js) tourne au-dessus de la boucle,
+    // centré sur elle. (Celui construit en volumes, « dégueulasse », est retiré.)
+    if (jeu.helico) {
       const cx = P.reduce((a, q) => a + q[0], 0) / P.length, cz = P.reduce((a, q) => a + q[1], 0) / P.length;
-      poses.helicoptere = creerHelicoptere({ scene, camera: jeu.camera, solAt: sol, centre: { x: cx, z: cz } });
-    } catch (e) { console.warn('Hélicoptère :', e); }
+      jeu.helico.setOrbite({ x: cx, z: cz });
+      poses.helicoptere = jeu.helico;
+    }
 
     // Le policier, à droite de la ligne de départ, face à la piste.
     charger(loader, FIGURANTS.police).then((o) => {

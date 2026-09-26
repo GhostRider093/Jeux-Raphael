@@ -15,6 +15,7 @@ import { construireVillage } from './poilhes-scene.js?v=pilote-20260925';
 import { createRobot } from './poilhes-robot.js?v=voiture-20260921';
 import { createEnemies } from './poilhes-enemies.js?v=voiture-20260921';
 import { createJet } from './poilhes-jet.js?v=voiture-20260921';
+import { createHelico } from './poilhes-helico.js?v=helico-20260926';
 // **Une seule version** pour les deux imports de voiture-pilote.js : deux
 // `?v=` différents font deux modules, et le `TOUCHER` réglé par le panneau
 // n'était plus celui que lisait le pilote.
@@ -268,6 +269,8 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   const robot = veut('robot') ? createRobot({ scene, camera, groundAt, walkableAt, blockedAt, surfaceAt, keys }) : null;
   const ennemis = veut('robot') ? createEnemies({ scene, walkableAt, blockedAt }) : null;
   const jet = veut('chasseur') ? createJet({ scene, camera, groundAt, surfaceAt, keys }) : null;
+  // L'hélicoptère d'Arnaud (26/09/2026) : il tourne au-dessus de la course, et on le prend (mode « helico »).
+  const helico = veut('helico') ? createHelico({ scene, camera, groundAt, surfaceAt, keys }) : null;
   if (robot) robot.setEnemies(ennemis);
   // cible passee aux gobelins : construite une fois, jamais dans la boucle
   const proie = robot ? { position: robot.root.position, hurt: (d) => robot.hurt(d) } : null;
@@ -353,8 +356,8 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   const volEl = $('vol'), vitEl = $('vit'), hautEl = $('haut');
   let vitVue = -1, hautVue = -1;
   /** Vitesse et hauteur-sol ; le chiffre passe à l'orange quand on rase. */
-  function majVol() {
-    const t = jet.telemetrie();
+  function majVol(engin = jet) {
+    const t = engin.telemetrie();
     if (t.vitesse !== vitVue) { vitVue = t.vitesse; vitEl.textContent = t.vitesse; }
     if (t.hauteur !== hautVue) {
       hautVue = t.hauteur;
@@ -426,6 +429,11 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     const prev = mode;
     mode = next;
     // le robot laisse le promeneur là où il s'est arrêté
+    if (prev === 'helico' && next !== 'helico') {
+      helico.exit();
+      placeWalker(helico.root.position.x, helico.root.position.z);
+      volEl.hidden = true;
+    }
     if (prev === 'chasseur' && next !== 'chasseur') {
       jet.exit();
       placeWalker(jet.root.position.x, jet.root.position.z);
@@ -488,6 +496,9 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       : mode === 'chasseur'
         ? 'Flèches : piloter · <b>Z</b> plein gaz · <b>Maj</b> post-combustion · <b>S</b> ralentir · '
           + '<b>E</b> / <b>Ctrl</b> monter, descendre · <b>V</b> caméra'
+      : mode === 'helico'
+        ? '<b>Z</b>/<b>↑</b> avancer · <b>S</b>/<b>↓</b> reculer · <b>Q</b>/<b>D</b> ou ←/→ pivoter · '
+          + '<b>Espace</b> monter · <b>Maj</b> descendre · <b>V</b> caméra · manette : stick, <b>R2</b> monter, <b>L2</b> descendre'
       : mode === 'robot'
         ? 'Souris : viser · <b>clic</b> ou <b>F</b> : laser · <b>ZQSD</b> · <b>Maj</b> courir · molette : recul · '
           + `<button class="mini" data-robot="titan">Titan bleu</button> <button class="mini" data-robot="mech">Mech rouge</button>`
@@ -501,6 +512,13 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
         controls.target.set(t.x, groundAt(t.x, t.z) + 2, t.z);
         camera.position.set(t.x + 60, controls.target.y + 55, t.z + 70);
       }
+      return;
+    }
+    if (mode === 'helico') {
+      if (document.pointerLockElement) document.exitPointerLock();
+      if (ennemis) ennemis.clear();
+      helico.enter();
+      volEl.hidden = false;
       return;
     }
     if (mode === 'chasseur') {
@@ -677,6 +695,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
     if (e.code === 'KeyN') toggleLabels();
     if (e.code === 'KeyT' && outilsLocaux) montrerReglages();
     if (e.code === 'KeyV' && mode === 'chasseur') jet.basculerVue();
+    if (e.code === 'KeyV' && mode === 'helico') helico.basculerVue();
     if (mode === 'voiture') {
       if (e.code === 'KeyV') auto.basculerVue();
       if (e.code === 'KeyR') auto.redresser();
@@ -1149,6 +1168,8 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       pendingTime = null;
     }
 
+    // l'hélicoptère vit dans tous les modes : il tourne au-dessus de la course
+    if (helico) helico.update(dt);
     if (tour) {
       tour.t = Math.min(1, tour.t + dt / tour.duration);
       const e = tour.t * tour.t * (3 - 2 * tour.t);
@@ -1159,6 +1180,9 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       camera.lookAt(tourLook);
       focus.copy(tourLook);
       if (tour.t >= 1) stopTour();
+    } else if (mode === 'helico') {
+      majVol(helico);
+      focus.copy(helico.root.position);
     } else if (mode === 'chasseur') {
       jet.update(dt);
       majVol();
@@ -1218,7 +1242,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
 
   window.RaphaelPoilhes = {
     meta, scene, camera, controls, renderer, decor, sun, setMode, goTo, setTime, groundAt, walker,
-    blockedAt, walkableAt, surfaceAt, keys, step: stepWalker, startTour, stopTour, tick, robot, ennemis, jet,
+    blockedAt, walkableAt, surfaceAt, keys, step: stepWalker, startTour, stopTour, tick, robot, ennemis, jet, helico,
     get voiture() { return auto; },
     get trottinette() { return deuxRoues; },
     get quad() { return quad; },
