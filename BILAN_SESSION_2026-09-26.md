@@ -142,3 +142,7 @@ Tous sont du décor (on passe au travers).
   village) : on le prend là où il vole. Z/↑ avancer, S/↓ reculer, Q/D pivoter, Espace monter, Maj descendre,
   V caméra ; PS4 stick + R2/L2. L'hélicoptère construit en volumes (`maps/helicoptere.js`) est supprimé.
 - **Rotor du gunship, 2e découpe** : le point le plus haut du modèle est la dérive de queue, pas le mât — la 1re découpe faisait tourner un bout de queue. Désormais : couche des pales au-dessus de 71 % de la hauteur, hors queue (> 83,5 % de la longueur), pivot sur le vrai mât (43 % / 55 %) ; 18 147 triangles sur 98 078.
+- **La musique partout** (« rajoute la musique partout, dans le chasseur aussi ») : `maps/musique.js`, la même
+  playlist (10 « Soul Run », ordre au hasard) dans les Mondes (chasseur, berline, trottinette — donc la course
+  Poilhes–Capestang) et la visite de Poilhes (`poilhes.html`), avec un bouton ♪ ; préférence partagée avec Poilhes
+  City (`poilhes-city-musique`). Poilhes City : l'hélico a aussi droit à la playlist. Vérifié : lecture au premier clic.

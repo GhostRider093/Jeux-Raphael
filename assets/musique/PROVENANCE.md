@@ -8,3 +8,6 @@
 
 Suno accorde les droits commerciaux aux abonnés payants ; en gratuit, l'usage
 reste personnel. À vérifier le jour où le jeu est publié.
+
+Depuis le 26/09/2026, la même playlist joue aussi dans les Mondes (chasseur compris) et dans
+`poilhes.html` (module `maps/musique.js`), et en hélico dans Poilhes City.

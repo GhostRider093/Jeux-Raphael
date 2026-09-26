@@ -126,6 +126,10 @@ if (!world) {
 } else {
   catalog.hidden = true;
   game.hidden = false;
+  // La musique du jeu, en chasseur comme au sol (26/09/2026 : « rajoute la
+  // musique partout, dans le chasseur aussi »). Bouton ♪ sous le cartouche du monde.
+  import('./musique.js?v=musique-20260926').then(({ creerMusique }) => (window.musiqueJeu = creerMusique({ volume: 0.28, place: 'right:15px;top:92px' })))
+    .catch((err) => console.warn('Musique :', err));
   startWorld();
 }
 

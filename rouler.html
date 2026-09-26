@@ -651,8 +651,10 @@ function peindreMusique() { btnMusique.setAttribute('aria-pressed', musiqueVoulu
 const btnTrottinette = document.querySelector('[data-mode="trottinette"]');
 const btnBerline = document.querySelector('[data-mode="voiture"]');
 const btnQuad = document.querySelector('[data-mode="quad"]');
+// l'hélico (26/09/2026) a droit à la playlist lui aussi
+const btnHelico = document.querySelector('[data-mode="helico"]');
 const surAccueil = () => !accueil.hidden && !accueil.classList.contains('parti');
-const enSelle = () => btnTrottinette.classList.contains('on') || btnBerline.classList.contains('on') || btnQuad.classList.contains('on');
+const enSelle = () => [btnTrottinette, btnBerline, btnQuad, btnHelico].some((b) => b && b.classList.contains('on'));
 function jouerMusique() {
   if (!musiqueVoulue || !(surAccueil() || enSelle())) return;
   const p = musique.play();
@@ -662,7 +664,7 @@ const suivreMode = new MutationObserver(() => {
   if (enSelle()) jouerMusique();
   else if (!surAccueil()) fondu(musique, 900);
 });
-for (const b of [btnTrottinette, btnBerline, btnQuad]) suivreMode.observe(b, { attributes: true, attributeFilter: ['class'] });
+for (const b of [btnTrottinette, btnBerline, btnQuad, btnHelico]) if (b) suivreMode.observe(b, { attributes: true, attributeFilter: ['class'] });
 function auPremierGeste() { jouerMusique(); }
 btnMusique.addEventListener('click', (e) => {
   e.stopPropagation();
