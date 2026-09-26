@@ -18,7 +18,7 @@ import { createJet } from './poilhes-jet.js?v=voiture-20260921';
 // **Une seule version** pour les deux imports de voiture-pilote.js : deux
 // `?v=` différents font deux modules, et le `TOUCHER` réglé par le panneau
 // n'était plus celui que lisait le pilote.
-import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=arcade-20260926b';
+import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=arcade-20260926n';
 import { poserEpicerie, poserBlasonClub, EPICERIE } from './poilhes-commerces.js?v=voiture-20260921';
 import { poserMairie } from './poilhes-mairie.js?v=mairie-20260926';
 import { poserEnseignes } from './poilhes-enseignes.js?v=enseignes-20260926c';

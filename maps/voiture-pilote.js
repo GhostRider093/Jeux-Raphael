@@ -44,6 +44,7 @@ import { construireVoiture, ECHELLE } from './voiture-model.js?v=pilote-20260925
 import { creerPhysique, REGLAGES } from './voiture-physique.js?v=arcade-20260926b';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
 import { construireEnginQuad } from './quad.js?v=pilote-20260925';
+import { volant as volantCourse } from './volant.js?v=volant-20260926g';
 
 const GRAVITE = 9.81;
 // Toucher du volant, **selon la vitesse** — comme une vraie voiture.
@@ -885,11 +886,20 @@ export function creerPilote({
     const freinVise = Math.max(recule ? 1 : 0, Math.max(0, doigt.y));
     cmd.gaz += (gazVise - cmd.gaz) * lissage(11, dt);
     cmd.frein += (freinVise - cmd.frein) * lissage(16, dt);
+    // **Le volant** (Thrustmaster T150, 26/09/2026, `volant.js`) : ses pédales
+    // sont analogiques et n'ont pas besoin du lissage des touches ; sa
+    // direction prend la main dès qu'aucune flèche n'est tenue.
+    const vc = volantCourse.lire();
+    if (vc) {
+      if (vise === 0) { volant = vc.direction; cmd.direction = vc.direction; }
+      cmd.gaz = Math.max(cmd.gaz, vc.gaz);
+      cmd.frein = Math.max(cmd.frein, vc.frein);
+    }
     // À deux roues, Espace n'est pas un frein à main : c'est le coup de jambes
     // qui fait sauter (`decoller`). F et G lancent les figures en l'air, et les
     // flèches haut / bas y inclinent l'engin — au sol elles restent gaz et frein.
-    cmd.main = figures ? false : (tenue('Space') || mainTactile);
-    cmd.saut = figures && (tenue('Space') || mainTactile);
+    cmd.main = figures ? false : (tenue('Space') || mainTactile || !!(vc && vc.main));
+    cmd.saut = figures && (tenue('Space') || mainTactile || !!(vc && vc.main));
     cmd.flip = figures && tenue('KeyF');
     cmd.spin = figures && tenue('KeyG');
     // Clignotants (quad) : ils suivent le volant tout seuls — un coup de guidon

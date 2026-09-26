@@ -526,10 +526,11 @@ async function startWorld() {
   // (`maps/voiture-pilote.js`) : même physique, même son, même caméra. Il ne
   // demande au monde que trois fonctions — le sol, les murs, l'adhérence — et
   // les mondes relevés les fournissent (`poilhes-world.js`, `pays-world.js`).
-  let auto = null;
+  let auto = null, volantCourse = null;
   const tactileAuto = { x: 0, y: 0, active: false };
   if (mode.type === 'drive') {
-    const { creerPilote, creerAdherence } = await import('./voiture-pilote.js?v=arcade-20260926b');
+    const { creerPilote, creerAdherence } = await import('./voiture-pilote.js?v=arcade-20260926n');
+    ({ volant: volantCourse } = await import('./volant.js?v=volant-20260926g'));
     // Les rubans de chaussée du village donnent la grille d'adhérence : du
     // bitume sous les roues, de la terre à côté. Hors monde relevé, on s'en
     // passe et tout le sol se vaut.
@@ -1724,8 +1725,11 @@ async function startWorld() {
    * et le multijoueur continuent de voir un joueur là où il est réellement.
    */
   function updateDrive(dt, pad) {
-    tactileAuto.x = touch.x + (pad.x || 0);
-    tactileAuto.y = touch.y + (pad.y || 0);
+    // Un volant réglé (volant.js) est lu par le pilote lui-même : la lecture
+    // manette générique ne doit pas braquer une seconde fois avec le même axe.
+    const parVolant = volantCourse && ((volantCourse.regle && volantCourse.branche) || volantCourse.manette);
+    tactileAuto.x = touch.x + (parVolant ? 0 : (pad.x || 0));
+    tactileAuto.y = touch.y + (parVolant ? 0 : (pad.y || 0));
     tactileAuto.active = Math.abs(tactileAuto.x) > .02 || Math.abs(tactileAuto.y) > .02;
     auto.update(dt, tactileAuto);
     const e = auto.etat;

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Enregistreur de volant</title>
+<!--
+  Ce que Chrome reçoit réellement d'un volant (26/09/2026, Thrustmaster T150 :
+  « mon accélérateur, c'est la marche arrière »). Affiche les axes et boutons
+  bruts en direct, et enregistre 25 s de gestes guidés dans un fichier JSON
+  déposé dans Téléchargements (volant-enregistrement-*.json), pour régler
+  maps/volant.js sur des mesures et non sur des suppositions.
+-->
+<style>
+  :root { --fond: #11151b; --carte: #1b2129; --texte: #eef1f4; --jaune: #ffd21f; --gris: #3a4048; }
+  body { margin: 0; background: var(--fond); color: var(--texte); font: 16px/1.45 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  .carte { background: var(--carte); border-radius: 14px; padding: 14px 16px; margin: 12px 0; }
+  .axe { display: grid; grid-template-columns: 70px 1fr 70px; gap: 10px; align-items: center; margin: 5px 0; font-variant-numeric: tabular-nums; }
+  .barre { height: 14px; background: var(--gris); border-radius: 7px; position: relative; overflow: hidden; }
+  .barre i { position: absolute; top: 0; bottom: 0; background: var(--jaune); }
+  .barre b { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #fff6; }
+  .boutons span { display: inline-block; min-width: 30px; text-align: center; margin: 3px; padding: 3px 6px; border-radius: 6px; background: var(--gris); }
+  .boutons span.on { background: var(--jaune); color: #141414; font-weight: 700; }
+  button { font: inherit; font-weight: 700; border: 0; border-radius: 10px; padding: 10px 18px; cursor: pointer; background: var(--jaune); color: #141414; }
+  #consigne { font-size: 30px; font-weight: 800; color: var(--jaune); min-height: 44px; margin: 8px 0; }
+  #etat { opacity: .8; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎮 Enregistreur de volant</h1>
+  <div id="nom">Aucune manette vue — tourne le volant ou appuie sur une pédale.</div>
+  <div class="carte">
+    <div id="consigne"></div>
+    <button id="go">Enregistrer 25 secondes</button>
+    <div id="etat"></div>
+  </div>
+  <div class="carte"><b>Axes</b><div id="axes"></div></div>
+  <div class="carte"><b>Boutons</b><div id="boutons" class="boutons"></div></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const pads = () => (navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : []);
+const pad = () => pads().find((g) => /wheel|t150|thrustmaster|racing/i.test(g.id)) || pads()[0] || null;
+
+// Les consignes, dans l'ordre, avec leur durée (s).
+const SCRIPT = [
+  ['Pieds levés, volant droit', 3],
+  ['Tourne à GAUCHE, puis reviens', 3],
+  ['Tourne à DROITE, puis reviens', 3],
+  ['ACCÉLÉRATEUR à fond, puis relâche', 4],
+  ['FREIN à fond, puis relâche', 4],
+  ['EMBRAYAGE (s’il y en a un), puis relâche', 3],
+  ['Accélérateur à moitié, tiens-le', 3],
+  ['Pieds levés', 2],
+];
+let rec = null;
+
+function afficher() {
+  const g = pad();
+  if (g) {
+    $('nom').textContent = g.id;
+    $('axes').innerHTML = g.axes.map((v, k) => {
+      const l = Math.abs(v) * 50, gauche = v < 0 ? 50 - l : 50;
+      return `<div class="axe"><span>axe ${k}</span><div class="barre"><b></b><i style="left:${gauche}%;width:${l}%"></i></div><span>${v.toFixed(3)}</span></div>`;
+    }).join('');
+    $('boutons').innerHTML = g.buttons.map((b, k) => `<span class="${b.pressed ? 'on' : ''}">${k}</span>`).join('');
+  }
+  if (rec) {
+    const t = (performance.now() - rec.t0) / 1000;
+    let cumul = 0, consigne = null;
+    for (const [texte, duree] of SCRIPT) { if (t < cumul + duree) { consigne = texte; break; } cumul += duree; }
+    if (g && performance.now() - rec.dernier >= 40) {
+      rec.dernier = performance.now();
+      rec.mesures.push({ t: +t.toFixed(3), consigne, axes: g.axes.map((v) => +v.toFixed(4)), boutons: g.buttons.map((b, k) => (b.pressed ? k : -1)).filter((k) => k >= 0) });
+    }
+    if (consigne) { $('consigne').textContent = consigne; $('etat').textContent = `${t.toFixed(1)} s`; }
+    else finir();
+  }
+  requestAnimationFrame(afficher);
+}
+
+function finir() {
+  const g = pad();
+  const donnees = { quand: new Date().toISOString(), id: g ? g.id : null, mapping: g ? g.mapping : null, navigateur: navigator.userAgent, script: SCRIPT, mesures: rec.mesures };
+  rec = null;
+  const blob = new Blob([JSON.stringify(donnees)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `volant-enregistrement-${Date.now()}.json`;
+  a.click();
+  $('consigne').textContent = '✓ Enregistré';
+  $('etat').textContent = 'Le fichier est dans Téléchargements. Tu peux le dire à Claude.';
+  $('go').disabled = false;
+}
+
+// Un décompte avant de commencer : le temps de poser les mains et les pieds.
+$('go').onclick = () => {
+  $('go').disabled = true;
+  let n = 3;
+  const tic = () => {
+    if (n > 0) { $('consigne').textContent = `Prêt… ${n}`; n--; setTimeout(tic, 1000); return; }
+    rec = { t0: performance.now(), dernier: 0, mesures: [] };
+  };
+  tic();
+};
+requestAnimationFrame(afficher);
+</script>
+</body>
+</html>

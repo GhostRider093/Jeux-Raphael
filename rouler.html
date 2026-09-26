@@ -315,6 +315,7 @@
   <div class="row" id="row-boucle" hidden>
     <button id="btn-boucle" title="La boucle du village : départ à l'entrée, le gros pont, un tour chronométré">🏁 Course · 1 tour</button>
     <button id="btn-classement" title="Les dix meilleurs temps de la boucle">🏆 <span id="record">Classement</span></button>
+    <button id="btn-volant" title="Régler ton volant (Thrustmaster T150…)">🎮 Volant</button>
   </div>
   <div class="row" id="choix-auto" hidden>
     <button data-auto="rouge" title="GT rouge">GT rouge</button>
@@ -477,10 +478,13 @@
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
 <script type="module">
-import { startVillage } from './maps/poilhes-village.js?v=arcade-20260926g';
+import { startVillage } from './maps/poilhes-village.js?v=arcade-20260926n';
 import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
 import { creerCourseBoucle } from './maps/course-boucle.js?v=arcade-20260926d';
 import { poserFigurants } from './maps/poilhes-figurants.js?v=figurants-20260926e';
+import { volant } from './maps/volant.js?v=volant-20260926g';
+window.volant = volant;
+document.getElementById('btn-volant').addEventListener('click', (e) => { e.currentTarget.blur(); volant.regler(); });
 
 const $ = (id) => document.getElementById(id);
 const hud = $('hud');

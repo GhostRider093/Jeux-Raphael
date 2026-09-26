@@ -110,3 +110,15 @@ posés par `maps/poilhes-figurants.js` (Poilhes City seulement) :
 - **Carole** + **les deux mafieux** : sur le trottoir devant l'Ostal Louis.
 Tous sont du décor (on passe au travers).
 - **Les deux mafieux, « il faut les voir souvent »** : 5 copies de plus le long du tour (8 %, 27 %, 46 %, 64 %, 83 %), sur le trottoir à 4 m de l'axe, tournées vers la route (clones : géométrie partagée).
+
+## Suite — volant T150 et manette PS4
+
+- `maps/volant.js` : volant (réglage guidé à son rythme : « Commencer », gestes tenus, pause « ✓ Bien reçu » ;
+  repos des pédales mesuré **au relâché** — Chrome déclare une pédale à 0 tant qu'elle n'a pas bougé, ce faux
+  repos faisait lire « frein enfoncé » donc marche arrière ; correction automatique si une pédale se lit
+  enfoncée pieds levés ; jauges en direct + « Inverser » ; sensibilité 1,5 + courbe 1,6, « 3 » était « super dur »).
+- **Manette classique** (PS4/Xbox, `mapping: 'standard'`) sans réglage : stick gauche, R2, L2, ✕ frein à main/saut,
+  △ repartir, □ caméra. Sur la course Poilhes–Capestang, la lecture « avion » de world-game ne s'ajoute plus en voiture.
+- `volant-enregistreur.html` : enregistre 25 s de gestes guidés → JSON dans Téléchargements (diagnostic).
+- Vérifié avec volant et PS4 **simulés** (pas encore avec le vrai T150 : le problème décrit par Arnaud venait
+  du site en ligne, qui n'avait pas encore ce code).
