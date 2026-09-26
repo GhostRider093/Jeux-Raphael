@@ -15,7 +15,7 @@ import { construireVillage } from './poilhes-scene.js?v=pilote-20260925';
 import { createRobot } from './poilhes-robot.js?v=voiture-20260921';
 import { createEnemies } from './poilhes-enemies.js?v=voiture-20260921';
 import { createJet } from './poilhes-jet.js?v=voiture-20260921';
-import { createHelico } from './poilhes-helico.js?v=helico-20260926c';
+import { createHelico } from './poilhes-helico.js?v=armes-20260926f';
 // **Une seule version** pour les deux imports de voiture-pilote.js : deux
 // `?v=` différents font deux modules, et le `TOUCHER` réglé par le panneau
 // n'était plus celui que lisait le pilote.
@@ -270,7 +270,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   const ennemis = veut('robot') ? createEnemies({ scene, walkableAt, blockedAt }) : null;
   const jet = veut('chasseur') ? createJet({ scene, camera, groundAt, surfaceAt, keys }) : null;
   // L'hélicoptère d'Arnaud (26/09/2026) : il tourne au-dessus de la course, et on le prend (mode « helico »).
-  const helico = veut('helico') ? createHelico({ scene, camera, groundAt, surfaceAt, keys }) : null;
+  const helico = veut('helico') ? createHelico({ scene, camera, groundAt, surfaceAt, keys, renderer }) : null;
   if (robot) robot.setEnemies(ennemis);
   // cible passee aux gobelins : construite une fois, jamais dans la boucle
   const proie = robot ? { position: robot.root.position, hurt: (d) => robot.hurt(d) } : null;
@@ -498,7 +498,8 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
           + '<b>E</b> / <b>Ctrl</b> monter, descendre · <b>V</b> caméra'
       : mode === 'helico'
         ? '<b>Z</b>/<b>↑</b> avancer · <b>S</b>/<b>↓</b> reculer · <b>Q</b>/<b>D</b> ou ←/→ pivoter · '
-          + '<b>Espace</b> monter · <b>Maj</b> descendre · <b>V</b> caméra · manette : stick, <b>R2</b> monter, <b>L2</b> descendre'
+          + '<b>Espace</b> monter · <b>Maj</b> descendre · <b>F</b>/clic gauche mitrailleuse · <b>G</b>/clic droit missile · '
+          + '<b>V</b> caméra · manette : stick, <b>R2</b>/<b>L2</b> monter/descendre, <b>R1</b> mitrailleuse, <b>L1</b> missile'
       : mode === 'robot'
         ? 'Souris : viser · <b>clic</b> ou <b>F</b> : laser · <b>ZQSD</b> · <b>Maj</b> courir · molette : recul · '
           + `<button class="mini" data-robot="titan">Titan bleu</button> <button class="mini" data-robot="mech">Mech rouge</button>`

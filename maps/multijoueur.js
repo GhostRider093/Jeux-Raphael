@@ -178,7 +178,8 @@ export async function creerMultijoueur({ jeu, village, course = null }) {
       } else if (m.type === 'depart') {
         // tout le salon part au même « GO » : le décompte local dure 3 s
         resultats = [];
-        if (course) setTimeout(() => course.demarrer(), Math.max(0, (m.dans - 3) * 1000));
+        const c = typeof course === 'function' ? course() : course;   // la course choisie dans la page
+        if (c) setTimeout(() => c.demarrer(), Math.max(0, (m.dans - 3) * 1000));
       } else if (m.type === 'resultats') {
         resultats = m.resultats;
       }
@@ -231,16 +232,15 @@ export async function creerMultijoueur({ jeu, village, course = null }) {
   requestAnimationFrame(image);
   addEventListener('beforeunload', deconnecter);
 
-  // la course à plusieurs : l'arrivée est annoncée au salon
-  if (course) {
-    course.onArrivee = (temps, engin) => {
-      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'arrivee', temps, engin }));
-    };
+  // la course à plusieurs : l'arrivée est annoncée au salon (la page branche
+  // `annoncerArrivee` sur l'`onArrivee` de chacune de ses courses)
+  function annoncerArrivee(temps, engin) {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'arrivee', temps, engin }));
   }
 
   return {
     get connecte() { return !!moi; },
-    entrer: demanderPseudo, sortir: deconnecter,
+    entrer: demanderPseudo, sortir: deconnecter, annoncerArrivee,
     /** Le 🏁 en ligne : c'est le salon qui donne le départ, à tout le monde. */
     demanderDepart() { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'course' })); },
     get joueurs() { return [...autres.values()].map((a) => a.pseudo); },

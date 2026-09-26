@@ -21,6 +21,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
+import { creerArmes } from './helico-armes.js?v=armes-20260926f';
 
 export const HELICO_PILOTE = {
   longueur: 17,        // m, nez–queue
@@ -115,7 +116,7 @@ function decouperRotor(mesh) {
 /**
  * @param {object} o { scene, camera, groundAt, surfaceAt, keys }
  */
-export function createHelico({ scene, camera, groundAt, surfaceAt, keys }) {
+export function createHelico({ scene, camera, groundAt, surfaceAt, keys, renderer = null }) {
   const P = HELICO_PILOTE;
   const root = new THREE.Group();
   root.name = 'helico-gunship';
@@ -168,6 +169,21 @@ export function createHelico({ scene, camera, groundAt, surfaceAt, keys }) {
   const plancher = (x, z) => Math.max(groundAt(x, z), surfaceAt ? surfaceAt(x, z) : -1e9);
   const voulue = new THREE.Vector3(), regard = new THREE.Vector3(), d = new THREE.Vector3();
 
+  // ── les armes (26/09/2026) : F / clic gauche / R1 mitrailleuse, G / clic droit / L1 missiles
+  const armes = creerArmes({ scene, camera, root, plancher, renderer });
+  const souris = { gauche: false, droit: false };
+  addEventListener('pointerdown', (e) => { if (!s.pilote) return; if (e.button === 0) souris.gauche = true; if (e.button === 2) souris.droit = true; });
+  addEventListener('pointerup', (e) => { if (e.button === 0) souris.gauche = false; if (e.button === 2) souris.droit = false; });
+  addEventListener('contextmenu', (e) => { if (s.pilote) e.preventDefault(); });
+  function commandesTir() {
+    if (!s.pilote) return null;
+    const m = (navigator.getGamepads ? Array.from(navigator.getGamepads()) : []).find((g) => g && g.mapping === 'standard');
+    return {
+      mitrailleuse: tenu('KeyF') || souris.gauche || !!(m && m.buttons[5]?.pressed),
+      missile: tenu('KeyG') || souris.droit || !!(m && m.buttons[4]?.pressed),
+    };
+  }
+
   function manette() {
     const m = (navigator.getGamepads ? Array.from(navigator.getGamepads()) : []).find((g) => g && g.mapping === 'standard');
     if (!m) return null;
@@ -177,6 +193,7 @@ export function createHelico({ scene, camera, groundAt, surfaceAt, keys }) {
 
   function enter() {
     s.pilote = true;
+    armes.prechauffer();
     s.cap = root.rotation.y;
     s.vx = s.vz = s.vy = 0;
     s.large = false;
@@ -186,6 +203,7 @@ export function createHelico({ scene, camera, groundAt, surfaceAt, keys }) {
   function update(dt) {
     if (!pret) return;
     s.t += dt;
+    armes.update(dt, commandesTir());
     if (pivot) pivot.rotation.y += dt * 34;
     const p = root.position;
 
@@ -226,13 +244,14 @@ export function createHelico({ scene, camera, groundAt, surfaceAt, keys }) {
       const auSol = p.y - sol < 0.3;
       root.rotation.set(auSol ? 0 : -vLocale / P.vitesse * 0.28, s.cap, auSol ? 0 : s.capVit * 0.18);
       // caméra de poursuite
-      const recul = s.large ? 45 : 24, haut = s.large ? 16 : 8;
+      // un peu au-dessus, le regard vers le sol devant : on voit le réticule et les tirs
+      const recul = s.large ? 45 : 26, haut = s.large ? 18 : 11;
       voulue.set(p.x - fx * recul, p.y + haut, p.z - fz * recul);
       const mini = plancher(voulue.x, voulue.z) + 2;
       if (voulue.y < mini) voulue.y = mini;
       camera.up.set(0, 1, 0);
       camera.position.lerp(voulue, 1 - Math.exp(-6 * dt));
-      regard.set(p.x + fx * 18, p.y + 3, p.z + fz * 18);
+      regard.set(p.x + fx * 30, p.y - 5, p.z + fz * 30);
       camera.lookAt(regard);
     }
     if (sonne) {
@@ -254,6 +273,8 @@ export function createHelico({ scene, camera, groundAt, surfaceAt, keys }) {
     basculerVue() { s.large = !s.large; return s.large; },
     /** Le centre de l'orbite au repos (la boucle de course). */
     setOrbite(centre) { s.orbite = centre; },
+    /** Les figurants qu'une explosion peut renverser. */
+    setCibles(f) { armes.setCibles(f); },
     get pilote() { return s.pilote; },
   };
 }

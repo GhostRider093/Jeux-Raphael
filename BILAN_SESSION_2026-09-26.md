@@ -159,3 +159,31 @@ Tous sont du décor (on passe au travers).
   Chrome sur un serveur de test local (port 8011) : chacun voit l'autre, départ commun, résultats identiques.
 - **Reste** : faire tourner le serveur Python sur le VPS 212 et router `/api/` (WebSocket compris) — aujourd'hui le
   site est statique (nginx:alpine). À faire avec l'accord d'Arnaud.
+
+## Suite — départ derrière la ligne, gunship armé
+
+- **« Il faut nous placer devant la ligne de départ »** : 🏁 pose l'engin 15 m derrière la ligne, dans le sens du
+  départ (reculer le long de l'arrivée mettait à contresens à Poilhes : la ligne est au bout d'un aller-retour),
+  3-2-1 retenu sur place, puis « 🏁 Franchis la ligne : le chrono part » — c'est la ligne qui lance le chrono.
+  Vérifié à Poilhes et à Capestang.
+- **Gunship armé** (`maps/helico-armes.js`) : mitrailleuse (F / clic gauche / R1, 16 coups/s, traçantes, impacts),
+  missiles (G / clic droit / L1, fumée, explosion des Mondes), sons du chasseur ; tirs 18° vers le bas avec
+  **réticule rouge au sol** ; une explosion à < 9 m d'un figurant le renverse 15 s.
+- **Piège trouvé** : impacts et explosions portent chacun une PointLight ; quand le nombre de lumières visibles
+  change, Three.js recompile tous les matériaux du village → 5 s par image (1 image/s). Ces lumières sont retirées,
+  une seule lumière d'éclair permanente les remplace : 60 images/s en tirant. (Le robot de `poilhes.html` utilise
+  encore `createImpacts` avec ses lumières : même piège possible là-bas.)
+- Multijoueur : déploiement VPS bloqué par le garde-fou de Claude Code (production) ; script
+  `deploy/multijoueur-vps212.sh` écrit mais **à ne pas lancer tel quel** (le test `nginx -t` passe par un `| tail`).
+
+## Suite — flèches aux virages, 2e course de Capestang (27/09)
+
+- **Flèches** (« un peu moins de flèches, et au niveau des virages ») : `construireFleches(..., { virages })` —
+  une flèche tous les 28 m en ligne droite ; dans un virage (cap qui tourne de > 0,35 rad sur 16 m) et 22 m avant,
+  une tous les 4 m, 1,35 fois plus grande. Course 1 de Capestang : 245 → 101 flèches.
+- **2e course de Capestang** : `VILLAGE=capestang PISTE=2 py scripts/poilhes/boucle_village.py` →
+  `maps/capestang/boucle-2.json`, 858 m (carrefour avenue/boulevard → boulevard ouest → remontée au nord → rue des
+  tennis → avenue). 1er essai raté (points de passage à côté des rues → impasses) : refait sur une grille métrique.
+- `course-boucle.js` accepte `fichier`, `piste` (classement `capestang-2`), `titre`, `visible` ; sélecteur
+  « Course 1 / Course 2 » dans `rouler.html` (une seule course affichée à la fois) ; le multijoueur suit la course
+  choisie ; le serveur accepte le classement `capestang-2`.

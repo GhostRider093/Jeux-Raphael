@@ -53,7 +53,23 @@ ETAPES_CAPESTANG = [
     (53.0, 299.0),      # le boulevard vers l'ouest
     (-106.0, 293.0),    # le carrefour de l'avenue
 ]
-ETAPES = {"poilhes": ETAPES_POILHES, "capestang": ETAPES_CAPESTANG}[VILLAGE]
+# Capestang, 2e course (26/09/2026, « une deuxième course, plus courte ») : les
+# lotissements de l'ouest, larges et tournants — la boucle du boulevard, du
+# rond-point et des rues pavillonnaires, retour par l'avenue.
+ETAPES_CAPESTANG_2 = [
+    (-102.0, 290.0),    # départ : le carrefour de l'avenue et du boulevard
+    (-220.0, 326.0),    # le boulevard vers l'ouest…
+    (-318.0, 330.0),    # … jusqu'au rond-point
+    (-318.0, 249.0),    # on remonte au nord
+    (-318.0, 162.0),
+    (-270.0, 152.0),    # vers l'est
+    (-198.0, 113.0),
+    (-121.0, 154.0),    # la rue des tennis, en diagonale
+    (-45.0, 200.0),     # on rejoint l'avenue, et l'on redescend au départ
+]
+PISTE = os.environ.get("PISTE", "1")          # PISTE=2 : la deuxième course du village
+ETAPES = {("poilhes", "1"): ETAPES_POILHES, ("capestang", "1"): ETAPES_CAPESTANG,
+          ("capestang", "2"): ETAPES_CAPESTANG_2}[(VILLAGE, PISTE)]
 # Coût d'un mètre selon la largeur de la chaussée : une ruelle de 3 m n'est
 # prise que si elle évite un très long détour.
 def cout_largeur(w):
@@ -174,7 +190,7 @@ def main():
         "depart": {"x": round(x0, 2), "z": round(z0, 2), "cap": round(cap, 4)},
         "points": [[round(x, 2), round(z, 2)] for x, z in propre],
     }
-    (DOSSIER / "boucle.json").write_text(json.dumps(sortie), encoding="utf-8")
+    (DOSSIER / ("boucle.json" if PISTE == "1" else f"boucle-{PISTE}.json")).write_text(json.dumps(sortie), encoding="utf-8")
     print(f"boucle : {len(propre)} points, {longueur:.0f} m par tour")
 
 

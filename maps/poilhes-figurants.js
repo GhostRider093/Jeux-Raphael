@@ -100,6 +100,8 @@ export async function poserFigurants({ jeu, village }) {
     if (jeu.helico) {
       const cx = P.reduce((a, q) => a + q[0], 0) / P.length, cz = P.reduce((a, q) => a + q[1], 0) / P.length;
       jeu.helico.setOrbite({ x: cx, z: cz });
+      // ce qu'un missile peut renverser (pour rire)
+      jeu.helico.setCibles(() => [poses.dinosaure, poses.police, poses.carole, poses.mafieux, poses.cycliste, ...(poses.mafieuxParcours || [])]);
       poses.helicoptere = jeu.helico;
     }
 

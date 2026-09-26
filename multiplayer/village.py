@@ -32,6 +32,8 @@ from pydantic import BaseModel
 router = APIRouter()
 
 VILLAGES = {"poilhes", "capestang"}
+# les classements : une piste par course (« capestang-2 » : la 2e course de Capestang)
+PISTES = VILLAGES | {"capestang-2"}
 PLACES = 8
 CADENCE = 1 / 12                    # s entre deux paquets d'états
 DEPART_DANS = 4.0                   # s entre la demande de départ et le « GO »
@@ -188,14 +190,14 @@ def lire(village: str) -> list:
 
 @router.get("/api/village/classement/{village}")
 def classement(village: str):
-    if village not in VILLAGES:
+    if village not in PISTES:
         raise HTTPException(404, "Village inconnu")
     return {"village": village, "entrees": lire(village)[:20]}
 
 
 @router.post("/api/village/classement/{village}")
 def ajouter(village: str, corps: Temps):
-    if village not in VILLAGES:
+    if village not in PISTES:
         raise HTTPException(404, "Village inconnu")
     if not (TEMPS_MINI <= corps.temps <= 3600):
         raise HTTPException(400, "Temps invalide")

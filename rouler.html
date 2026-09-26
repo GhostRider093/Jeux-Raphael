@@ -313,8 +313,12 @@
     <button data-mode="quad" title="Quad rouge et noir : quatre roues, il saute, tout éclairé">Quad</button>
     <button data-mode="helico" title="L'hélicoptère : on le prend là où il vole">Hélico</button>
   </div>
+  <div class="row" id="row-pistes" hidden>
+    <button data-piste="0" class="on" title="La grande boucle du village">Course 1</button>
+    <button data-piste="1" title="La petite boucle, pleine de virages">Course 2</button>
+  </div>
   <div class="row" id="row-boucle" hidden>
-    <button id="btn-boucle" title="La boucle du village : départ à l'entrée, le gros pont, un tour chronométré">🏁 Course · 1 tour</button>
+    <button id="btn-boucle" title="La boucle du village : départ derrière la ligne, un tour chronométré">🏁 Course · 1 tour</button>
     <button id="btn-classement" title="Les dix meilleurs temps de la boucle">🏆 <span id="record">Classement</span></button>
     <button id="btn-volant" title="Régler ton volant (Thrustmaster T150…)">🎮 Volant</button>
     <button id="btn-enligne" hidden title="Jouer en ligne avec d'autres (salon du village)">🌐 En ligne</button>
@@ -480,11 +484,11 @@
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
 <script type="module">
-import { startVillage } from './maps/poilhes-village.js?v=helico-20260926c';
+import { startVillage } from './maps/poilhes-village.js?v=armes-20260926f';
 import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
-import { creerCourseBoucle } from './maps/course-boucle.js?v=multi-20260926';
-import { creerMultijoueur } from './maps/multijoueur.js?v=multi-20260926';
-import { poserFigurants } from './maps/poilhes-figurants.js?v=figurants-20260926h';
+import { creerCourseBoucle } from './maps/course-boucle.js?v=pistes-20260927';
+import { creerMultijoueur } from './maps/multijoueur.js?v=pistes-20260927';
+import { poserFigurants } from './maps/poilhes-figurants.js?v=armes-20260926';
 import { volant } from './maps/volant.js?v=volant-20260926g';
 window.volant = volant;
 document.getElementById('btn-volant').addEventListener('click', (e) => { e.currentTarget.blur(); volant.regler(); });
@@ -751,14 +755,34 @@ function lancer(engin) {
     // stégosaure, Carole et les mafieux devant l'Ostal Louis.
     poserFigurants({ jeu, village }).then((f) => { window.figurants = f; });
     // La boucle du village (26/09/2026) : seulement si le village en a une.
-    creerCourseBoucle({ jeu, village }).then((course) => {
-      if (!course) return;
-      window.courseBoucle = course;
+    // Les courses du village : la boucle, et une 2e si le village en a une
+    // (Capestang, 26/09/2026). Une seule est affichée à la fois.
+    Promise.all([
+      creerCourseBoucle({ jeu, village, titre: 'Course 1' }),
+      creerCourseBoucle({ jeu, village, fichier: 'boucle-2.json', piste: `${village}-2`, titre: 'Course 2', visible: false }),
+    ]).then(([course1, course2]) => {
+      if (!course1) return;
+      const courses = [course1, course2].filter(Boolean);
+      let course = course1;
+      window.courseBoucle = course1;
+      window.courses = courses;
       $('row-boucle').hidden = false;
+      if (course2) {
+        $('row-pistes').hidden = false;
+        document.querySelectorAll('[data-piste]').forEach((b) => b.addEventListener('click', (e) => {
+          e.currentTarget.blur();
+          course = courses[+b.dataset.piste];
+          window.courseBoucle = course;
+          courses.forEach((c) => c.setVisible(c === course));
+          document.querySelectorAll('[data-piste]').forEach((x) => x.classList.toggle('on', x === b));
+          majRecord();
+        }));
+      }
       // Le multijoueur (26/09/2026) : seulement si le serveur de jeu répond.
-      creerMultijoueur({ jeu, village, course }).then((multi) => {
+      creerMultijoueur({ jeu, village, course: () => course }).then((multi) => {
         if (!multi) return;
         window.multi = multi;
+        courses.forEach((c) => { c.onArrivee = multi.annoncerArrivee; });
         $('btn-enligne').hidden = false;
         $('btn-enligne').addEventListener('click', (e) => {
           e.currentTarget.blur();
@@ -769,8 +793,8 @@ function lancer(engin) {
       // En ligne, 🏁 donne le départ à tout le salon ; seul, il part tout de suite.
       $('btn-boucle').addEventListener('click', (e) => { e.currentTarget.blur(); if (window.multi && window.multi.connecte) window.multi.demanderDepart(); else course.demarrer(); });
       $('btn-classement').addEventListener('click', (e) => { e.currentTarget.blur(); course.montrerClassement(); });
-      const majRecord = () => { const r = course.record(); $('record').textContent = r ? `Record ${r.texte}` : 'Classement'; };
-      course.onChange = majRecord;
+      function majRecord() { const r = course.record(); $('record').textContent = r ? `Record ${r.texte}` : 'Classement'; }
+      courses.forEach((c) => { c.onChange = majRecord; });
       majRecord();
     });
     appliquer(jeu, NIVEAUX[memorise || 'eleve']);

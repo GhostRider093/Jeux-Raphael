@@ -30,10 +30,10 @@ const NOM_ENGIN = { voiture: 'Berline', quad: 'Quad', trottinette: 'Trottinette'
 
 // `.1tour` : la course est passée à un seul tour le 26/09/2026, les temps à deux tours ne se comparent pas.
 const cleClassement = (village) => `nova.boucle.${village}.1tour`;
-function lireClassement(village) {
+function lireClassement(ident) {
   try { return JSON.parse(localStorage.getItem(cleClassement(village))) || []; } catch { return []; }
 }
-function ecrireClassement(village, liste) {
+function ecrireClassement(ident, liste) {
   try { localStorage.setItem(cleClassement(village), JSON.stringify(liste)); } catch { /* navigation privée */ }
 }
 function lireNom() { try { return localStorage.getItem('nova.boucle.nom') || ''; } catch { return ''; } }
@@ -71,12 +71,17 @@ const STYLE = `
  * @param {object} o
  * @param {object} o.jeu       ce que rend `startVillage` (scene, walkableAt, mode, voiture…)
  * @param {string} o.village   'poilhes'
+ * @param {string} [o.fichier='boucle.json']  le tracé (`boucle-2.json` : la 2e course du village)
+ * @param {string} [o.piste=village]          l'identifiant du classement (`capestang-2`…)
+ * @param {string} [o.titre]                  « Course 2 »…
+ * @param {boolean} [o.visible=true]          flèches et damier affichés (une seule course à la fois)
  * @returns {Promise<object|null>} { demarrer(), abandonner(), actif } — null si le village n'a pas de boucle
  */
-export async function creerCourseBoucle({ jeu, village }) {
+export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json', piste = null, titre = null, visible = true }) {
+  const ident = piste || village;
   let data = null;
   try {
-    const res = await fetch(`maps/${village}/boucle.json`, { cache: 'no-cache' });
+    const res = await fetch(`maps/${village}/${fichier}`, { cache: 'no-cache' });
     if (res.ok) data = await res.json();
   } catch { /* pas de boucle */ }
   if (!data || !Array.isArray(data.points) || data.points.length < 3) return null;
@@ -88,7 +93,9 @@ export async function creerCourseBoucle({ jeu, village }) {
   // ── le décor : flèches et ligne de départ ───────────────────────────────
   const root = new THREE.Group();
   root.name = 'course-boucle';
-  root.add(construireFleches(P, solAt, { pas: 6, largeur: 2.2, longueur: 2.8, debut: 14, boucle: true, decalage: 1.2 }));
+  root.add(construireFleches(P, solAt, { largeur: 2.2, longueur: 2.8, debut: 14, boucle: true, decalage: 1.2,
+    // moins de flèches en ligne droite, serrées et plus grandes dans les virages (26/09/2026)
+    virages: { pasDroit: 28, pasVirage: 4, avant: 22, seuil: 0.35, grand: 1.35 } }));
   {
     // damier de 7 m sur 1,4 m, en travers de la rue
     const c = document.createElement('canvas'); c.width = 160; c.height = 32;
@@ -107,6 +114,7 @@ export async function creerCourseBoucle({ jeu, village }) {
     ligne.renderOrder = 3;
     root.add(ligne);
   }
+  root.visible = visible;
   jeu.scene.add(root);
 
   // Points de passage : tous les ECART_PASSAGE m le long du tour.
@@ -129,7 +137,7 @@ export async function creerCourseBoucle({ jeu, village }) {
   let onChange = null, onArrivee = null;
   // Le classement **partagé** (serveur, `multiplayer/village.py`) : s'il répond,
   // il s'affiche sous le classement de ce navigateur ; sinon, rien ne change.
-  const API = `/api/village/classement/${village}`;
+  const API = `/api/village/classement/${ident}`;
   async function enLigne(action = null) {
     try {
       const r = await fetch(API, action ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(action) } : { cache: 'no-store' });
@@ -152,14 +160,27 @@ export async function creerCourseBoucle({ jeu, village }) {
     return m === 'voiture' ? jeu.voiture : m === 'quad' ? jeu.quad : m === 'trottinette' ? jeu.trottinette : null;
   }
 
-  function poserSurLaLigne(p) {
+  /**
+   * **Derrière la ligne, face à elle** (Arnaud, 26/09/2026 : « il faut vraiment
+   * nous placer devant la ligne de départ, sinon on ne comprend pas que c'est
+   * une course, ni que la ligne lance le chrono »). On recule de `RECUL` mètres
+   * le long de la fin du tour : c'est en franchissant la ligne que le chrono part.
+   */
+  const RECUL = 15;
+  // **Dans le sens du départ**, pas le long de la fin du tour : à Poilhes, la
+  // ligne est au bout d'un aller-retour (on part vers le pont et l'on revient
+  // par la même rue) ; reculer le long de l'arrivée mettait l'engin à contresens.
+  function poserDerriereLaLigne(p) {
     const d = data.depart;
-    p.placer(d.x, d.z, d.cap);
+    const x = d.x + Math.sin(d.cap) * RECUL, z = d.z + Math.cos(d.cap) * RECUL;   // l'avant est (−sin, −cos)
+    p.placer(x, z, d.cap);
     p.etat.yaw = d.cap;
     p.etat.u = p.etat.v = p.etat.lacet = 0;
   }
+  let attendLaLigne = false;          // après le « GO », avant d'avoir franchi la ligne
 
   function demarrer() {
+    root.visible = true;
     // Pas d'engin ? La berline par défaut.
     if (!piloteCourant()) jeu.setMode('voiture');
     const p = piloteCourant();
@@ -169,18 +190,19 @@ export async function creerCourseBoucle({ jeu, village }) {
       actif: true, phase: 'decompte', t: 0, decompte: DECOMPTE, tour: 1, passage: 0, tours: [], debutTour: 0,
       engin: jeu.mode,
     });
-    poserSurLaLigne(p);
+    poserDerriereLaLigne(p);
     hud.style.display = 'block';
     decompteEl.style.display = 'flex';
   }
 
   function abandonner() {
+    attendLaLigne = false;
     course.actif = false; course.phase = null;
     hud.style.display = 'none'; decompteEl.style.display = 'none';
   }
 
   function majHud() {
-    const meilleur = lireClassement(village)[0];
+    const meilleur = lireClassement(ident)[0];
     hud.innerHTML = `Tour ${Math.min(course.tour, TOURS)}/${TOURS} · <b>${chrono(course.t)}</b>`
       + `<small>Point ${course.passage}/${passages.length}`
       + (course.tours.length ? ` · tour 1 : ${chrono(course.tours[0])}` : '')
@@ -190,7 +212,7 @@ export async function creerCourseBoucle({ jeu, village }) {
 
   /** Le tableau des dix meilleurs, la ligne `moi` surlignée. */
   function tableau(moi) {
-    const liste = lireClassement(village);
+    const liste = lireClassement(ident);
     if (!liste.length) return '<p>Pas encore de temps : à toi d’ouvrir le classement !</p>';
     const jour = (t) => { const d = new Date(t); return `${d.getDate()}/${d.getMonth() + 1}`; };
     return `<table><tr style="opacity:.7"><td></td><td>Pilote</td><td>Engin</td><td class="t">Meilleur tour</td><td class="t">Temps</td><td class="t">Le</td></tr>`
@@ -202,7 +224,7 @@ export async function creerCourseBoucle({ jeu, village }) {
   /** Le classement à tout moment (bouton 🏆 de la page). */
   function montrerClassement() {
     if (course.actif) return;
-    fin.innerHTML = `<h2>🏆 Classement</h2><div>Boucle de ${village.charAt(0).toUpperCase() + village.slice(1)} · ${(data.longueur / 1000).toFixed(1).replace('.', ',')} km × ${TOURS} tour${TOURS > 1 ? 's' : ''}</div>`
+    fin.innerHTML = `<h2>🏆 Classement</h2><div>${titre ? titre + ' · ' : ''}Boucle de ${village.charAt(0).toUpperCase() + village.slice(1)} · ${(data.longueur / 1000).toFixed(1).replace('.', ',')} km × ${TOURS} tour${TOURS > 1 ? 's' : ''}</div>`
       + tableau(null) + '<div id="boucle-enligne"></div>'
       + `<button class="go" id="boucle-courir">Courir</button><button id="boucle-fermer">Fermer</button>`;
     fin.style.display = 'block';
@@ -219,13 +241,15 @@ export async function creerCourseBoucle({ jeu, village }) {
    */
   let etaitSurLaLigne = false, repitJusqua = 0;
   function departLance() {
+    if (!root.visible) return;          // une course cachée ne démarre pas toute seule
     const p = piloteCourant();
     if (!p || fin.style.display === 'block' || performance.now() < repitJusqua) { etaitSurLaLigne = false; return; }
     const d = data.depart;
     const sur = Math.hypot(p.etat.x - d.x, p.etat.z - d.z) < 8;
     let ecartCap = p.etat.yaw - d.cap;
     ecartCap = Math.atan2(Math.sin(ecartCap), Math.cos(ecartCap));
-    if (sur && !etaitSurLaLigne && p.etat.u > 2 && Math.abs(ecartCap) < 0.9) {
+    if (sur && !etaitSurLaLigne && p.etat.u > (attendLaLigne ? 0.5 : 2) && Math.abs(ecartCap) < 0.9) {
+      attendLaLigne = false;
       Object.assign(course, {
         actif: true, phase: 'course', t: 0, decompte: 0, tour: 1, passage: 0, tours: [], debutTour: 0, engin: jeu.mode,
       });
@@ -260,13 +284,13 @@ export async function creerCourseBoucle({ jeu, village }) {
       ecrireNom(nom);
       const moi = { nom, temps: Math.round(temps * 10) / 10, engin: nomEngin, date: Date.now(),
         meilleurTour: Math.round(Math.min(...course.tours) * 10) / 10 };
-      const liste = [...lireClassement(village), moi].sort((a, b) => a.temps - b.temps).slice(0, 10);
-      ecrireClassement(village, liste);
+      const liste = [...lireClassement(ident), moi].sort((a, b) => a.temps - b.temps).slice(0, 10);
+      ecrireClassement(ident, liste);
       enregistre = true;
       fin.querySelector('#boucle-enr').disabled = true;
       montrer(moi);
       // la place obtenue, dite en clair
-      const rang = lireClassement(village).findIndex((r) => r.date === moi.date);
+      const rang = lireClassement(ident).findIndex((r) => r.date === moi.date);
       fin.querySelector('#boucle-rang').textContent = rang < 0 ? 'Hors du top 10' : rang === 0 ? '🥇 Nouveau record !' : `${rang + 1}ᵉ place`;
       if (onChange) onChange();
       enLigne({ pseudo: nom, temps: moi.temps, engin: nomEngin }).then((r) => peindreEnLigne(r, nom));
@@ -290,12 +314,17 @@ export async function creerCourseBoucle({ jeu, village }) {
 
     if (course.phase === 'decompte') {
       course.decompte -= dt;
-      poserSurLaLigne(p);              // on ne part pas avant le « Go »
+      poserDerriereLaLigne(p);         // on ne part pas avant le « Go »
       const n = Math.ceil(course.decompte);
       decompteEl.textContent = n > 0 ? String(n) : 'GO !';
       if (course.decompte <= 0) {
-        course.phase = 'course';
-        setTimeout(() => { if (course.phase !== 'decompte') decompteEl.style.display = 'none'; }, 700);
+        // « GO » : on roule jusqu'à la ligne, et c'est elle qui lance le chrono
+        course.actif = false; course.phase = null;
+        attendLaLigne = true;
+        etaitSurLaLigne = false;
+        hud.innerHTML = '🏁 <b>Franchis la ligne</b><small>le chrono part quand tu la passes</small>';
+        setTimeout(() => { if (!course.actif) decompteEl.style.display = 'none'; }, 700);
+        return;
       }
       course.t = 0;
       majHud();
@@ -345,7 +374,7 @@ export async function creerCourseBoucle({ jeu, village }) {
   // En phase de capture : le R du pilote (« remettre sur la route la plus
   // proche ») ne doit pas passer après nous et nous renvoyer dans l'impasse.
   addEventListener('keydown', (e) => {
-    if (!course.actif) return;
+    if (!course.actif && !attendLaLigne) return;
     if (e.code === 'Escape') abandonner();
     else if (e.code === 'KeyR' && course.phase === 'course') {
       e.stopImmediatePropagation(); e.preventDefault();
@@ -355,14 +384,18 @@ export async function creerCourseBoucle({ jeu, village }) {
 
   return {
     demarrer, abandonner, montrerClassement,
+    /** Afficher (ou cacher) les flèches et le damier de cette course. */
+    setVisible(v) { root.visible = !!v; if (!v && course.actif) abandonner(); },
+    get visible() { return root.visible; },
+    titre,
     /** Meilleur temps enregistré, ou null. */
-    record: () => { const r = lireClassement(village)[0]; return r ? { ...r, texte: chrono(r.temps) } : null; },
+    record: () => { const r = lireClassement(ident)[0]; return r ? { ...r, texte: chrono(r.temps) } : null; },
     /** Appelé quand un temps entre au classement. */
     set onChange(f) { onChange = f; },
     /** Appelé à l'arrivée avec (temps, engin) — le multijoueur l'annonce au salon. */
     set onArrivee(f) { onArrivee = f; },
     get actif() { return course.actif; },
     longueur: data.longueur, tours: TOURS,
-    classement: () => lireClassement(village),
+    classement: () => lireClassement(ident),
   };
 }
