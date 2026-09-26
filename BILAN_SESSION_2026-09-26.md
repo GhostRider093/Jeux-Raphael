@@ -96,3 +96,17 @@ retour au départ, deux tours, un classement ».
   110–160 m au-dessus du sol, à moins de 150 m du joueur, 170 m/s ; son synthétisé (souffle + grondement,
   aigu à l'approche, grave en s'éloignant), démarré seulement après un geste. `jeu.survol.passer()` en console.
 - À venir : **un hélicoptère — Arnaud s'en occupe lui-même.**
+
+## Suite — les figurants
+
+Cinq modèles Meshy d'Arnaud (Téléchargements) → `assets/fun/` (70–900 Ko chacun après
+`gltf-transform optimize --compress meshopt --texture-compress webp --texture-size 1024 --simplify-ratio 0.1`),
+posés par `maps/poilhes-figurants.js` (Poilhes City seulement) :
+- **cycliste** : roule sans fin sur la boucle, bord droit, 25 km/h, cap lissé ;
+- **policier de l'espace** : à droite de la ligne de départ, face à la piste ;
+- **stégosaure** 9 m, peint en vert : angle nord-est du grand terrain (skatepark), vu depuis le parcours.
+  Le modèle n'avait **ni texture ni normales** (silhouette noire) → `computeVertexNormals()`.
+  1er essai au 1/3 du tour : caché par les arbres ; 2e sur l'autre « terrain de sport » OSM : derrière les maisons ;
+- **Carole** + **les deux mafieux** : sur le trottoir devant l'Ostal Louis.
+Tous sont du décor (on passe au travers).
+- **Les deux mafieux, « il faut les voir souvent »** : 5 copies de plus le long du tour (8 %, 27 %, 46 %, 64 %, 83 %), sur le trottoir à 4 m de l'axe, tournées vers la route (clones : géométrie partagée).

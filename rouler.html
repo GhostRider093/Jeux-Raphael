@@ -480,6 +480,7 @@
 import { startVillage } from './maps/poilhes-village.js?v=arcade-20260926g';
 import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
 import { creerCourseBoucle } from './maps/course-boucle.js?v=arcade-20260926d';
+import { poserFigurants } from './maps/poilhes-figurants.js?v=figurants-20260926e';
 
 const $ = (id) => document.getElementById(id);
 const hud = $('hud');
@@ -733,6 +734,9 @@ function lancer(engin) {
     survols: true,                    // un Rafale passe de temps en temps (26/09/2026)
   }).then(async (jeu) => {
     window.jeu = jeu;                 // poignée de console et de test
+    // Les figurants (26/09/2026) : cycliste sur la boucle, policier au départ,
+    // stégosaure, Carole et les mafieux devant l'Ostal Louis.
+    if (village === 'poilhes') poserFigurants({ jeu, village }).then((f) => { window.figurants = f; });
     // La boucle du village (26/09/2026) : seulement si le village en a une.
     creerCourseBoucle({ jeu, village }).then((course) => {
       if (!course) return;
