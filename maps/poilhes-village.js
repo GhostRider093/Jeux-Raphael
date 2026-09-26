@@ -15,7 +15,7 @@ import { construireVillage } from './poilhes-scene.js?v=pilote-20260925';
 import { createRobot } from './poilhes-robot.js?v=voiture-20260921';
 import { createEnemies } from './poilhes-enemies.js?v=voiture-20260921';
 import { createJet } from './poilhes-jet.js?v=voiture-20260921';
-import { createHelico } from './poilhes-helico.js?v=helico-20260926';
+import { createHelico } from './poilhes-helico.js?v=helico-20260926c';
 // **Une seule version** pour les deux imports de voiture-pilote.js : deux
 // `?v=` différents font deux modules, et le `TOUCHER` réglé par le panneau
 // n'était plus celui que lisait le pilote.

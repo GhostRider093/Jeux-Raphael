@@ -65,39 +65,50 @@ function creerSon() {
 }
 
 /**
- * Sépare le rotor principal du reste : triangles dont les trois sommets sont
- * dans le haut du modèle. Renvoie le pivot (à faire tourner) ou null.
+ * Sépare le rotor principal du reste.
+ *
+ * Mesuré sur le fichier Meshy (26/09/2026) — et c'est là que la 1re version se
+ * trompait : le point le plus haut du modèle n'est **pas** le mât, c'est le
+ * sommet de la dérive de queue ; « le haut du modèle » faisait tourner un bout
+ * de queue. Les pales forment une couche nette au-dessus de 71 % de la hauteur,
+ * le fuselage reste dessous sauf au pied du mât ; le mât est au milieu, à 43 %
+ * de la longueur (nez en −x) et 55 % de la largeur. Au-delà de 83,5 % de la
+ * longueur, c'est la queue : exclue. Tout est exprimé en fractions de la boîte,
+ * ce qui reste vrai après quantification par gltf-transform.
  */
+export const ROTOR = { hauteur: 0.71, queue: 0.835, mat: { x: 0.431, z: 0.5475 } };
+
 function decouperRotor(mesh) {
   const g = mesh.geometry;
   const pos = g.attributes.position;
   if (!g.index) g.setIndex([...Array(pos.count).keys()]);
   g.computeBoundingBox();
   const b = g.boundingBox;
-  const seuil = b.max.y - (b.max.y - b.min.y) * 0.13;
+  const fx = (v) => (pos.getX(v) - b.min.x) / (b.max.x - b.min.x);
+  const fy = (v) => (pos.getY(v) - b.min.y) / (b.max.y - b.min.y);
+  const pale = (v) => fy(v) > ROTOR.hauteur && fx(v) < ROTOR.queue;
   const idx = g.index.array;
   const corps = [], rotor = [];
-  let sx = 0, sz = 0, n = 0;
   for (let t = 0; t < idx.length; t += 3) {
     const a = idx[t], c = idx[t + 1], d = idx[t + 2];
-    if (pos.getY(a) > seuil && pos.getY(c) > seuil && pos.getY(d) > seuil) {
-      rotor.push(a, c, d);
-      sx += pos.getX(a); sz += pos.getZ(a); n++;
-    } else corps.push(a, c, d);
+    if (pale(a) && pale(c) && pale(d)) rotor.push(a, c, d); else corps.push(a, c, d);
   }
-  if (n < 50) return null;                        // rien de reconnaissable : on laisse tel quel
-  const hx = sx / n, hz = sz / n;
+  if (rotor.length < 150) return null;            // rien de reconnaissable : on laisse tel quel
+  const hx = b.min.x + (b.max.x - b.min.x) * ROTOR.mat.x;
+  const hz = b.min.z + (b.max.z - b.min.z) * ROTOR.mat.z;
   const geoRotor = new THREE.BufferGeometry();
   for (const nom of Object.keys(g.attributes)) geoRotor.setAttribute(nom, g.attributes[nom]);
   geoRotor.setIndex(rotor);
   g.setIndex(corps);
+  const hy = b.min.y + (b.max.y - b.min.y) * 0.76;  // à la hauteur des pales (pour le disque flou)
   const pivot = new THREE.Group();
-  pivot.position.set(hx, 0, hz);
+  pivot.position.set(hx, hy, hz);
   const pales = new THREE.Mesh(geoRotor, mesh.material);
-  pales.position.set(-hx, 0, -hz);
+  pales.position.set(-hx, -hy, -hz);
   pales.castShadow = true;
   pivot.add(pales);
   mesh.add(pivot);
+  console.info(`[hélico] rotor : ${rotor.length / 3} triangles sur ${idx.length / 3}`);
   return pivot;
 }
 
