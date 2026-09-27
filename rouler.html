@@ -208,6 +208,18 @@
   #accueil .mode .detail { color: #d9dfe8; font-size: 13px; line-height: 1.35; }
   #accueil .mode:hover, #accueil .mode:focus-visible { transform: translateY(-5px); border-color: var(--accent); outline: none; }
   #accueil .modes .retour { background: rgba(14,18,26,.72); border-color: var(--line); color: var(--dim); padding: 8px 18px; border-radius: 12px; }
+  #accueil .mission { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 12px 18px;
+                      width: min(760px, calc(100vw - 32px)); border-radius: 16px; text-decoration: none; color: #fff;
+                      background: linear-gradient(90deg, rgba(120,20,10,.88), rgba(14,18,26,.86));
+                      border: 2px solid rgba(255,90,60,.6); box-shadow: 0 14px 34px rgba(0,0,0,.5);
+                      transition: transform .25s ease, border-color .25s ease; }
+  #accueil .mission:hover, #accueil .mission:focus-visible { transform: translateY(-4px); border-color: var(--accent); outline: none; }
+  #accueil .mission .ico { font-size: 30px; }
+  #accueil .mission .texte { display: grid; gap: 2px; flex: 1; }
+  #accueil .mission b { font-size: 18px; }
+  #accueil .mission small { color: #e6d6d0; font-size: 13px; }
+  #accueil .mission .go { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #1b1600;
+                          display: grid; place-items: center; font-size: 20px; font-weight: 900; }
   @media (max-width: 1200px) and (min-width: 901px) {
     #accueil .engins { grid-template-columns: repeat(2, 1fr); width: min(860px, calc(100vw - 32px)); }
   }
@@ -529,6 +541,14 @@
       </div>
       <button class="retour" type="button" id="modes-retour">‹ Changer d’engin</button>
     </div>
+    <!-- La mission d'hélicoptère (27/09/2026) : un autre monde, le « pays »
+         Poilhes–Capestang ; elle recharge la page avec ?mission=capestang. -->
+    <a class="mission" id="btn-mission" href="rouler.html?mission=capestang">
+      <span class="ico">🚁</span>
+      <span class="texte"><b>Mission · Prise d’assaut de Capestang</b>
+        <small>Décolle de Poilhes, vole jusqu’à Capestang, abats les deux hélicoptères ennemis</small></span>
+      <span class="go">›</span>
+    </a>
     <button id="btn-rouler" type="button">Rouler</button>
     <p class="resume" id="resume-choix"></p>
     <p class="aide">Flèches ou <b>ZQSD</b> · <b>Espace</b> saute · en l’air <b>F</b> looping, <b>G</b> 360, <b>H J K</b> figures de fou · <b>P</b> au skatepark · <b>V</b> caméra</p>
@@ -548,13 +568,13 @@
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
 <script type="module">
-import { startVillage } from './maps/poilhes-village.js?v=armes-20260926f';
+import { startVillage } from './maps/poilhes-village.js?v=20260927m';
 import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
 import { creerCourseBoucle } from './maps/course-boucle.js?v=pistes-20260927';
 import { creerMultijoueur } from './maps/multijoueur.js?v=pistes-20260927';
 import { poserFigurants } from './maps/poilhes-figurants.js?v=armes-20260926';
-import { creerTrafic } from './maps/poilhes-trafic.js?v=trafic-20260927';
-import { volant } from './maps/volant.js?v=volant-20260926g';
+import { creerTrafic } from './maps/poilhes-trafic.js?v=20260927m';
+import { volant } from './maps/volant.js?v=20260927m';
 window.volant = volant;
 document.getElementById('btn-volant').addEventListener('click', (e) => { e.currentTarget.blur(); volant.regler(); });
 
@@ -813,7 +833,21 @@ $('btn-rouler').addEventListener('click', () => {
   setTimeout(() => { accueil.hidden = true; }, 750);
   lancer(choix.engin, choix.jeu);
 });
-if (params.get('go') === '1') { accueil.hidden = true; lancer(choix.engin, choix.jeu); }
+if (params.get('mission') === 'capestang') {
+  // La mission n'utilise pas le village : elle monte son propre monde (le pays).
+  accueil.hidden = true;
+  $('hud').hidden = true; $('minimap').hidden = true;
+  fondu(musique, 1500);
+  const loader = $('loader'), msg = $('load-msg'), barre = $('load-bar');
+  loader.querySelector('h2').textContent = 'Prise d’assaut de Capestang';
+  loader.querySelector('p').textContent = 'Le pays se construit : Poilhes, Capestang et 4 km de campagne…';
+  import('./maps/mission-capestang.js?v=20260927m').then(({ lancerMission }) => lancerMission({
+    conteneur: $('scene'),
+    progression: (f, m) => { barre.style.width = `${Math.round(f * 100)}%`; if (m) msg.textContent = m; },
+    retourAccueil: () => { location.href = 'rouler.html'; },
+  })).then((m) => { window.mission = m; loader.classList.add('done'); })
+    .catch((err) => { console.error(err); msg.textContent = 'Erreur : ' + err.message; });
+} else if (params.get('go') === '1') { accueil.hidden = true; lancer(choix.engin, choix.jeu); }
 
 // ─────────────────────────────── le jeu
 // Points de départ par engin et par village (repère du jeu, cap en radians,

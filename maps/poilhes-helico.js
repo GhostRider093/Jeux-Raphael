@@ -21,7 +21,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
-import { creerArmes } from './helico-armes.js?v=armes-20260926f';
+import { creerArmes } from './helico-armes.js?v=20260927m';
 
 export const HELICO_PILOTE = {
   longueur: 17,        // m, nez–queue
@@ -275,6 +275,10 @@ export function createHelico({ scene, camera, groundAt, surfaceAt, keys, rendere
     setOrbite(centre) { s.orbite = centre; },
     /** Les figurants qu'une explosion peut renverser. */
     setCibles(f) { armes.setCibles(f); },
+    /** Les ennemis en l'air (mission, 27/09/2026) : voir `helico-armes.js`. */
+    setCiblesAir(f) { armes.setCiblesAir(f); },
+    verrou: () => armes.verrou(),
+    exploser: (p) => armes.exploser(p),
     get pilote() { return s.pilote; },
   };
 }

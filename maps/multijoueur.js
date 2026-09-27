@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 import { construireVoiture } from './voiture-model.js?v=pilote-20260925';
-import { construireEnginQuad } from './quad.js?v=pilote-20260925';
+import { construireEnginQuad } from './quad.js?v=20260927m';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
 
 const CADENCE_ENVOI = 0.1;      // s

@@ -60,3 +60,22 @@
   Voix du « youhou » : **Jarvis** (sa propre voix robotisée) — prises 5 et 6 seulement.
 - **Quad calmé** (réglages de la berline, 100 km/h, plus d'envol aux bosses, pilote qui ne saute plus) :
   essayé et **validé par Arnaud** (« c'est très bien »).
+
+## Mission : la prise d'assaut de Capestang (27/09/2026, soir)
+
+- Accueil de `rouler.html` : bandeau « Mission · Prise d'assaut de Capestang » → `rouler.html?mission=capestang`.
+- `maps/mission-capestang.js` : monte le **pays** (`pays-scene.js`, Poilhes + Capestang à 4 km) avec son propre
+  moteur, pose l'hélico du joueur (`createHelico`) dans une cour dégagée de Poilhes, tourné vers Capestang.
+  Paliers : 1. rallier Capestang (flèche + distance) ; 2. abattre deux hélicos ennemis. Victoire / défaite,
+  temps et record (localStorage), Rejouer / Accueil.
+- Ennemis Meshy (60 crédits, solde 811) : `assets/fun/helico-ennemi-1.glb` « Faucon noir » (noir et rouge),
+  `-2` « Ombre du désert » (beige furtif). Patrouille au-dessus de Capestang, combat en orbite autour du joueur
+  à 190 m, rafales de traçantes rouges ; abattus : chute en vrille, fumée noire, explosion au sol.
+- Armes (`helico-armes.js`, ajout seulement) : cibles en l'air + **verrouillage** (cône de 12° devant le nez,
+  950 m) — balles droites sur la cible, **missiles à tête chercheuse**. Balle 4, missile 45 dégâts, ennemi 100 PV.
+  `poilhes-helico.js` : trois lignes de passe-plat (`setCiblesAir`, `verrou`, `exploser`).
+- Tir ennemi réglé après essai : 3 dégâts / dispersion 0,03 vidait la coque en 10 s → 2 / 0,055, pauses 3–4,8 s.
+- Numéros de version des imports remis à neuf (`?v=20260927m`) pour tous les modules changés aujourd'hui : le
+  « pousse » précédent avait gardé les anciens, un navigateur pouvait garder l'ancien code en cache.
+- Vérifié (Chrome sans fenêtre) : chargement, verrou, dégâts, chute des deux ennemis, écran de victoire ;
+  les modes du village (berline, quad, trottinette, hélico) sans erreur.

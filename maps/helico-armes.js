@@ -67,6 +67,15 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
   scene.add(eclair);
   let eclairVie = 0;
   let cibles = () => [];
+  // ── les cibles en l'air (27/09/2026, la prise d'assaut de Capestang) ─────
+  // Chacune : { position: Vector3, rayon, vivante, toucher(degats) }. Un ennemi
+  // dans le cône de visée (VERROU) est « verrouillé » : les balles partent vers
+  // lui au lieu de plonger à 18°, et les missiles le poursuivent. C'est de
+  // l'arcade : sans cela, toucher un hélicoptère qui bouge au canon fixe
+  // demanderait un simulateur.
+  let ciblesAir = () => [];
+  let verrou = null;
+  const VERROU = { angle: 0.22, portee: 950, virageMissile: 3.2 };
 
   // ── les traçantes ───────────────────────────────────────────────────────
   const N_BALLES = 64;
@@ -171,6 +180,14 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
     reticule.visible = false;
   }
 
+  /** La cible vivante que ce point touche (à `marge` près), ou null. */
+  function toucheEnLair(p, marge) {
+    for (const c of ciblesAir()) {
+      if (c && c.vivante && c.position.distanceTo(p) < c.rayon + marge) return c;
+    }
+    return null;
+  }
+
   function exploser(p) {
     eclair.position.set(p.x, p.y + 3, p.z);
     eclairVie = 0.5;
@@ -181,6 +198,27 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
     souffler(p);
   }
 
+  /** L'ennemi le plus proche de l'axe du nez, dans le cône et à portée — ou null. */
+  const nez = new THREE.Vector3(), versCible = new THREE.Vector3();
+  function chercherVerrou() {
+    root.updateMatrixWorld(true);
+    root.getWorldQuaternion(q);
+    nez.set(0, 0, -1).applyQuaternion(q);
+    nez.y = 0; nez.normalize();
+    let meilleur = null, score = Infinity;
+    for (const c of ciblesAir()) {
+      if (!c || !c.vivante) continue;
+      versCible.copy(c.position).sub(root.position);
+      const d = versCible.length();
+      if (d > VERROU.portee || d < 1) continue;
+      const horiz = Math.hypot(versCible.x, versCible.z) || 1;
+      const angle = Math.acos(Math.max(-1, Math.min(1, (versCible.x * nez.x + versCible.z * nez.z) / horiz)));
+      if (angle > VERROU.angle) continue;
+      if (angle * 400 + d < score) { score = angle * 400 + d; meilleur = c; }
+    }
+    return meilleur;
+  }
+
   function tirerBalle() {
     const b = balles[prochaineBalle]; prochaineBalle = (prochaineBalle + 1) % N_BALLES;
     const c = MITRAILLE.canons[canon]; canon = 1 - canon;
@@ -188,6 +226,12 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
     b.m.position.set(c[0], c[1], c[2]).applyMatrix4(root.matrixWorld);
     root.getWorldQuaternion(q);
     avant.set(0, -Math.sin(PLONGEE), -Math.cos(PLONGEE)).applyQuaternion(q);
+    if (verrou) {
+      // verrouillé : droit sur la cible, avec un peu de dispersion
+      avant.copy(verrou.position).sub(b.m.position).normalize();
+      avant.x += (Math.random() - 0.5) * 0.02; avant.y += (Math.random() - 0.5) * 0.02; avant.z += (Math.random() - 0.5) * 0.02;
+      avant.normalize();
+    }
     b.v.copy(avant).multiplyScalar(MITRAILLE.vitesse);
     b.m.lookAt(tmp.copy(b.m.position).sub(avant));     // la traçante dans l'axe du tir
     b.vie = MITRAILLE.portee / MITRAILLE.vitesse;
@@ -203,6 +247,8 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
     m.m.position.set(p[0], p[1], p[2]).applyMatrix4(root.matrixWorld);
     root.getWorldQuaternion(q);
     m.dir.set(0, -Math.sin(PLONGEE), -Math.cos(PLONGEE)).applyQuaternion(q);
+    m.cible = verrou;                                  // tête chercheuse, si l'on a verrouillé
+    if (verrou) m.dir.set(0, 0, -1).applyQuaternion(q);
     m.m.lookAt(tmp.copy(m.m.position).sub(m.dir));   // le nez du missile dans le sens du tir
     m.vitesse = MISSILE.vitesse0; m.parcouru = 0; m.vie = true; m.m.visible = true;
     if (window.RaphaelMissileAudio) window.RaphaelMissileAudio.playLaunch();
@@ -213,6 +259,7 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
    * @param {{mitrailleuse:boolean, missile:boolean}} commandes (null : ne tire pas)
    */
   function update(dt, commandes) {
+    verrou = commandes ? chercherVerrou() : null;
     if (commandes) viser(); else reticule.visible = false;
     if (commandes) {
       attenteTir -= dt; attenteMissile -= dt;
@@ -227,6 +274,8 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
       let touche = false;
       for (let k = 0; k < pas && !touche; k++) {
         b.m.position.addScaledVector(b.v, dt / pas);
+        const cible = toucheEnLair(b.m.position, 0);
+        if (cible) { cible.toucher(4, b.m.position); impacts.spawn(b.m.position.clone(), tmp.set(0, 1, 0).clone(), 0.8); touche = true; break; }
         const sol = plancher(b.m.position.x, b.m.position.z);
         if (b.m.position.y <= sol) {
           b.m.position.y = sol + 0.05;
@@ -239,12 +288,21 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
     for (const m of missiles) {
       if (!m.vie) continue;
       m.vitesse = Math.min(MISSILE.vitesseMax, m.vitesse + MISSILE.accel * dt);
+      if (m.cible && m.cible.vivante) {
+        // la tête chercheuse : le cap tourne vers la cible, à vitesse limitée
+        versCible.copy(m.cible.position).sub(m.m.position).normalize();
+        const k = Math.min(1, VERROU.virageMissile * dt);
+        m.dir.lerp(versCible, k).normalize();
+        m.m.lookAt(tmp.copy(m.m.position).sub(m.dir));
+      }
       const d = m.vitesse * dt;
       const pas = Math.ceil(d / 3);
       let boum = false;
       for (let k = 0; k < pas && !boum; k++) {
         m.m.position.addScaledVector(m.dir, d / pas);
-        if (m.m.position.y <= plancher(m.m.position.x, m.m.position.z)) boum = true;
+        const cible = toucheEnLair(m.m.position, 2.5);
+        if (cible) { cible.toucher(45, m.m.position); boum = true; }
+        else if (m.m.position.y <= plancher(m.m.position.x, m.m.position.z)) boum = true;
       }
       m.parcouru += d;
       m.fumee -= dt;
@@ -298,5 +356,11 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
     update, prechauffer,
     /** Ce qui peut être renversé par une explosion (figurants). */
     setCibles(f) { cibles = f; },
+    /** Les cibles en l'air (ennemis) : `f()` rend [{ position, rayon, vivante, toucher(degats) }]. */
+    setCiblesAir(f) { ciblesAir = f; },
+    /** La cible verrouillée en ce moment, ou null. */
+    verrou: () => verrou,
+    /** Une explosion ailleurs que sous un missile (un ennemi abattu). */
+    exploser: (p) => exploser(p),
   };
 }

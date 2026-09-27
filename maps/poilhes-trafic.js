@@ -24,7 +24,7 @@ import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 import { construireVoiture } from './voiture-model.js?v=pilote-20260925';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
-import { construireEnginQuad, QUAD_TRAFIC } from './quad.js?v=pilote-20260925';
+import { construireEnginQuad, QUAD_TRAFIC } from './quad.js?v=20260927m';
 
 /** Combien de chaque, par niveau de qualité (`maps/qualite.js`). */
 export const NOMBRES = {
