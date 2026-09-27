@@ -72,7 +72,9 @@ export const TOUCHER = {
 export const SAUT_TROTTINETTE = {
   impulsion: 2.6,                  // m/s : le coup de jambes (Espace), 34 cm de haut sur le plat
   envolMax: 7.5,                   // m/s : au-delà, le saut n'est plus un saut mais un lancer
-  turboMax: 11.5,                  // m/s sur une bande de lancement (41 km/h), contre 6,9 au moteur seul
+  // 27/09/2026, Arnaud : « il faut lui mettre plus de vitesse » — 54 km/h sur
+  // une bande (41 avant), 36 au moteur (25 avant, `REGLAGES.trottinette.vmax`).
+  turboMax: 15.0,                  // m/s sur une bande de lancement (54 km/h)
   pencheMax: 0.55,                 // rad (≈ 31°) : au-delà, un vrai pilote pose le pied
 };
 /**
@@ -727,6 +729,10 @@ export function creerPilote({
     vitesseSol: 0, air: 0, sautLatch: false, sautCooldown: 0,
     tangageAir: 0, tangageVit: 0, figureVit: 0, spin: 0, spinVit: 0, demandeExpire: 0,
     flipLatch: false, spinLatch: false, figureDemandee: null, cabreTenu: false,
+    // tailwhip, superman, lâcher : l'angle de la planche, la phase de la pose
+    // (0 → 1, −1 = pas demandée), la phase du salto du pilote seul
+    whip: 0, whipVit: 0, superman: -1, supermanVit: 0, lacher: -1, lacherVit: 0,
+    whipLatch: false, supermanLatch: false, lacherLatch: false,
     chute: 0, figure: null, figureN: 0, turbo: 0,
     vue: 0, dist: VUES[0].dist, fov: VUES[0].fov,
     choc: 0, vueForcee: false, allumage: 0,
@@ -840,7 +846,8 @@ export function creerPilote({
   }
 
   // ── commandes ────────────────────────────────────────────────────────────
-  const cmd = { gaz: 0, frein: 0, direction: 0, main: false, saut: false, flip: false, spin: false, cabre: 0 };
+  const cmd = { gaz: 0, frein: 0, direction: 0, main: false, saut: false, flip: false, spin: false, cabre: 0,
+    whip: false, superman: false, lacher: false };
   let volant = 0;                     // position brute du volant, avant courbe
   const doigt = { x: 0, y: 0 };       // manche tactile : x dirige, y accélère ou freine
   let mainTactile = false;
@@ -900,8 +907,18 @@ export function creerPilote({
     // flèches haut / bas y inclinent l'engin — au sol elles restent gaz et frein.
     cmd.main = figures ? false : (tenue('Space') || mainTactile || !!(vc && vc.main));
     cmd.saut = figures && (tenue('Space') || mainTactile || !!(vc && vc.main));
-    cmd.flip = figures && tenue('KeyF');
-    cmd.spin = figures && tenue('KeyG');
+    // La manette PS4 (`volant.js`) : R1 looping, L1 360, rond tailwhip, croix
+    // haut superman, croix bas lâcher — elle n'avait que la croix depuis le
+    // 26/09 (Arnaud, 27/09 : « il ne fait plus de looping sur la manette »).
+    cmd.flip = figures && (tenue('KeyF') || !!(vc && vc.flip));
+    cmd.spin = figures && (tenue('KeyG') || !!(vc && vc.spin));
+    // Les figures « de fou » de la trottinette (27/09/2026) : H tailwhip (la
+    // planche fait le tour sous les pieds), J superman (le pilote s'allonge
+    // derrière le guidon), K lâcher (il quitte la trottinette, salto, et
+    // retombe dessus).
+    cmd.whip = surDeuxRoues && (tenue('KeyH') || !!(vc && vc.whip));
+    cmd.superman = surDeuxRoues && (tenue('KeyJ') || !!(vc && vc.superman));
+    cmd.lacher = surDeuxRoues && (tenue('KeyK') || !!(vc && vc.lacher));
     // Clignotants (quad) : ils suivent le volant tout seuls — un coup de guidon
     // franc d'un côté les allume, ils restent une seconde après qu'on a
     // redressé. X : feux de détresse, tant qu'on l'appuie.
@@ -911,7 +928,7 @@ export function creerPilote({
       const auto = performance.now() < state.clignoJusqua ? state.clignoCote : 0;
       voiture.setClignotant(tenue('KeyX') ? 2 : (auto || 0));
     }
-    cmd.cabre = figures ? THREE.MathUtils.clamp((avance ? 1 : 0) - (recule ? 1 : 0) - doigt.y, -1, 1) : 0;
+    cmd.cabre = figures ? THREE.MathUtils.clamp((avance ? 1 : 0) - (recule ? 1 : 0) - doigt.y + ((vc && vc.cabre) || 0), -1, 1) : 0;
   }
 
   // ── obstacles ────────────────────────────────────────────────────────────
@@ -978,6 +995,8 @@ export function creerPilote({
     state.tangage = state.roulis = 0;
     state.vitesseSol = 0; state.air = 0; state.tangageAir = 0; state.tangageVit = 0;
     state.spin = 0; state.spinVit = 0; state.chute = 0; state.figureDemandee = null;
+    finirFiguresDeFou();
+    reposerPiloteQuad();
   }
 
   function enter(x, z, yaw = 0) {
@@ -1029,6 +1048,10 @@ export function creerPilote({
     state.spinVit = 0;
     state.flipLatch = cmd.flip;
     state.spinLatch = cmd.spin;
+    state.whipLatch = cmd.whip; state.supermanLatch = cmd.superman; state.lacherLatch = cmd.lacher;
+    finirFiguresDeFou();
+    // un vrai saut (Espace, tremplin — pas une bosse) : le pilote du quad crie
+    if (surQuad && vy > 3.0) crierYouhou();
     // Une figure demandée dans la demi-seconde avant le bord compte : on
     // appuie souvent un peu avant de décoller, pas exactement dessus.
     if (state.demandeExpire <= 0) state.figureDemandee = null;
@@ -1085,6 +1108,108 @@ export function creerPilote({
    */
   function figure(type) { state.figureDemandee = type; }
 
+  // ── les figures de fou (trottinette, 27/09/2026) ─────────────────────────
+  // Elles ne bougent pas l'engin entier mais ses deux morceaux : la planche
+  // (`kit.engin`) et le pilote (`kit.socle`), que `construireEnginTrottinette`
+  // range dans la caisse. On garde leur pose de repos et l'on y revient.
+  let kit = null, reposPlanche = null, reposPilote = null, pivot = null;
+  if (surDeuxRoues && voiture.pret) {
+    voiture.pret.then((r) => {
+      const k = r && r.engin;
+      if (!k || !k.engin || !k.socle) return;
+      kit = k;
+      reposPlanche = { p: k.engin.position.clone(), ry: k.engin.rotation.y };
+      reposPilote = { p: k.socle.position.clone(), rx: k.socle.rotation.x };
+      // le guidon : la planche tourne autour de lui (tailwhip), le pilote s'y
+      // tient en s'allongeant (superman)
+      const g = k.poignees || null;
+      pivot = { y: g && Number.isFinite(g.y) ? g.y : 1.0, z: g && Number.isFinite(g.z) ? g.z : -0.45 };
+    }).catch(() => {});
+  }
+  // ── le quad (27/09/2026) : le pilote debout crie « youhou » quand il saute ──
+  // Il ne décolle plus de sa machine en l'air : essayé le 27/09, « il saute sur
+  // lui-même, c'est ridicule » (Arnaud). `reposerPiloteQuad` le garde en place.
+  let kitQuad = null, reposSocleQuad = null;
+  if (surQuad && voiture.pret) {
+    voiture.pret.then((r) => {
+      const k = r && r.engin;
+      if (!k || !k.socle) return;
+      kitQuad = k;
+      reposSocleQuad = { y: k.socle.position.y, rx: k.socle.rotation.x };
+    }).catch(() => {});
+  }
+  // Six voix générées en local (XTTS, `perso/youhou/`) ; Arnaud a choisi
+  // celle de Jarvis (« c'est la mienne, robotisée ») : les deux prises 5 et 6.
+  const youhous = [5, 6].map((n) => { const a = new Audio(`assets/sons/youhou-${n}.mp3?v=20260927`); a.preload = 'auto'; return a; });
+  function crierYouhou() {
+    const a = youhous[Math.floor(Math.random() * youhous.length)];
+    a.volume = 0.8; a.currentTime = 0;
+    const p = a.play(); if (p?.catch) p.catch(() => {});
+  }
+  function reposerPiloteQuad() {
+    if (!kitQuad) return;
+    kitQuad.socle.position.y = reposSocleQuad.y;
+    kitQuad.socle.rotation.x = reposSocleQuad.rx;
+  }
+
+  function finirFiguresDeFou() {
+    state.whip = 0; state.whipVit = 0;
+    state.superman = -1; state.supermanVit = 0;
+    state.lacher = -1; state.lacherVit = 0;
+    poserFiguresDeFou();
+  }
+  /** Pose planche et pilote d'après l'état des figures (à chaque image). */
+  function poserFiguresDeFou() {
+    if (!kit) return;
+    const pl = kit.engin, pi = kit.socle;
+    // tailwhip : la planche tourne autour de l'axe vertical du guidon
+    const a = state.whip, c = Math.cos(a), s = Math.sin(a);
+    const bx = reposPlanche.p.x, bz = reposPlanche.p.z - pivot.z;
+    pl.position.set(c * bx + s * bz, reposPlanche.p.y, pivot.z - s * bx + c * bz);
+    pl.rotation.y = reposPlanche.ry + a;
+    // superman : le pilote bascule vers l'arrière autour des poignées jusqu'à
+    // l'horizontale, puis revient ; lâcher : il s'élève au-dessus de la
+    // trottinette, fait un salto arrière seul et retombe sur la planche
+    let rx = 0, dy = 0;
+    let centre = pivot;
+    if (state.superman >= 0) rx += -1.35 * Math.sin(Math.PI * Math.min(1, state.superman));
+    if (state.lacher >= 0) {
+      const u = Math.min(1, state.lacher);
+      rx += 2 * Math.PI * u;
+      dy += Math.sin(Math.PI * u) * 1.3;
+      // seul, il tourne autour de son propre centre (≈ 0,9 m), pas du guidon
+      if (state.superman < 0) centre = { y: reposPilote.p.y + 0.9, z: reposPilote.p.z };
+    }
+    const cr = Math.cos(rx), sr = Math.sin(rx);
+    const qy = reposPilote.p.y - centre.y, qz = reposPilote.p.z - centre.z;
+    pi.position.set(reposPilote.p.x, centre.y + qy * cr - qz * sr + dy, centre.z + qy * sr + qz * cr);
+    pi.rotation.x = reposPilote.rx + rx;
+  }
+  /** En l'air : fait avancer les figures de fou demandées. */
+  function figuresDeFou(dt) {
+    const T = () => Math.max(0.45, tempsDeVolRestant() - 0.06);
+    if (cmd.whip && !state.whipLatch) state.whipVit += Math.min(2 * Math.PI / T(), 14) * (cmd.direction < -0.2 ? -1 : 1);
+    if (cmd.superman && !state.supermanLatch && state.superman < 0) { state.superman = 0; state.supermanVit = 1 / T(); }
+    if (cmd.lacher && !state.lacherLatch && state.lacher < 0) { state.lacher = 0; state.lacherVit = 1 / T(); }
+    state.whipLatch = cmd.whip; state.supermanLatch = cmd.superman; state.lacherLatch = cmd.lacher;
+    state.whip += state.whipVit * dt;
+    if (state.superman >= 0) state.superman += state.supermanVit * dt;
+    if (state.lacher >= 0) state.lacher += state.lacherVit * dt;
+    poserFiguresDeFou();
+  }
+  /** Au sol : ce qui a été réussi (noms) et si la réception tient. */
+  function bilanFiguresDeFou() {
+    const noms = [];
+    let rate = false;
+    const toursWhip = Math.round(state.whip / (2 * Math.PI));
+    if (Math.abs(state.whip - toursWhip * 2 * Math.PI) > 1.0) rate = true;
+    if (toursWhip) noms.push(Math.abs(toursWhip) === 1 ? 'Tailwhip' : `${Math.abs(toursWhip)}× tailwhip`);
+    if (state.superman >= 0) { if (state.superman < 0.8) rate = true; else noms.push('Superman'); }
+    if (state.lacher >= 0) { if (state.lacher < 0.85) rate = true; else noms.push('Lâcher + salto'); }
+    finirFiguresDeFou();
+    return { noms, rate };
+  }
+
   /**
    * En l'air, la trottinette tourne. Une figure demandée est **calibrée pour se
    * boucler juste avant l'atterrissage** : un looping sur un saut d'une seconde
@@ -1112,6 +1237,7 @@ export function creerPilote({
     state.tangageVit *= Math.max(0, 1 - 0.35 * dt);
     state.tangageAir += (state.figureVit + state.tangageVit) * dt;
     state.spin += state.spinVit * dt;
+    if (surDeuxRoues) figuresDeFou(dt);
   }
 
   /**
@@ -1145,7 +1271,9 @@ export function creerPilote({
     const resteFlip = state.tangageAir - toursFlip * 2 * Math.PI;
     const toursSpin = Math.round(state.spin / (2 * Math.PI));
     const resteSpin = state.spin - toursSpin * 2 * Math.PI;
-    const droit = Math.abs(resteFlip) < 1.05 && Math.abs(resteSpin) < 1.0;
+    const fou = surDeuxRoues ? bilanFiguresDeFou() : { noms: [], rate: false };
+    if (surQuad) reposerPiloteQuad();
+    const droit = Math.abs(resteFlip) < 1.05 && Math.abs(resteSpin) < 1.0 && !fou.rate;
     state.tangageAir = 0;
     state.tangageVit = 0;
     state.figureVit = 0;
@@ -1157,6 +1285,7 @@ export function creerPilote({
     if (toursFlip > 0) noms.push(toursFlip === 1 ? 'Backflip' : toursFlip === 2 ? 'Double backflip' : `${toursFlip} backflips`);
     if (toursFlip < 0) noms.push(toursFlip === -1 ? 'Frontflip' : toursFlip === -2 ? 'Double frontflip' : `${-toursFlip} frontflips`);
     if (toursSpin) noms.push(String(Math.abs(toursSpin) * 360));
+    noms.push(...fou.noms);
     if (!droit) {
       // Réception à l'envers : on tombe, on perd trois quarts de la vitesse,
       // et l'engin tangue une seconde le temps de se rasseoir.
@@ -1511,6 +1640,10 @@ export function creerPilote({
           decoller(Math.max(0, state.elan) + SAUT.impulsion);
           state.sautCooldown = 0.35;
         } else if (etat.vitesse > SEUIL_ENVOL
+                   // le quad reste collé à la route comme la voiture : il ne quitte le
+                   // sol que sur un vrai tremplin (Arnaud, 27/09/2026 : « il faut qu'il
+                   // se calme ») ; la trottinette, elle, décolle au sommet des bosses
+                   && (!surQuad || state.elan > 2.5)
                    && (vaDecoller(Math.max(0, Math.min(state.elan, SAUT.envolMax)), 0.16, 0.04) || chuteNecessaire < chuteLibre)) {
           // **On décolle quand la trajectoire libre passe au-dessus du sol.**
           // Lancée avec la vitesse verticale que la rampe lui a donnée, la
@@ -1713,6 +1846,10 @@ export function creerPilote({
   const VOITURES = {
     rouge: { teinte: 'rouge', reglage: REGLAGES.gt },
     bleue: { teinte: 'bleu', reglage: REGLAGES.traction },
+    // La GT rouge de Poilhes City (Arnaud, 27/09/2026 : « l'autre voiture rouge,
+    // mais avec les mêmes fonctions, juste le design ») : la peinture rouge sur
+    // la mécanique de la berline bleue.
+    'rouge-berline': { teinte: 'rouge', reglage: REGLAGES.traction },
   };
   let choix = 'rouge';
   function choisirVoiture(nom) {

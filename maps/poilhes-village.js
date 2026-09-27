@@ -485,8 +485,10 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
           + '<b>M</b> son du moteur · <b>P</b> au skatepark · les clignotants suivent le guidon'
       : mode === 'trottinette'
         ? 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> sauter · en l’air : <b>F</b> looping, <b>G</b> 360, '
+          + '<b>H</b> tailwhip, <b>J</b> superman, <b>K</b> lâcher + salto · '
           + 'flèches haut / bas pour incliner · <b>V</b> caméra · <b>R</b> se remettre en selle · '
-          + '<b>P</b> au skatepark · bandes bleues = lancement à 41 km/h'
+          + '<b>P</b> au skatepark · bandes bleues = lancement à 54 km/h · '
+          + 'manette : R1 looping, L1 360, ○ tailwhip, croix ↑ superman, croix ↓ lâcher'
       : mode === 'voiture'
         ? (voitureUnique ? '' : '<b>C</b> : changer de voiture · ')
           + 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> frein à main · '

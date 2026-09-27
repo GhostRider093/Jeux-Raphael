@@ -29,16 +29,51 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 
-const QUAD = 'assets/perso/quad.glb?v=2';
+/**
+ * Le quad. Arnaud, 27/09/2026 : « il faut refaire totalement le quad, il est
+ * dégueulasse : un quad ultra agressif, le mec debout dessus ». Quatre modèles
+ * Meshy (`perso/quad-agressif-N/`) : 1 rouge et noir, 2 noir et jaune, 3 orange
+ * cross, 4 bleu à aileron. Arnaud a choisi le 2, l'orange en deuxième (pour le
+ * trafic) ; seuls ces deux-là sont compressés dans `assets/perso/`. `?quad=3`
+ * met l'orange sous le joueur, `?quad=0` l'ancien.
+ */
+const QUADS = {
+  0: 'assets/perso/quad.glb?v=2',
+  2: 'assets/perso/quad-agressif-2.glb?v=1',
+  3: 'assets/perso/quad-agressif-3.glb?v=1',
+};
+export const QUAD_PAR_DEFAUT = 2;             // le noir et jaune, choisi par Arnaud le 27/09/2026
+/** Le deuxième choix d'Arnaud (« l'orange est magnifique ») : les quads du trafic. */
+export const QUAD_TRAFIC = 3;
+function choixQuad() {
+  let n = QUAD_PAR_DEFAUT;
+  try { const q = new URLSearchParams(location.search).get('quad'); if (q in QUADS) n = +q; } catch { /* hors page */ }
+  return n;
+}
+const QUAD = QUADS[choixQuad()];
 /**
  * Le pilote riggé : l'ado à casquette rouge, lunettes, veste noire à bandes
  * rouges (Meshy, A-pose, riggé Mixamo — `perso/pilote-quad-apose`, compressé).
  * `null` = quad seul.
  */
-const PILOTE = 'assets/perso/pilote-quad.glb?v=2';
+const PILOTE = 'assets/perso/pilote-debout.glb?v=1';
 const PILOTES_POSSIBLES = {
+  // le pilote de cross, debout sur les repose-pieds (Meshy, riggé — 27/09/2026)
+  debout: 'assets/perso/pilote-debout.glb?v=1',
   casquette: 'assets/perso/pilote-quad.glb?v=2',
   ado: 'assets/perso/pilote.glb?v=1',
+};
+/**
+ * **Debout** (27/09/2026) : le pilote ne s'assoit plus, il se tient sur les
+ * repose-pieds, genoux fléchis, buste penché sur le guidon — la position d'un
+ * pilote de cross. `DEBOUT.pieds` : hauteur des repose-pieds, en part de la
+ * hauteur du quad.
+ */
+const DEBOUT = { actif: true, pieds: 0.24, recul: 0.18 };
+const POSE_DEBOUT = {
+  cuisse: [-0.62, 0.00, 0.14],       // hanches fléchies : la position « attaque »
+  jambe: [0.95, 0.00, 0.00],         // genoux pliés, prêts à amortir
+  buste: [0.42, 0.00, 0.00],         // penché sur le guidon
 };
 
 const LONGUEUR = 1.85;         // longueur du quad (m) — c'est elle qui donne l'échelle
@@ -72,6 +107,34 @@ async function placementEnregistre(modele) {
   } catch (err) {
     return null;
   }
+}
+
+/**
+ * Le quart de tour qui met l'avant du modèle vers −z : axe long = le plus
+ * étendu de x et z ; avant = le côté où se trouvent les sommets les plus hauts
+ * (le guidon).
+ */
+function orientationAvant(objet) {
+  objet.rotation.set(0, 0, 0);
+  objet.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(objet, true);
+  const longX = (b.max.x - b.min.x) > (b.max.z - b.min.z);
+  const seuil = b.max.y - (b.max.y - b.min.y) * 0.1;
+  const c = b.getCenter(new THREE.Vector3());
+  const v = new THREE.Vector3();
+  let somme = 0, n = 0;
+  objet.traverse((o) => {
+    if (!o.isMesh) return;
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i += 3) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      if (v.y < seuil) continue;
+      somme += longX ? v.x - c.x : v.z - c.z; n++;
+    }
+  });
+  const avantPositif = n ? somme / n > 0 : false;
+  if (longX) return avantPositif ? Math.PI / 2 : -Math.PI / 2;
+  return avantPositif ? Math.PI : 0;
 }
 
 /** Recopie les positions en flottants (un GLB meshopt arrive en entiers normalisés). */
@@ -455,7 +518,7 @@ function installerFeux(engin, hote) {
  * @param {object} o { scene, x, z, cap, decor, pilote }
  * @returns {Promise<object>} { root, engin, roues, feux, pose, placerPilote, ... }
  */
-export async function construireQuad({ scene, x = 0, z = 0, cap = 0, decor = null, pilote } = {}) {
+export async function construireQuad({ scene, x = 0, z = 0, cap = 0, decor = null, pilote, modele = null } = {}) {
   const root = new THREE.Group();
   root.name = 'quad';
   root.position.set(x, decor ? decor.groundAt(x, z) : 0, z);
@@ -465,15 +528,17 @@ export async function construireQuad({ scene, x = 0, z = 0, cap = 0, decor = nul
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const modelePilote = pilote === undefined ? PILOTE : (PILOTES_POSSIBLES[pilote] || pilote);
   const [gQuad, gPilote] = await Promise.all([
-    loader.loadAsync(QUAD),
+    loader.loadAsync(QUADS[modele] || QUAD),
     modelePilote ? loader.loadAsync(modelePilote).catch((err) => { console.warn('Pilote du quad indisponible', err); return null; }) : Promise.resolve(null),
   ]);
 
   // ── le quad ──────────────────────────────────────────────────────────────
   const engin = gQuad.scene;
-  // Le modèle a son guidon vers −x (mesuré : les sommets les plus hauts sont à
-  // x ≈ −0,28) ; l'avant du jeu est −z. Un quart de tour.
-  engin.rotation.y = -Math.PI / 2;
+  // L'avant du jeu est −z. L'ancien modèle avait son guidon vers −x (un quart
+  // de tour) ; les modèles Meshy du 27/09 arrivent chacun à sa façon. On
+  // trouve donc l'avant : le guidon, ce sont les sommets les plus hauts, et
+  // il est du côté avant de l'axe long.
+  engin.rotation.y = orientationAvant(engin);
   let boite = boiteDans(engin);              // pas encore dans root : repère propre
   const echelle = LONGUEUR / (boite.max.z - boite.min.z);
   engin.scale.setScalar(echelle);
@@ -632,7 +697,12 @@ export async function construireQuad({ scene, x = 0, z = 0, cap = 0, decor = nul
     membres.hanches.getWorldPosition(hanchesRepos);
     socle.worldToLocal(hanchesRepos);
   } else hanchesRepos.set(0, TAILLE * 0.52, 0);
-  if (selle) {
+  if (DEBOUT.actif && modelePilote === PILOTE) {
+    // debout : les pieds sur les repose-pieds, un peu en arrière du centre
+    Object.assign(POSE, POSE_DEBOUT);
+    PLACEMENT.y = dimensions.hauteur * DEBOUT.pieds;
+    PLACEMENT.z = (selle ? selle.z : 0.25) - hanchesRepos.z + DEBOUT.recul * 0.5;
+  } else if (selle) {
     PLACEMENT.y = selle.y + 0.02 - hanchesRepos.y;
     PLACEMENT.z = selle.z - hanchesRepos.z;
   }
@@ -769,7 +839,7 @@ export async function construireQuad({ scene, x = 0, z = 0, cap = 0, decor = nul
  *
  * @returns {object} l'API attendue par le pilote
  */
-export function construireEnginQuad({ renderer = null, pilote } = {}) {
+export function construireEnginQuad({ renderer = null, pilote, modele = null } = {}) {
   const root = new THREE.Group();
   root.name = 'engin-quad';
   const caisse = new THREE.Group();
@@ -793,7 +863,7 @@ export function construireEnginQuad({ renderer = null, pilote } = {}) {
 
   let kit = null, rapportRoue = 1;
   const enAttente = { nuit: false, freinage: false, recul: false, clignotant: 0 };
-  const pret = construireQuad({ scene: caisse, x: 0, z: 0, cap: 0, pilote })
+  const pret = construireQuad({ scene: caisse, x: 0, z: 0, cap: 0, pilote, modele })
     .then((k) => {
       kit = k; rapportRoue = k.rapportRoue;
       k.feux.setNuit(enAttente.nuit);

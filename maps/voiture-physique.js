@@ -199,8 +199,9 @@ export const REGLAGES = {
     adherence: 1.05,
     repartAvant: 0.55,
     freinCouple: 190,
-    // Arcade : 25 km/h, elle tourne court et ne glisse jamais (pas de frein à main).
-    loi: 'arcade', vmax: 6.9, vmaxArriere: 2.5, accel: 3.2, roueLibre: 0.9, freinArcade: 7,
+    // Arcade : elle tourne court et ne glisse jamais (pas de frein à main).
+    // 36 km/h depuis le 27/09/2026 (25 avant — Arnaud : « plus de vitesse »).
+    loi: 'arcade', vmax: 10, vmaxArriere: 2.5, accel: 4.6, roueLibre: 0.9, freinArcade: 7,
     virage: 2.3, vitesseVirage: 2.2, reponse: 11, grip: 14, horsRoute: 0.75,
 
     antipatinage: 0.88,
@@ -240,9 +241,13 @@ export const REGLAGES = {
     repartAvant: 0.55,
     freinCouple: 1200,          // 900 avant l'arcade
     arcade: true,
-    // Arcade : 90 km/h, nerveux, tout-terrain (il perd peu hors du bitume).
-    loi: 'arcade', vmax: 25, vmaxArriere: 6, accel: 7.5, freinArcade: 13,
-    virage: 2.1, vitesseVirage: 4.5, reponse: 10, grip: 7, gripMain: 1.3, horsRoute: 0.85,
+    // Arcade : **comme la berline, en un peu moins** (Arnaud, 27/09/2026 : « il
+    // faut qu'il se calme, qu'il soit comme la voiture »). Même rotation, même
+    // réponse, même accroche ; 100 km/h en pointe au lieu de 137, et il garde
+    // son avantage tout-terrain. Avant : 90 km/h, virage 2,1, réponse 10,
+    // accroche 7 — il pivotait et glissait à la moindre correction.
+    loi: 'arcade', vmax: 28, vmaxArriere: 6, accel: 7, freinArcade: 14,
+    virage: 1.7, vitesseVirage: 7, reponse: 9, grip: 9, gripMain: 1.1, horsRoute: 0.85,
 
     antipatinage: 0.90,
     stabilite: 3.0,

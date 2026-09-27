@@ -67,8 +67,61 @@ ETAPES_CAPESTANG_2 = [
     (-121.0, 154.0),    # la rue des tennis, en diagonale
     (-45.0, 200.0),     # on rejoint l'avenue, et l'on redescend au départ
 ]
+# Poilhes, 2e course (27/09/2026, « une deuxième course, ailleurs, de la même
+# distance ») : la campagne de l'est, entre les vignes — 836 m, courue en deux
+# tours (≈ 1,7 km, la distance de la 1re). Trouvée par une recherche de toutes
+# les vraies boucles du graphe (cycles) : au nord, les routes sont des
+# culs-de-sac (le canal ne se passe qu'au gros pont) et le plateau du nord-est
+# sort de la zone détaillée (±500 m, sol cassé au-delà).
+ETAPES_POILHES_2 = [
+    (250.0, 17.0),      # départ : le bout de la grand-rue, vers l'est
+    (310.0, 18.0),
+    (365.0, -90.0),     # on remonte au nord par le chemin des vignes
+    (390.0, -175.0),
+    (340.0, -198.0),    # le haut du plateau, vers l'ouest
+    (290.0, -175.0),
+    (245.0, -180.0),
+    (215.0, -218.0),
+    (190.0, -160.0),    # on redescend vers le village
+    (170.0, -60.0),
+    (150.0, -5.0),      # et la grand-rue ramène à la ligne
+]
+# Poilhes, 3e et 4e courses (27/09/2026, « trois ou quatre courses dans Poilhes ») :
+# deux autres vraies boucles du graphe, courues en deux tours comme la 2e.
+# 3e : les lotissements du sud — on descend la rue du stade, on remonte par la
+# diagonale et l'on revient par les pavillons (≈ 700 m).
+ETAPES_POILHES_3 = [
+    (38.0, 203.0),      # départ : la diagonale du sud, vers le nord-est
+    (62.0, 145.0),
+    (86.0, 88.0),
+    (51.0, 67.0),       # un bout de la grand-route, vers l'ouest
+    (-4.0, 52.0),
+    (-61.0, 25.0),
+    (-74.0, 75.0),      # on redescend par les pavillons
+    (-80.0, 117.0),
+    (-64.0, 158.0),
+    (-52.0, 212.0),
+    (-10.0, 248.0),
+    (14.0, 260.0),
+]
+# 4e : le quartier de l'ouest, autour de l'entrée du village (≈ 600 m).
+ETAPES_POILHES_4 = [
+    (-272.0, -22.0),    # départ : la route de l'ouest, vers l'est
+    (-228.0, 15.0),
+    (-204.0, 66.0),
+    (-212.0, 125.0),
+    (-253.0, 145.0),
+    (-257.0, 104.0),
+    (-227.0, 62.0),
+    (-284.0, 37.0),
+    (-330.0, 19.0),
+    (-315.0, -17.0),
+]
+TOURS_PISTE = {("poilhes", "2"): 2, ("poilhes", "3"): 2, ("poilhes", "4"): 3}     # les autres courses : un seul tour
 PISTE = os.environ.get("PISTE", "1")          # PISTE=2 : la deuxième course du village
-ETAPES = {("poilhes", "1"): ETAPES_POILHES, ("capestang", "1"): ETAPES_CAPESTANG,
+ETAPES = {("poilhes", "1"): ETAPES_POILHES, ("poilhes", "2"): ETAPES_POILHES_2,
+          ("poilhes", "3"): ETAPES_POILHES_3, ("poilhes", "4"): ETAPES_POILHES_4,
+          ("capestang", "1"): ETAPES_CAPESTANG,
           ("capestang", "2"): ETAPES_CAPESTANG_2}[(VILLAGE, PISTE)]
 # Coût d'un mètre selon la largeur de la chaussée : une ruelle de 3 m n'est
 # prise que si elle évite un très long détour.
@@ -185,7 +238,7 @@ def main():
     cap = math.atan2(-(x1 - x0), -(z1 - z0))        # yaw Three.js : avant = −z
     sortie = {
         "village": VILLAGE,
-        "tours": 1,
+        "tours": TOURS_PISTE.get((VILLAGE, PISTE), 1),
         "longueur": round(longueur, 1),
         "depart": {"x": round(x0, 2), "z": round(z0, 2), "cap": round(cap, 4)},
         "points": [[round(x, 2), round(z, 2)] for x, z in propre],

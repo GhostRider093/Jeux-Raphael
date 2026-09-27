@@ -162,8 +162,8 @@
      « une belle page d'accueil avec trois choix, de belles images, qu'on puisse
      écrire dessus »). Chaque carte est une capture du jeu à l'heure dorée, un
      voile dégradé et le texte par-dessus. Cliquer = choisir l'engin ET partir. */
-  #accueil .engins { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
-                     width: min(1180px, calc(100vw - 32px)); margin-top: 6px; }
+  #accueil .engins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+                     width: min(1320px, calc(100vw - 32px)); margin-top: 6px; }
   #accueil .engin { position: relative; aspect-ratio: 4 / 3; border-radius: 18px; overflow: hidden; cursor: pointer;
                     border: 2px solid rgba(255,255,255,.14); background: #141922; padding: 0; text-align: left; color: #fff;
                     box-shadow: 0 18px 40px rgba(0,0,0,.5); transition: transform .28s ease, border-color .28s ease, box-shadow .28s ease;
@@ -208,6 +208,9 @@
   #accueil .mode .detail { color: #d9dfe8; font-size: 13px; line-height: 1.35; }
   #accueil .mode:hover, #accueil .mode:focus-visible { transform: translateY(-5px); border-color: var(--accent); outline: none; }
   #accueil .modes .retour { background: rgba(14,18,26,.72); border-color: var(--line); color: var(--dim); padding: 8px 18px; border-radius: 12px; }
+  @media (max-width: 1200px) and (min-width: 901px) {
+    #accueil .engins { grid-template-columns: repeat(2, 1fr); width: min(860px, calc(100vw - 32px)); }
+  }
   @media (max-width: 900px) {
     #accueil .engins { grid-template-columns: 1fr; width: min(520px, calc(100vw - 32px)); }
     #accueil .engin { aspect-ratio: 16 / 9; }
@@ -335,7 +338,9 @@
   </div>
   <div class="row" id="row-pistes" hidden>
     <button data-piste="0" class="on" title="La grande boucle du village">Course 1</button>
-    <button data-piste="1" title="La petite boucle, pleine de virages">Course 2</button>
+    <button data-piste="1" title="La deuxième boucle du village">Course 2</button>
+    <button data-piste="2" title="La troisième boucle du village" hidden>Course 3</button>
+    <button data-piste="3" title="La quatrième boucle du village" hidden>Course 4</button>
   </div>
   <div class="row" id="row-boucle" hidden>
     <button id="btn-boucle" title="La boucle du village : départ derrière la ligne, un tour chronométré">🏁 Course · 1 tour</button>
@@ -436,6 +441,7 @@
         <div class="boutons">
           <button data-choix="engin" data-valeur="trottinette">Trottinette</button>
           <button data-choix="engin" data-valeur="voiture">Berline bleue</button>
+          <button data-choix="engin" data-valeur="rouge">GT rouge</button>
           <button data-choix="engin" data-valeur="quad">Quad</button>
         </div></div>
       <div class="groupe"><span class="etiquette">Qualité</span>
@@ -460,7 +466,7 @@
         <span class="texte">
           <span class="lieu">Départ · pump track du stade</span>
           <span class="nom">Trottinette électrique</span>
-          <span class="detail"><b>Espace</b> saute · <b>F</b> looping · <b>G</b> 360 · bandes bleues à 41 km/h</span>
+          <span class="detail"><b>Espace</b> saute · <b>F</b> looping · <b>G</b> 360 · <b>H</b> tailwhip · <b>J</b> superman · <b>K</b> lâcher</span>
         </span>
         <span class="go">›</span>
       </button>
@@ -474,13 +480,25 @@
         </span>
         <span class="go">›</span>
       </button>
+      <!-- La GT rouge revient (Arnaud, 27/09/2026) : la même conduite que la
+           berline, seule la robe change. -->
+      <button class="engin" type="button" data-engin="rouge">
+        <img src="assets/accueil/engins/gt-rouge-roule.webp?v=accueil-20260927" alt="">
+        <span class="badge">Arcade</span>
+        <span class="texte">
+          <span class="lieu">Départ · entrée du village</span>
+          <span class="nom">GT rouge</span>
+          <span class="detail">La conduite de la berline, en rouge · <b>Espace</b> frein à main</span>
+        </span>
+        <span class="go">›</span>
+      </button>
       <button class="engin" type="button" data-engin="quad">
-        <img src="assets/accueil/engins/quad-roule.webp?v=accueil-20260926" alt="">
+        <img src="assets/accueil/engins/quad-cross-roule.webp?v=accueil-20260927" alt="">
         <span class="badge">Tout terrain</span>
         <span class="texte">
           <span class="lieu">Départ · porte d’Ensérune</span>
-          <span class="nom">Quad rouge et noir</span>
-          <span class="detail">Il saute et fait les mêmes figures que la trottinette · tout éclairé, clignotants au guidon</span>
+          <span class="nom">Quad de cross</span>
+          <span class="detail">Pilote debout · il saute en criant youhou · <b>F</b> looping · <b>G</b> 360</span>
         </span>
         <span class="go">›</span>
       </button>
@@ -500,12 +518,20 @@
           <span class="ico">🏁</span><span class="nom">Course 2</span>
           <span class="detail" data-detail-course="1">La deuxième boucle du village</span>
         </button>
+        <button class="mode" type="button" data-mode-jeu="2">
+          <span class="ico">🏁</span><span class="nom">Course 3</span>
+          <span class="detail" data-detail-course="2">Les lotissements du sud, deux tours</span>
+        </button>
+        <button class="mode" type="button" data-mode-jeu="3">
+          <span class="ico">🏁</span><span class="nom">Course 4</span>
+          <span class="detail" data-detail-course="3">Le quartier de l’ouest, trois tours</span>
+        </button>
       </div>
       <button class="retour" type="button" id="modes-retour">‹ Changer d’engin</button>
     </div>
     <button id="btn-rouler" type="button">Rouler</button>
     <p class="resume" id="resume-choix"></p>
-    <p class="aide">Flèches ou <b>ZQSD</b> · <b>Espace</b> saute · en l’air <b>F</b> looping, <b>G</b> 360 · <b>P</b> au skatepark · <b>V</b> caméra</p>
+    <p class="aide">Flèches ou <b>ZQSD</b> · <b>Espace</b> saute · en l’air <b>F</b> looping, <b>G</b> 360, <b>H J K</b> figures de fou · <b>P</b> au skatepark · <b>V</b> caméra</p>
   </div>
 </div>
 
@@ -527,6 +553,7 @@ import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPa
 import { creerCourseBoucle } from './maps/course-boucle.js?v=pistes-20260927';
 import { creerMultijoueur } from './maps/multijoueur.js?v=pistes-20260927';
 import { poserFigurants } from './maps/poilhes-figurants.js?v=armes-20260926';
+import { creerTrafic } from './maps/poilhes-trafic.js?v=trafic-20260927';
 import { volant } from './maps/volant.js?v=volant-20260926g';
 window.volant = volant;
 document.getElementById('btn-volant').addEventListener('click', (e) => { e.currentTarget.blur(); volant.regler(); });
@@ -544,17 +571,18 @@ document.querySelectorAll('#villages a').forEach((a) => a.classList.toggle('on',
 const accueil = $('accueil');
 const choix = {
   village,
-  engin: params.get('engin') === 'berline' ? 'voiture' : params.get('engin') === 'quad' ? 'quad' : 'trottinette',
+  engin: params.get('engin') === 'berline' ? 'voiture' : ['quad', 'rouge'].includes(params.get('engin')) ? params.get('engin') : 'trottinette',
   qualite: lireChoix() || 'auto',
   // 'libre', ou l'indice de la course (0, 1) : on part directement sur la ligne
-  jeu: /^[01]$/.test(params.get('course') || '') ? params.get('course') : 'libre',
+  jeu: /^[0-3]$/.test(params.get('course') || '') ? params.get('course') : 'libre',
 };
 // Les courses de chaque village (fichiers maps/<village>/boucle*.json) :
-// Poilhes n'en a qu'une, Capestang deux (26/09/2026).
-const NB_COURSES = { poilhes: 1, capestang: 2 };
+// Poilhes en a quatre depuis le 27/09/2026 (2 : les vignes de l'est ; 3 : le sud ;
+// 4 : l'ouest), Capestang deux.
+const NB_COURSES = { poilhes: 4, capestang: 2 };
 const LIBELLES = {
   village: { poilhes: 'Poilhes', capestang: 'Capestang' },
-  engin: { trottinette: 'Trottinette', voiture: 'Berline bleue', quad: 'Quad' },
+  engin: { trottinette: 'Trottinette', voiture: 'Berline bleue', rouge: 'GT rouge', quad: 'Quad' },
   qualite: { auto: 'qualité auto', bas: 'qualité basse', moyen: 'qualité moyenne', eleve: 'qualité élevée' },
 };
 function peindreChoix() {
@@ -803,7 +831,9 @@ const DEPARTS = {
     voiture: { x: -41.12, z: 209.43, cap: -0.6575 },
   },
 };
-function lancer(engin, modeJeu = 'libre') {
+function lancer(enginChoisi, modeJeu = 'libre') {
+  // La GT rouge est une berline repeinte : même mode « voiture », même départ.
+  const engin = enginChoisi === 'rouge' ? 'voiture' : enginChoisi;
   // Premier lancement (ou « Auto ») : rien de mémorisé. On charge en Élevé, on
   // mesure, on conseille — et le conseil s'applique, une fois. Ensuite le joueur décide.
   const memorise = lireChoix();
@@ -811,7 +841,7 @@ function lancer(engin, modeJeu = 'libre') {
   startVillage({
     modes: ['trottinette', 'voiture', 'quad', 'helico'],
     qualite: NIVEAUX[memorise || 'eleve'],
-    voitureUnique: 'bleue',
+    voitureUnique: enginChoisi === 'rouge' ? 'rouge-berline' : 'bleue',
     ouvrir: false,
     survols: true,                    // un Rafale passe de temps en temps (26/09/2026)
   }).then(async (jeu) => {
@@ -819,15 +849,23 @@ function lancer(engin, modeJeu = 'libre') {
     // Les figurants (26/09/2026) : cycliste sur la boucle, policier au départ,
     // stégosaure, Carole et les mafieux devant l'Ostal Louis.
     poserFigurants({ jeu, village }).then((f) => { window.figurants = f; });
+    // La vie du village (27/09/2026) : voitures, motos, quads, trottinettes,
+    // passants et hélicoptères, en nombre selon la qualité choisie.
+    creerTrafic({ jeu, village, niveau: memorise || 'eleve' }).then((t) => { window.trafic = t; })
+      .catch((err) => console.warn('Trafic :', err));
     // La boucle du village (26/09/2026) : seulement si le village en a une.
     // Les courses du village : la boucle, et une 2e si le village en a une
     // (Capestang, 26/09/2026). Une seule est affichée à la fois.
     const coursesPretes = Promise.all([
       creerCourseBoucle({ jeu, village, titre: 'Course 1' }),
-      creerCourseBoucle({ jeu, village, fichier: 'boucle-2.json', piste: `${village}-2`, titre: 'Course 2', visible: false }),
-    ]).then(([course1, course2]) => {
+      ...[2, 3, 4].slice(0, (NB_COURSES[village] || 1) - 1).map((n) =>
+        creerCourseBoucle({ jeu, village, fichier: `boucle-${n}.json`, piste: `${village}-${n}`, titre: `Course ${n}`, visible: false })),
+    ]).then(([course1, ...autres]) => {
       if (!course1) return;
-      const courses = [course1, course2].filter(Boolean);
+      const course2 = autres[0] || null;
+      // indice = numéro du bouton ; une course absente laisse un trou (null)
+      const courses = [course1, ...autres];
+      document.querySelectorAll('[data-piste]').forEach((b) => { b.hidden = !courses[+b.dataset.piste]; });
       let course = course1;
       window.courseBoucle = course1;
       window.courses = courses;
@@ -838,7 +876,7 @@ function lancer(engin, modeJeu = 'libre') {
           e.currentTarget.blur();
           course = courses[+b.dataset.piste];
           window.courseBoucle = course;
-          courses.forEach((c) => c.setVisible(c === course));
+          courses.filter(Boolean).forEach((c) => c.setVisible(c === course));
           document.querySelectorAll('[data-piste]').forEach((x) => x.classList.toggle('on', x === b));
           majRecord();
         }));
@@ -847,7 +885,7 @@ function lancer(engin, modeJeu = 'libre') {
       creerMultijoueur({ jeu, village, course: () => course }).then((multi) => {
         if (!multi) return;
         window.multi = multi;
-        courses.forEach((c) => { c.onArrivee = multi.annoncerArrivee; });
+        courses.filter(Boolean).forEach((c) => { c.onArrivee = multi.annoncerArrivee; });
         $('btn-enligne').hidden = false;
         $('btn-enligne').addEventListener('click', (e) => {
           e.currentTarget.blur();
@@ -858,8 +896,12 @@ function lancer(engin, modeJeu = 'libre') {
       // En ligne, 🏁 donne le départ à tout le salon ; seul, il part tout de suite.
       $('btn-boucle').addEventListener('click', (e) => { e.currentTarget.blur(); if (window.multi && window.multi.connecte) window.multi.demanderDepart(); else course.demarrer(); });
       $('btn-classement').addEventListener('click', (e) => { e.currentTarget.blur(); course.montrerClassement(); });
-      function majRecord() { const r = course.record(); $('record').textContent = r ? `Record ${r.texte}` : 'Classement'; }
-      courses.forEach((c) => { c.onChange = majRecord; });
+      function majRecord() {
+        const r = course.record(); $('record').textContent = r ? `Record ${r.texte}` : 'Classement';
+        // Poilhes 2 se court en deux tours (27/09/2026) : le bouton le dit.
+        $('btn-boucle').textContent = `🏁 Course · ${course.tours} tour${course.tours > 1 ? 's' : ''}`;
+      }
+      courses.filter(Boolean).forEach((c) => { c.onChange = majRecord; });
       majRecord();
       // Pour le départ choisi à l'accueil : la course n°i (la 1re si absente).
       return (i) => {
