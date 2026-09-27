@@ -525,7 +525,10 @@ function separerRoues(geo, boite) {
  * @param {object} opts { renderer, couleur }
  * @returns {object} root, caisse, roues, majRoues, setFreinage, setNuit, setCouleur
  */
-export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) {
+export function construireVoiture({ renderer = null, couleur = 0xc21d24, modele = null, demiTour = false } = {}) {
+  // `modele` : un autre GLB Meshy que la berline (les voitures du trafic, 27/09/2026) ;
+  // `demiTour` : `redresser` trouve l'axe long mais pas l'avant — certains
+  // modèles arrivent le nez vers l'arrière.
   const env = environnement(renderer);
   const commun = env ? { envMap: env, envMapIntensity: 1.0 } : {};
 
@@ -916,7 +919,8 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
       geo.setIndex(new THREE.BufferAttribute(suite, 1));
     }
     geo.applyMatrix4(source.matrixWorld);
-    const boite = redresser(geo);
+    let boite = redresser(geo);
+    if (demiTour) { geo.rotateY(Math.PI); geo.computeBoundingBox(); boite = geo.boundingBox; }
 
     // Matière : Meshy cuit metalness = roughness = 1, ce qui rend la tôle
     // charbonneuse. On rabat les facteurs et on ajoute un vernis — c'est ce
@@ -997,7 +1001,7 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24 } = {}) 
       taille: { longueur: boite.max.z - boite.min.z, largeur: boite.max.x - boite.min.x, hauteur: boite.max.y },
     };
   }
-  const pret = charger().catch((err) => {
+  const pret = charger(modele || MODELE).catch((err) => {
     console.warn('Voiture : modèle 3D indisponible, coque de secours', err);
     return null;
   });

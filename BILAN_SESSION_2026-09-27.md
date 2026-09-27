@@ -79,3 +79,22 @@
   « pousse » précédent avait gardé les anciens, un navigateur pouvait garder l'ancien code en cache.
 - Vérifié (Chrome sans fenêtre) : chargement, verrou, dégâts, chute des deux ennemis, écran de victoire ;
   les modes du village (berline, quad, trottinette, hélico) sans erreur.
+
+## Voitures d'Arnaud en 3MF (27/09/2026, nuit)
+
+- **LaFerrari** (`Downloads/LaFerrari+Wheels+4.1.3mf`) : carrosserie d'un seul bloc → `scripts/poilhes/voiture_3mf.py`
+  (peinture par zones : carrosserie, habitacle sombre, bas de caisse et passages de roue noirs, phares, feux ;
+  ¼ des triangles) → `assets/fun/laferrari.glb` (161 Ko). Roues dessinées dans le jeu, aux centres mesurés.
+  Une voiture du trafic sur trois, 6 couleurs. Pas encore poussée.
+- **Mustang GTD** et **Aventador SVJ RC** : kits de dizaines de pièces posées à plat sur 4 et 14 plateaux ;
+  la position d'assemblage n'est pas dans le fichier → pas automatisable. Proposé : Meshy (≈ 30 crédits chacune).
+- **Mustang GTD et Aventador SVJ** : générées avec Meshy (60 crédits, solde 751), `assets/car/mustang-gtd.glb`
+  et `aventador-svj.glb` (1,2–1,3 Mo, textures 2048). `construireVoiture` accepte désormais `modele` et
+  `demiTour` (redresser trouve l'axe long, pas l'avant) — les deux arrivent dans le bon sens. Trafic : sur trois
+  voitures, une berline repeinte, une LaFerrari, une Mustang ou une Aventador à tour de rôle. Pas encore poussé.
+- **Roues du quad** (« il faut faire bouger ses roues, c'est très important ») : la découpe (`separerRoues`,
+  quad.js) ajustait son cercle sur la jante (21 cm) → seuls la jante et le bas du pneu tournaient. Nouvelle mesure
+  `flanc` : cercle passé par le **contour bas du pneu** (le sommet le plus bas par tranche de z, dans le plan de la
+  roue), 31–33 cm ; découpe 7 % plus large pour les crampons. Écartés en cours de route : « le flanc le plus
+  large » (prenait les garde-boue arrière), « l'étendue à hauteur d'essieu » (prenait les repose-pieds).
+  Vérifié sur le noir et jaune et l'orange : pneus entiers qui tournent.

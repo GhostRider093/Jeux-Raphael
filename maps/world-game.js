@@ -535,7 +535,7 @@ async function startWorld() {
   let auto = null, volantCourse = null;
   const tactileAuto = { x: 0, y: 0, active: false };
   if (mode.type === 'drive') {
-    const { creerPilote, creerAdherence } = await import('./voiture-pilote.js?v=20260927m');
+    const { creerPilote, creerAdherence } = await import('./voiture-pilote.js?v=20260927o');
     ({ volant: volantCourse } = await import('./volant.js?v=20260927m'));
     // Les rubans de chaussée du village donnent la grille d'adhérence : du
     // bitume sous les roues, de la terre à côté. Hors monde relevé, on s'en

@@ -246,7 +246,56 @@ function separerRoues(engin, hote) {
     // L'essieu est à la hauteur du rayon : une roue posée touche le sol.
     return { ax: c.ax, z: c.z + z0, y: r, rayon: r };
   }
-  const parEssieu = essieuxAx.map(cercle);
+  /**
+   * **Le flanc du pneu** (27/09/2026, quad Meshy « noir et jaune ») : sur des
+   * pneus à gros crampons, l'ajustement de cercle se cale sur la jante — plus
+   * dense en sommets — et trouve 21 cm pour un pneu qui en fait plus de 30 :
+   * seules la jante et le bas du pneu tournaient, les crampons du haut restaient
+   * collés à la caisse (« on ne voit rien »). Or le flanc extérieur du pneu est
+   * la partie la plus large du quad : ses sommets donnent directement le
+   * diamètre (étendue en z) et la hauteur (0 → 2R). L'ajustement de cercle
+   * reste le secours si la mesure n'est pas cohérente.
+   */
+  function flanc(c) {
+    // **Le contour du bas du pneu.** Dans le plan de la roue, tranche par
+    // tranche le long de z, le sommet le plus bas est forcément sur la bande de
+    // roulement — jamais sur la jante, qui est plus haut. Un cercle passé par
+    // ce contour donne le vrai rayon du pneu et la hauteur de l'essieu.
+    // (Écartés le 27/09 : « le flanc le plus large » prenait les garde-boue
+    // arrière ; « l'étendue à hauteur d'essieu » prenait les repose-pieds.)
+    const PAS = 0.02, N = 40;
+    const bas = new Float32Array(N).fill(Infinity);
+    for (let i = 0; i < pos.count; i++) {
+      const dx = Math.abs(Math.abs(pts[i * 3]) - c.ax), y = pts[i * 3 + 1], dz = pts[i * 3 + 2] - c.z;
+      if (dx > 0.07 || y > 0.35 || Math.abs(dz) >= PAS * N / 2) continue;
+      const k = Math.floor(dz / PAS + N / 2);
+      if (y < bas[k]) bas[k] = y;
+    }
+    let Sz = 0, Sy = 0, Szz = 0, Syy = 0, Szy = 0, Szzz = 0, Syyy = 0, Szyy = 0, Syzz = 0, m = 0;
+    for (let k = 0; k < N; k++) {
+      const y = bas[k];
+      if (!(y < 0.3)) continue;
+      const z = (k - N / 2 + 0.5) * PAS;
+      Sz += z; Sy += y; Szz += z * z; Syy += y * y; Szy += z * y;
+      Szzz += z * z * z; Syyy += y * y * y; Szyy += z * y * y; Syzz += y * z * z; m++;
+    }
+    if (m < 8) return null;
+    const A = [[Szz, Szy, Sz], [Szy, Syy, Sy], [Sz, Sy, m]];
+    const B = [-(Szzz + Szyy), -(Syyy + Syzz), -(Szz + Syy)];
+    const det = (M) => M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
+                     - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0])
+                     + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+    const d = det(A);
+    if (Math.abs(d) < 1e-12) return null;
+    const col = (j) => A.map((r, i) => r.map((x, jj) => (jj === j ? B[i] : x)));
+    const a1 = det(col(0)) / d, b1 = det(col(1)) / d, c1 = det(col(2)) / d;
+    const z0 = -a1 / 2, y0 = -b1 / 2;
+    const r = Math.sqrt(Math.max(1e-6, z0 * z0 + y0 * y0 - c1));
+    if (!(r > 0.15 && r < 0.5) || Math.abs(y0 - r) > 0.06) return null;   // un pneu posé : essieu à hauteur du rayon
+    // les crampons dépassent un peu : on découpe 7 % plus large
+    return { ax: c.ax, z: c.z + z0, y: y0, rayon: r, marge: 1.07 };
+  }
+  const parEssieu = essieuxAx.map((c) => flanc(c) || cercle(c));
   if (parEssieu.some((e) => !e)) return echec('ajustement de cercle', essieuxAx);
 
   // demi-largeur du pneu, mesurée sous l'essieu, de part et d'autre du plan médian
@@ -270,7 +319,7 @@ function separerRoues(engin, hote) {
     for (let e = 0; e < 4; e++) {
       const es = essieux[e];
       if (Math.abs(x - es.x) > es.demi) continue;
-      if (Math.hypot(y - es.y, z - es.z) > es.rayon * 1.02) continue;
+      if (Math.hypot(y - es.y, z - es.z) > es.rayon * (es.marge || 1.02)) continue;
       marque[i] = e + 1;
       break;
     }

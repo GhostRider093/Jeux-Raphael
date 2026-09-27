@@ -22,9 +22,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
-import { construireVoiture } from './voiture-model.js?v=pilote-20260925';
+import { construireVoiture } from './voiture-model.js?v=20260927o';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
-import { construireEnginQuad, QUAD_TRAFIC } from './quad.js?v=20260927m';
+import { construireEnginQuad, QUAD_TRAFIC } from './quad.js?v=20260927o';
 
 /** Combien de chaque, par niveau de qualité (`maps/qualite.js`). */
 export const NOMBRES = {
@@ -51,6 +51,29 @@ const PASSANTS = [
 const HELICO = { fichier: 'helicoptere.glb', longueur: 13, altitude: [55, 85], rayon: [140, 320], vitesse: [18, 26] };
 // Le Motocross de Meshy est livré « Z en haut » et sans matière : on le couche
 // (`zHaut`) et on le peint aux couleurs des marques de cross.
+/**
+ * La LaFerrari (27/09/2026) : la carrosserie du fichier d'impression 3D d'Arnaud
+ * (`LaFerrari+Wheels+4.1.3mf`, un seul bloc), peinte par zones et allégée par
+ * `scripts/poilhes/voiture_3mf.py` → `assets/fun/laferrari.glb` (en mètres, le
+ * nez vers −z, le sol à zéro). Les roues sont faites ici, aux centres mesurés
+ * sur les passages de roue. Une voiture du trafic sur trois.
+ */
+const LAFERRARI = {
+  fichier: 'assets/fun/laferrari.glb?v=1', part: 3,
+  roues: { rayon: 0.345, largeur: 0.27, x: 0.74, zAvant: -1.083, zArriere: 1.444 },
+  couleurs: [0xa50d12, 0xe0b400, 0x111214, 0xe8e8e8, 0x123c9e, 0xe85c00],
+};
+/**
+ * Les deux autres voitures d'Arnaud (27/09/2026) : ses 3MF de Mustang GTD et
+ * d'Aventador SVJ sont des kits en pièces détachées, impossibles à remonter ;
+ * on les a générées avec Meshy (texturées). Même constructeur que la berline
+ * (`construireVoiture`, roues découpées) : une voiture du trafic sur trois,
+ * à tour de rôle.
+ */
+const MESHY = [
+  { modele: 'assets/car/mustang-gtd.glb?v=1', demiTour: false },
+  { modele: 'assets/car/aventador-svj.glb?v=1', demiTour: false },
+];
 const MOTO = { fichier: 'moto.glb', longueur: 2.15, zHaut: true, pilote: { y: 0.18, z: -0.05 }, couleurs: [0xff6a00, 0x2fa84f, 0x1f5fd1, 0xd8262e] };
 
 const aleatoire = (a, b) => a + Math.random() * (b - a);
@@ -120,6 +143,55 @@ function repeindre(texture, teinte) {
   t.colorSpace = texture.colorSpace; t.flipY = texture.flipY; t.wrapS = texture.wrapS; t.wrapT = texture.wrapT;
   texturesRepeintes.set(cle, t);
   return t;
+}
+
+/** Une LaFerrari de la couleur n° `k`, avec ses quatre roues. */
+let modeleLaFerrari = null;
+async function laFerrari(k) {
+  if (!modeleLaFerrari) modeleLaFerrari = loader.loadAsync(LAFERRARI.fichier).then((g) => g.scene);
+  const base = await modeleLaFerrari;
+  const root = new THREE.Group();
+  const caisse = base.clone(true);
+  const couleur = LAFERRARI.couleurs[k % LAFERRARI.couleurs.length];
+  caisse.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    if (o.material && o.material.name === 'peinture') {
+      o.material = new THREE.MeshPhysicalMaterial({ color: couleur, roughness: 0.38, metalness: 0.05, clearcoat: 0.7, clearcoatRoughness: 0.15 });
+    }
+  });
+  root.add(caisse);
+  // les roues : pneu, jante et cinq branches — elles tournent avec la vitesse
+  const R = LAFERRARI.roues;
+  const pneu = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 });
+  const jante = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.3, metalness: 0.8 });
+  const roues = [];
+  for (const [x, z] of [[-R.x, R.zAvant], [R.x, R.zAvant], [-R.x, R.zArriere], [R.x, R.zArriere]]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(x, R.rayon, z);
+    const tourne = new THREE.Group();
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(R.rayon, R.rayon, R.largeur, 24), pneu);
+    p.rotation.z = Math.PI / 2;
+    tourne.add(p);
+    const cote = Math.sign(x);
+    const disque = new THREE.Mesh(new THREE.CylinderGeometry(R.rayon * 0.66, R.rayon * 0.66, 0.02, 20), jante);
+    disque.rotation.z = Math.PI / 2; disque.position.x = cote * (R.largeur / 2 + 0.005);
+    tourne.add(disque);
+    for (let b = 0; b < 5; b++) {
+      const branche = new THREE.Mesh(new THREE.BoxGeometry(0.02, R.rayon * 1.25, 0.05), jante);
+      branche.rotation.x = (b / 5) * Math.PI;
+      branche.position.x = cote * (R.largeur / 2 + 0.02);
+      tourne.add(branche);
+    }
+    pivot.add(tourne);
+    root.add(pivot);
+    roues.push(tourne);
+  }
+  return {
+    root,
+    majRoues(braquage, rotation) { for (const r of roues) r.rotation.x = -rotation; },
+    setNuit() {},
+  };
 }
 
 // ─────────────────────────────── le klaxon et le « oh-oh »
@@ -262,8 +334,16 @@ export async function creerTrafic({ jeu, village, niveau = 'eleve' }) {
   // autant ne pas figer une image avec dix découpes d'un coup).
   attentes.push((async () => {
     for (let i = 0; i < nombres.voitures; i++) {
-      const v = construireVoiture({ renderer });
-      const teinte = TEINTES[i % TEINTES.length];
+      if (i % LAFERRARI.part === 1) {
+        try {
+          const lf = await laFerrari(Math.floor(i / LAFERRARI.part));
+          nouvelAgent('voiture', lf.root, { engin: lf });
+          continue;
+        } catch (e) { console.warn('Trafic, LaFerrari :', e); }
+      }
+      const meshy = i % LAFERRARI.part === 2 ? MESHY[Math.floor(i / LAFERRARI.part) % MESHY.length] : null;
+      const v = construireVoiture({ renderer, ...(meshy || {}) });
+      const teinte = meshy ? 0 : TEINTES[i % TEINTES.length];     // les Meshy gardent leur robe
       try {
         await v.pret;
         // la tôle du modèle Meshy porte la texture : chaque voiture a sa copie repeinte
@@ -274,7 +354,7 @@ export async function creerTrafic({ jeu, village, niveau = 'eleve' }) {
           }
         });
       } catch { /* coque de secours : elle garde sa couleur */ }
-      nouvelAgent('voiture', v.root, { engin: v });
+      nouvelAgent('voiture', v.root, { engin: v, modele: meshy ? meshy.modele : 'berline' });
       if (v.ombre) { v.ombre.visible = false; }
       await new Promise((r) => setTimeout(r, 120));
     }

@@ -40,10 +40,10 @@
  * particules sont réservés une fois pour toutes.
  */
 import * as THREE from 'three';
-import { construireVoiture, ECHELLE } from './voiture-model.js?v=pilote-20260925';
+import { construireVoiture, ECHELLE } from './voiture-model.js?v=20260927o';
 import { creerPhysique, REGLAGES } from './voiture-physique.js?v=20260927m';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
-import { construireEnginQuad } from './quad.js?v=20260927m';
+import { construireEnginQuad } from './quad.js?v=20260927o';
 import { volant as volantCourse } from './volant.js?v=20260927m';
 
 const GRAVITE = 9.81;
