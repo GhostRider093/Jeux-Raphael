@@ -309,6 +309,12 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
       if (m.fumee <= 0) { fumer(m.m.position); m.fumee = 0.025; }
       if (boum || m.parcouru > MISSILE.portee) {
         exploser(m.m.position);
+        // dégâts de zone (27/09/2026) : un missile qui tombe près d'une cible
+        // au sol ou d'un hélico l'abîme aussi — c'est ce qui rend les batteries
+        // antiaériennes et les dépôts faciles à « niveau facile »
+        for (const c of ciblesAir()) {
+          if (c && c.vivante && c.position.distanceTo(m.m.position) < 14) c.toucher(22, m.m.position);
+        }
         m.vie = false; m.m.visible = false;
       }
     }

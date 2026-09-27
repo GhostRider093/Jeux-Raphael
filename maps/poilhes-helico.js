@@ -21,7 +21,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
-import { creerArmes } from './helico-armes.js?v=20260927m';
+import { creerArmes } from './helico-armes.js?v=20260927p';
 
 export const HELICO_PILOTE = {
   longueur: 17,        // m, nez–queue

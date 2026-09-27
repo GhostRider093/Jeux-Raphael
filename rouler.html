@@ -568,7 +568,7 @@
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
 <script type="module">
-import { startVillage } from './maps/poilhes-village.js?v=20260927o';
+import { startVillage } from './maps/poilhes-village.js?v=20260927p';
 import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
 import { creerCourseBoucle } from './maps/course-boucle.js?v=pistes-20260927';
 import { creerMultijoueur } from './maps/multijoueur.js?v=20260927o';
@@ -841,7 +841,7 @@ if (params.get('mission') === 'capestang') {
   const loader = $('loader'), msg = $('load-msg'), barre = $('load-bar');
   loader.querySelector('h2').textContent = 'Prise d’assaut de Capestang';
   loader.querySelector('p').textContent = 'Le pays se construit : Poilhes, Capestang et 4 km de campagne…';
-  import('./maps/mission-capestang.js?v=20260927m').then(({ lancerMission }) => lancerMission({
+  import('./maps/mission-capestang.js?v=20260927p').then(({ lancerMission }) => lancerMission({
     conteneur: $('scene'),
     progression: (f, m) => { barre.style.width = `${Math.round(f * 100)}%`; if (m) msg.textContent = m; },
     retourAccueil: () => { location.href = 'rouler.html'; },

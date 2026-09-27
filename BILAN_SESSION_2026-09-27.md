@@ -98,3 +98,15 @@
   roue), 31–33 cm ; découpe 7 % plus large pour les crampons. Écartés en cours de route : « le flanc le plus
   large » (prenait les garde-boue arrière), « l'étendue à hauteur d'essieu » (prenait les repose-pieds).
   Vérifié sur le noir et jaune et l'orange : pneus entiers qui tournent.
+
+## Mission Capestang, version 2 — niveau facile (27/09/2026, nuit)
+
+- Arnaud : « plus d'ennemis sur le trajet, sinon c'est trop long ; des objectifs au sol ; de la défense
+  antiaérienne à l'entrée de la ville ; niveau facile ».
+- Trois phases : 1. le trajet, deux vagues de 2 hélicos (à 28 % et 60 % du chemin, surgissent 650 m devant) ;
+  2. l'entrée (520 m du centre, côté Poilhes) : 3 batteries DCA (tourelle qui suit, rafales), 2 dépôts de
+  carburant, 2 camions — procéduraux, épaves noircies qui fument ; 3. les hélicos restants (la garde ne
+  décolle qu'après la défense rasée).
+- Facile : coque 150, hélicos 70 PV, tirs 1,5 dégât et moins précis, +35 de coque par vague abattue et après la
+  défense ; missiles à dégâts de zone (14 m, `helico-armes.js`). Marqueurs par sorte, barre de vie.
+- Vérifié (téléportation) : vagues, bascule des phases, 13 objectifs détruits → « Capestang est prise ! ».
