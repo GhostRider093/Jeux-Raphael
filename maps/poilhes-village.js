@@ -11,22 +11,22 @@ import { OrbitControls } from '../libs/OrbitControls.module.js';
 import {
   facadeMaterial, roofMaterial, groundMaterial, waterMaterial, foliageMaterial, stoneMaterial, skyMaterial,
 } from './poilhes-shaders.js';
-import { construireVillage } from './poilhes-scene.js?v=pilote-20260925';
+import { construireVillage } from './poilhes-scene.js?v=20260928a';
 import { createRobot } from './poilhes-robot.js?v=voiture-20260921';
 import { createEnemies } from './poilhes-enemies.js?v=voiture-20260921';
 import { createJet } from './poilhes-jet.js?v=voiture-20260921';
-import { createHelico } from './poilhes-helico.js?v=20260927p';
+import { createHelico } from './poilhes-helico.js?v=20260928b';
 // **Une seule version** pour les deux imports de voiture-pilote.js : deux
 // `?v=` différents font deux modules, et le `TOUCHER` réglé par le panneau
 // n'était plus celui que lisait le pilote.
-import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=20260927o';
+import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=20260928a';
 import { poserEpicerie, poserBlasonClub, EPICERIE } from './poilhes-commerces.js?v=voiture-20260921';
 import { poserMairie } from './poilhes-mairie.js?v=mairie-20260926';
 import { poserEnseignes } from './poilhes-enseignes.js?v=enseignes-20260926c';
 import { creerSurvols } from './survol-rafale.js?v=survol-20260926';
 import { construireTrottinette } from './trottinette.js?v=pilote-20260922';
 import { creerGlissieres } from './glissieres.js?v=pilote-20260925';
-import { monterPanneau as monterReglages, appliquerMemorise } from './reglages.js?v=arcade-20260926b';
+import { monterPanneau as monterReglages, appliquerMemorise } from './reglages.js?v=20260928a';
 
 const BASE = 'maps/poilhes/';
 const EYE = 1.68;              // hauteur des yeux du promeneur (m)
@@ -120,6 +120,9 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = qualite ? qualite.ombres > 0 : !isTouch;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Vérifier chaque shader oblige la carte à finir de le compiler sur-le-champ :
+  // 24 s de gel mesurées au démarrage (29/09/2026). Seulement avec ?debug.
+  renderer.debug.checkShaderErrors = new URLSearchParams(location.search).has('debug');
   $('scene').appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -207,7 +210,8 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   // La trottinette et son pilote, garées devant l'épicerie. Le groupe de la
   // devanture donne l'orientation : on se range le long de la façade, pas en
   // travers de la rue.
-  if (epicerie) {
+  // Sur écran tactile, pas de trottinette décorative : ~70 Mo de textures pour un objet garé.
+  if (epicerie && !isTouch) {
     const cap = epicerie.root.rotation.y;
     const gx = epicerie.root.position.x + Math.sin(cap) * 2.6 + Math.cos(cap) * 2.2;
     const gz = epicerie.root.position.z + Math.cos(cap) * 2.6 - Math.sin(cap) * 2.2;
@@ -316,6 +320,7 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       glissiereAt: glissieres.segments ? glissieres.glissiereAt : null,
       bounds: decor.bounds - 60,
       turboAt: decor.parc ? decor.parc.turboAt : null,   // les bandes bleues du skatepark
+      parcAt: decor.parc ? decor.parc.surParc : null,    // la dalle : plus vite, la pente pousse
     });
     appliquerMemorise(deuxRoues, TOUCHER, SAUT_TROTTINETTE);
     return deuxRoues;
@@ -485,10 +490,10 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
           + '<b>M</b> son du moteur · <b>P</b> au skatepark · les clignotants suivent le guidon'
       : mode === 'trottinette'
         ? 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> sauter · en l’air : <b>F</b> looping, <b>G</b> 360, '
-          + '<b>H</b> tailwhip, <b>J</b> superman, <b>K</b> lâcher + salto · '
+          + '<b>H</b> tailwhip, <b>J</b> superman, <b>K</b> lâcher + salto, <b>U</b> barrel roll, <b>L</b> nac-nac · '
           + 'flèches haut / bas pour incliner · <b>V</b> caméra · <b>R</b> se remettre en selle · '
-          + '<b>P</b> au skatepark · bandes bleues = lancement à 54 km/h · '
-          + 'manette : R1 looping, L1 360, ○ tailwhip, croix ↑ superman, croix ↓ lâcher'
+          + '<b>P</b> au skatepark · bandes bleues = lancement à 72 km/h · '
+          + 'manette : R1 looping, L1 360, ○ tailwhip, croix ↑ superman, croix ↓ lâcher, croix ← barrel roll, croix → nac-nac'
       : mode === 'voiture'
         ? (voitureUnique ? '' : '<b>C</b> : changer de voiture · ')
           + 'Flèches ou <b>ZQSD</b> : conduire · <b>Espace</b> frein à main · '
@@ -499,9 +504,10 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
         ? 'Flèches : piloter · <b>Z</b> plein gaz · <b>Maj</b> post-combustion · <b>S</b> ralentir · '
           + '<b>E</b> / <b>Ctrl</b> monter, descendre · <b>V</b> caméra'
       : mode === 'helico'
-        ? '<b>Z</b>/<b>↑</b> avancer · <b>S</b>/<b>↓</b> reculer · <b>Q</b>/<b>D</b> ou ←/→ pivoter · '
-          + '<b>Espace</b> monter · <b>Maj</b> descendre · <b>F</b>/clic gauche mitrailleuse · <b>G</b>/clic droit missile · '
-          + '<b>V</b> caméra · manette : stick, <b>R2</b>/<b>L2</b> monter/descendre, <b>R1</b> mitrailleuse, <b>L1</b> missile'
+        ? 'Flèches : piloter comme l’avion · <b>Z</b> plein gaz · <b>Maj</b> pleine puissance · <b>S</b> s’arrêter en l’air · '
+          + '<b>E</b>/<b>Espace</b> monter · <b>Ctrl</b>/<b>C</b> descendre · <b>F</b>/clic gauche mitrailleuse · <b>G</b>/clic droit missile · '
+          + 'molette : viser plus bas · <b>V</b> caméra · manette : stick gauche manche (poussé = piquer), <b>R2</b> gaz, <b>L2</b> frein, croix ↑/↓ vitesse réglée (+/− au clavier), '
+          + '✕/○ monter/descendre, stick droit ↕ visée, ↔ pivoter, <b>R1</b> mitrailleuse, <b>L1</b> missile'
       : mode === 'robot'
         ? 'Souris : viser · <b>clic</b> ou <b>F</b> : laser · <b>ZQSD</b> · <b>Maj</b> courir · molette : recul · '
           + `<button class="mini" data-robot="titan">Titan bleu</button> <button class="mini" data-robot="mech">Mech rouge</button>`

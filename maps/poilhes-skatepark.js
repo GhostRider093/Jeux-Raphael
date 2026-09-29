@@ -327,7 +327,10 @@ export function construireSkatepark({ decor, centre = CENTRE, parc = null }) {
         socle.name = p.nom || p.modele;
         socle.add(dedans);
         socle.rotation.y = THREE.MathUtils.degToRad(p.rot || 0);
-        socle.position.set(p.u, decor.groundAt(cx + p.u, cz + p.v) + DALLE, p.v);
+        // `enfoui` (27/09/2026) : la plaque de base du modèle (30 ou 60 cm) passe
+        // sous la dalle, sinon chaque rampe commence par une marche verticale —
+        // la même valeur est retirée de la grille de hauteurs par le script.
+        socle.position.set(p.u, decor.groundAt(cx + p.u, cz + p.v) + DALLE - (p.enfoui || 0), p.v);
         root.add(socle);
       }).catch((err) => console.warn('[skatepark] module absent', p.modele, err));
     }

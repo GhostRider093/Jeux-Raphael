@@ -26,8 +26,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
-import { construirePays } from './pays-scene.js';
-import { createHelico } from './poilhes-helico.js?v=20260927p';
+import { construirePays } from './pays-scene.js?v=20260928a';
+import { createHelico } from './poilhes-helico.js?v=20260928b';
 
 export const FACILE = {
   coque: 150,
@@ -37,7 +37,11 @@ export const MISSION = {
   heure: 17.2,
   depart: 'poilhes',                 // on décolle du village…
   cible: 'capestang',                // … pour libérer celui-ci
-  vagues: [0.28, 0.6],               // part du trajet où surgit chaque vague d'interception
+  // Arnaud, 28/09/2026 : « plus proche des ennemis au départ de l'action ».
+  // On part au milieu de la campagne (55 % du chemin Poilhes → Capestang,
+  // ~1,8 km de la ville) et la 1re vague surgit presque aussitôt.
+  departChemin: 0.55,                // part du chemin Poilhes → Capestang où l'on décolle
+  vagues: [0.04, 0.4],               // part du trajet (depuis le départ) où surgit chaque vague
   parVague: 2,
   entree: 520,                       // m du centre de Capestang : la ligne de défense
   approche: 1300,                    // m : la garde de Capestang nous repère à cette distance
@@ -126,7 +130,8 @@ export async function lancerMission({ conteneur, progression = () => {}, retourA
   // ── le joueur ───────────────────────────────────────────────────────────
   const helico = createHelico({ scene, camera, groundAt: decor.groundAt, surfaceAt: decor.surfaceAt, keys, renderer });
   const versCap = Math.atan2(-(arr.x - dep.x), -(arr.z - dep.z));
-  const [x0, z0] = degage(dep.x + (arr.x - dep.x) * 0.06, dep.z + (arr.z - dep.z) * 0.06);
+  const k0 = MISSION.departChemin;
+  const [x0, z0] = degage(dep.x + (arr.x - dep.x) * k0, dep.z + (arr.z - dep.z) * k0);
   helico.root.position.set(x0, plancher(x0, z0), z0);
   helico.root.rotation.y = versCap;
   camera.position.set(x0 + Math.sin(versCap) * 30, plancher(x0, z0) + 14, z0 + Math.cos(versCap) * 30);
@@ -708,8 +713,8 @@ function monterInterface() {
     <div class="fleche"></div>
     <div class="annonce"></div>
     <div class="bord"><small>Coque · niveau facile</small><div class="jauge"><i></i></div><small class="tele"></small></div>
-    <div class="aide"><b>Z / ↑</b> avancer · <b>Q D</b> pivoter · <b>Espace</b> monter · <b>Maj / C</b> descendre ·
-      <b>F</b> ou clic gauche : mitrailleuse · <b>G</b> ou clic droit : missiles · <b>V</b> caméra ·
+    <div class="aide">Flèches : piloter comme l’avion · <b>Z</b> plein gaz · <b>+ / −</b> ou croix ↑ ↓ : vitesse · <b>S</b> s’arrêter · <b>E / Espace</b> monter · <b>Ctrl / C</b> descendre ·
+      <b>F</b> ou clic gauche : mitrailleuse · <b>G</b> ou clic droit : missiles · molette ou stick droit : viser plus bas · <b>V</b> caméra ·
       une cible dans le cadre jaune est verrouillée : les tirs la suivent</div>
     <div class="fin" hidden></div>`;
   document.body.appendChild(racine);

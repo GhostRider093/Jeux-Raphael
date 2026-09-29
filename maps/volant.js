@@ -110,11 +110,14 @@ function creerVolant() {
     if (etat.vue && !avant.vue) touche('KeyV');
     Object.assign(avant, etat);
     // Les figures (27/09/2026) : R1 looping, L1 360, rond tailwhip, croix haut
-    // superman, croix bas lâcher ; le stick gauche haut / bas penche en l'air.
+    // superman, croix bas lâcher, croix gauche barrel roll, croix droite
+    // nac-nac ; le stick gauche penche (haut / bas) et fait tourner (gauche /
+    // droite) en l'air.
     const y = m.axes[1] || 0;
     return {
       direction, gaz: v(7) < 0.05 ? 0 : v(7), frein: v(6) < 0.05 ? 0 : v(6), main: etat.main, nom: m.id,
       flip: bouton(m, 5), spin: bouton(m, 4), whip: bouton(m, 1), superman: bouton(m, 12), lacher: bouton(m, 13),
+      tonneau: bouton(m, 14), nacnac: bouton(m, 15),
       cabre: Math.abs(y) < 0.25 ? 0 : -y,
     };
   }

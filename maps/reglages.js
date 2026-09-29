@@ -18,7 +18,7 @@
  * Le même banc tourne en ligne de commande : `node scripts/banc-voiture.mjs gt`.
  * Ce fichier ne touche au DOM que dans `monterPanneau`.
  */
-import { creerPhysique, REGLAGES } from './voiture-physique.js?v=20260927m';
+import { creerPhysique, REGLAGES } from './voiture-physique.js?v=20260928a';
 
 // ─────────────────────────────────────────────── le schéma
 const P = (cle, nom, unite, min, max, pas, aide) => ({ cle, nom, unite, min, max, pas, aide });
@@ -102,7 +102,10 @@ export const SCHEMA_TOUCHER = { groupe: 'Toucher du volant (clavier)', params: [
 export const SCHEMA_SAUT = { groupe: 'Sauts et figures (trottinette)', params: [
   P('impulsion', 'Coup de jambes', 'm/s', 0, 6, 0.1, 'Vitesse verticale donnée par Espace (2,6 = 34 cm sur le plat).'),
   P('envolMax', 'Envol maxi', 'm/s', 2, 14, 0.1, 'Plafond de la vitesse verticale au bout d’une rampe.'),
-  P('turboMax', 'Bande de lancement', 'm/s', 5, 20, 0.1, 'Vitesse atteinte sur le béton bleu (11,5 = 41 km/h).'),
+  P('turboMax', 'Bande de lancement', 'm/s', 5, 26, 0.1, 'Vitesse atteinte sur le béton bleu (20 = 72 km/h).'),
+  P('parcVmax', 'Vitesse au skatepark', 'm/s', 5, 25, 0.1, 'Vitesse de pointe au moteur sur la dalle (15 = 54 km/h).'),
+  P('parcAccel', 'Accélération au skatepark', 'm/s²', 2, 14, 0.1, 'Reprise au moteur sur la dalle.'),
+  P('gravitePente', 'Pente (pump)', '×g', 0, 1, 0.05, 'Part de la gravité qui pousse en descente et retient en montée, sur la dalle.'),
   P('pencheMax', 'Inclinaison maxi', 'rad', 0.1, 1.2, 0.01, 'Jusqu’où l’engin se couche en virage (0,55 ≈ 31°).'),
 ] };
 

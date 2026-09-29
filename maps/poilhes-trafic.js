@@ -28,6 +28,8 @@ import { construireEnginQuad, QUAD_TRAFIC } from './quad.js?v=20260927o';
 
 /** Combien de chaque, par niveau de qualité (`maps/qualite.js`). */
 export const NOMBRES = {
+  // Téléphone (29/09/2026) : chaque modèle coûte de la mémoire, la page ne doit pas être fermée par Safari.
+  telephone: { voitures: 2, motos: 1, quads: 0, trottinettes: 1, passants: 4, helicos: 0 },
   bas: { voitures: 4, motos: 2, quads: 1, trottinettes: 2, passants: 8, helicos: 1 },
   moyen: { voitures: 7, motos: 3, quads: 2, trottinettes: 3, passants: 14, helicos: 2 },
   eleve: { voitures: 10, motos: 4, quads: 2, trottinettes: 4, passants: 22, helicos: 2 },

@@ -409,7 +409,11 @@ export function creerPhysique(reglage = REGLAGES.gt) {
     // ── vitesse de pointe selon le sol ────────────────────────────────────
     // µ vaut 1 sur le bitume, 0,74 dans l'herbe (moyenne des quatre roues).
     const herbe = Math.min(1, Math.max(0, (1 - muSol) / 0.26));
-    const vmax = (sens > 0 ? k('vmax') : k('vmaxArriere')) * (1 - (1 - k('horsRoute')) * herbe);
+    // `cmd.vmax` / `cmd.accel` : le pilote peut les relever là où l'engin va
+    // plus vite (la trottinette sur la dalle du skatepark, 27/09/2026).
+    const vmaxPointe = cmd.vmax || k('vmax');
+    const accelPointe = cmd.accel || k('accel');
+    const vmax = (sens > 0 ? vmaxPointe : k('vmaxArriere')) * (1 - (1 - k('horsRoute')) * herbe);
 
     // ── longitudinal, dans le sens de marche ──────────────────────────────
     let vf = etat.u * sens;
@@ -418,17 +422,18 @@ export function creerPhysique(reglage = REGLAGES.gt) {
       // on roule à rebours du rapport (après un choc) : on revient à zéro
       vf = Math.min(0, vf + (6 + k('accel') * gaz) * h);
     } else if (!enAir) {
-      if (gaz > 0.02 && vf < vmax) { const x = vf / vmax; acc += k('accel') * gaz * (1 - x * x); }
+      if (gaz > 0.02 && vf < vmax) { const x = vf / vmax; acc += accelPointe * gaz * (1 - x * x); }
       if (gaz <= 0.02) acc -= k('roueLibre');
-      // au-dessus du plafond (sortie de route, bande de lancement) : on y revient en douceur
-      if (vf > vmax) acc -= Math.min(6, (vf - vmax) * 1.5);
+      // au-dessus du plafond (sortie de route, bande de lancement) : on y revient
+      // en douceur — plus doucement encore quand le pilote le demande (`cmd.plafondDoux`)
+      if (vf > vmax) acc -= Math.min(6, (vf - vmax) * 1.5) * (cmd.plafondDoux || 1);
       if (frein > 0.02) acc -= k('freinArcade') * frein;
       if (main) acc -= 2.5;
       vf = Math.max(0, vf + acc * h);
     }
     // Garde-fou : quoi qu'il arrive (choc, bande de lancement), jamais plus du
     // double de la vitesse de pointe.
-    if (vf > 2 * k('vmax')) vf = 2 * k('vmax');
+    if (vf > 2 * vmaxPointe) vf = 2 * vmaxPointe;
     etat.u = vf * sens;
 
     // ── rotation : le volant donne une vitesse de rotation ────────────────

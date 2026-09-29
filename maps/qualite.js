@@ -38,6 +38,9 @@ export const NIVEAUX = {
 };
 export const ORDRE = ['bas', 'moyen', 'eleve'];
 const CLE = 'nova.qualite';
+// Le niveau conseillé par la dernière mesure, gardé pour « Auto » : sans lui, chaque
+// lancement en Auto remesurait la machine, et sur un PC faible le démarrage figeait.
+const CLE_CONSEIL = 'nova.qualite.conseil';
 /** Seuils de recommandation, en ms par image mesurées au niveau Élevé. */
 const SEUILS = { eleve: 8, moyen: 20 };
 
@@ -47,6 +50,12 @@ export function lireChoix() {
 }
 export function enregistrerChoix(cle) {
   try { localStorage.setItem(CLE, cle); } catch { /* navigation privée : on garde le choix en mémoire */ }
+}
+export function lireConseil() {
+  try { const v = localStorage.getItem(CLE_CONSEIL); return v in NIVEAUX ? v : null; } catch { return null; }
+}
+function enregistrerConseil(cle) {
+  try { localStorage.setItem(CLE_CONSEIL, cle); } catch { /* navigation privée */ }
 }
 export function oublierChoix() {
   try { localStorage.removeItem(CLE); } catch { /* idem */ }
@@ -89,7 +98,7 @@ export function appliquer(jeu, niveau) {
  * Suspend la boucle du jeu le temps de la mesure et la remet.
  * @returns {Promise<number>} médiane, en ms par image
  */
-export async function mesurer(jeu, { lots = 14, parLot = 4, echauffement = 5 } = {}) {
+export async function mesurer(jeu, { lots = 14, parLot = 4, echauffement = 5, abandon = 60 } = {}) {
   // Cinq lots d'échauffement : après un changement de niveau, les programmes
   // se recompilent et les premières images coûtent le double. Mesuré : sans
   // cet échauffement, le niveau Bas paraissait plus lent que l'Élevé.
@@ -104,7 +113,11 @@ export async function mesurer(jeu, { lots = 14, parLot = 4, echauffement = 5 } =
     for (let k = 0; k < parLot; k++) renderer.render(scene, camera);
     // lire un pixel oblige la carte à terminer tout ce qui précède
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-    if (lot >= echauffement) mesures.push((performance.now() - t0) / parLot);
+    const ms = (performance.now() - t0) / parLot;
+    if (lot >= echauffement) mesures.push(ms);
+    // Au-delà de `abandon` ms par image, la machine est de toute façon en Bas :
+    // inutile de la faire ramer sur 56 images (des dizaines de secondes figées).
+    if (ms > abandon) { mesures.length = 0; mesures.push(ms); break; }
   }
   if (tick) renderer.setAnimationLoop(tick);
   mesures.sort((a, b) => a - b);
@@ -158,6 +171,7 @@ export function monterPanneau({ racine, jeu, initial, onChoix = () => {} }) {
     if (recompile) await new Promise((r) => setTimeout(r, 3000));
     mesure = await mesurer(jeu);
     conseille = recommander(mesure);
+    enregistrerConseil(conseille);
     if (appliquerConseil) choisir(conseille);
     else appliquer(jeu, NIVEAUX[courant]);
     if (retester) retester.disabled = false;

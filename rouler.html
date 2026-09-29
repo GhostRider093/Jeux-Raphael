@@ -293,6 +293,11 @@
   .label.street { color: #fff; font-size: 12px; font-weight: 600; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,.8); letter-spacing: .3px; }
   #vignette { position: absolute; inset: 0; pointer-events: none;
               background: radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,.28) 100%); }
+  #message-qualite { position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 20; max-width: min(520px, 90vw);
+    padding: 12px 18px; border-radius: 10px; background: rgba(11, 14, 20, .88); color: #f2f2f2; font-size: 14px; line-height: 1.45;
+    text-align: center; cursor: pointer; transition: opacity 1s; }
+  #message-qualite b { color: var(--accent); }
+  #message-qualite.parti { opacity: 0; }
   #loader { position: absolute; inset: 0; display: grid; place-items: center; background: #0b0e14; transition: opacity .8s; z-index: 10; }
   #loader.done { opacity: 0; pointer-events: none; }
   #loader .box { width: min(420px, 80vw); text-align: center; }
@@ -328,6 +333,15 @@
     #card { top: calc(58px + env(safe-area-inset-top)); max-width: 190px; }
   }
   body.tactile #help-walk { display: none; }
+  /* Téléphone à l'horizontale (29/09/2026) : panneau replié et compteur compacts, le jeu reste visible. */
+  @media (max-width: 640px), (pointer: coarse) and (max-height: 520px) {
+    #hud.collapsed { right: auto; }
+    #auto { right: auto; width: min(300px, 42vw); }
+  }
+  /* Tablette : la mini-carte passait sous les boutons Vue / Flip / SAUT. */
+  @media (pointer: coarse) and (min-height: 521px) {
+    #minimap { bottom: auto; top: calc(14px + env(safe-area-inset-top)); }
+  }
 </style>
 </head>
 <body>
@@ -568,19 +582,23 @@
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
 <script type="module">
-import { startVillage } from './maps/poilhes-village.js?v=20260927p';
-import { NIVEAUX, lireChoix, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260924';
+import { DefaultLoadingManager } from 'three';
+import { TACTILE, APPAREIL, plafondTextures, plafonnerTextures } from './maps/leger.js?v=20260929a';
+import { startVillage } from './maps/poilhes-village.js?v=20260929b';
+import { NIVEAUX, lireChoix, lireConseil, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260929';
 import { creerCourseBoucle } from './maps/course-boucle.js?v=pistes-20260927';
 import { creerMultijoueur } from './maps/multijoueur.js?v=20260927o';
 import { poserFigurants } from './maps/poilhes-figurants.js?v=armes-20260926';
-import { creerTrafic } from './maps/poilhes-trafic.js?v=20260927o';
-import { volant } from './maps/volant.js?v=20260927m';
+import { creerTrafic } from './maps/poilhes-trafic.js?v=20260929a';
+import { volant } from './maps/volant.js?v=20260928a';
 window.volant = volant;
 document.getElementById('btn-volant').addEventListener('click', (e) => { e.currentTarget.blur(); volant.regler(); });
 
 const $ = (id) => document.getElementById(id);
 const hud = $('hud');
-if (matchMedia('(max-width: 640px)').matches) hud.classList.add('collapsed');
+// Replié d'office sur écran tactile (29/09/2026) : un téléphone à l'horizontale fait plus
+// de 640 px de large, et le panneau ouvert couvrait tout le jeu.
+if (matchMedia('(max-width: 640px), (pointer: coarse)').matches) hud.classList.add('collapsed');
 $('hud-title').addEventListener('click', () => hud.classList.toggle('collapsed'));
 
 const params = new URLSearchParams(location.search);
@@ -592,7 +610,9 @@ const accueil = $('accueil');
 const choix = {
   village,
   engin: params.get('engin') === 'berline' ? 'voiture' : ['quad', 'rouge'].includes(params.get('engin')) ? params.get('engin') : 'trottinette',
-  qualite: lireChoix() || 'auto',
+  // Bas par défaut (29/09/2026) : sur les PC modestes, le démarrage en Élevé figeait.
+  // Tant que le joueur n'a rien choisi, rien n'est mémorisé et un message l'invite à monter.
+  qualite: lireChoix() || 'bas',
   // 'libre', ou l'indice de la course (0, 1) : on part directement sur la ligne
   jeu: /^[0-3]$/.test(params.get('course') || '') ? params.get('course') : 'libre',
 };
@@ -617,8 +637,10 @@ btnMenu.addEventListener('click', (e) => { e.stopPropagation(); ouvrirMenu(menuA
 menuAccueil.addEventListener('click', (e) => e.stopPropagation());
 accueil.addEventListener('click', () => { if (!menuAccueil.hidden) ouvrirMenu(false); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menuAccueil.hidden) ouvrirMenu(false); });
+let qualiteChoisie = !!lireChoix();
 accueil.querySelectorAll('[data-choix]').forEach((b) => b.addEventListener('click', () => {
   choix[b.dataset.choix] = b.dataset.valeur;
+  if (b.dataset.choix === 'qualite') qualiteChoisie = true;
   peindreChoix();
 }));
 peindreChoix();
@@ -821,7 +843,7 @@ document.addEventListener('keydown', (e) => {
 });
 $('btn-rouler').addEventListener('click', () => {
   // La playlist continue, en trottinette comme en berline.
-  if (choix.qualite === 'auto') oublierChoix(); else enregistrerChoix(choix.qualite);
+  if (choix.qualite === 'auto') oublierChoix(); else if (qualiteChoisie) enregistrerChoix(choix.qualite);
   // Un autre village, c'est un autre paquet de données : on recharge la page
   // dessus, en sautant l'accueil (?go=1) puisque le choix est fait.
   if (choix.village !== village) {
@@ -841,7 +863,7 @@ if (params.get('mission') === 'capestang') {
   const loader = $('loader'), msg = $('load-msg'), barre = $('load-bar');
   loader.querySelector('h2').textContent = 'Prise d’assaut de Capestang';
   loader.querySelector('p').textContent = 'Le pays se construit : Poilhes, Capestang et 4 km de campagne…';
-  import('./maps/mission-capestang.js?v=20260927p').then(({ lancerMission }) => lancerMission({
+  import('./maps/mission-capestang.js?v=20260928b').then(({ lancerMission }) => lancerMission({
     conteneur: $('scene'),
     progression: (f, m) => { barre.style.width = `${Math.round(f * 100)}%`; if (m) msg.textContent = m; },
     retourAccueil: () => { location.href = 'rouler.html'; },
@@ -865,28 +887,65 @@ const DEPARTS = {
     voiture: { x: -41.12, z: 209.43, cap: -0.6575 },
   },
 };
+// Les modèles 3D en cours de téléchargement (GLTFLoader passe par le gestionnaire
+// par défaut de Three) : l'écran de chargement attend qu'il n'y en ait plus.
+// Suivi par adresse et non par compteur : un même fichier demandé deux fois en même
+// temps (la berline) annonce deux débuts mais une seule fin, et un compteur restait bloqué.
+const chargementsEnCours = new Set();
+{
+  const debut = DefaultLoadingManager.itemStart.bind(DefaultLoadingManager);
+  const fin = DefaultLoadingManager.itemEnd.bind(DefaultLoadingManager);
+  DefaultLoadingManager.itemStart = (url) => { chargementsEnCours.add(url); debut(url); };
+  DefaultLoadingManager.itemEnd = (url) => { chargementsEnCours.delete(url); fin(url); };
+}
+async function chargementsFinis() {
+  // deux passages à vide de suite : un modèle en appelle souvent un autre
+  for (let calme = 0; calme < 2;) {
+    await new Promise((r) => setTimeout(r, 150));
+    calme = chargementsEnCours.size === 0 ? calme + 1 : 0;
+  }
+}
+
+// Bas par défaut (29/09/2026) : un message dit qu'on peut monter, sans rien imposer.
+function montrerMessageQualite() {
+  const m = document.createElement('div');
+  m.id = 'message-qualite';
+  m.innerHTML = 'Qualité <b>Bas</b> pour démarrer vite partout.<br>Si ça tourne bien, passe en <b>Moyen</b> ou <b>Élevé</b> dans le panneau « Qualité »'
+    + (TACTILE ? ' (touche « Poilhes » en haut à gauche pour l’ouvrir).' : '.');
+  m.addEventListener('click', () => m.remove());
+  document.body.appendChild(m);
+  setTimeout(() => m.classList.add('parti'), 9000);
+  setTimeout(() => m.remove(), 10000);
+}
 function lancer(enginChoisi, modeJeu = 'libre') {
   // La GT rouge est une berline repeinte : même mode « voiture », même départ.
   const engin = enginChoisi === 'rouge' ? 'voiture' : enginChoisi;
-  // Premier lancement (ou « Auto ») : rien de mémorisé. On charge en Élevé, on
-  // mesure, on conseille — et le conseil s'applique, une fois. Ensuite le joueur décide.
+  // Rien de choisi : Bas, avec un message. « Auto » : le dernier conseil mesuré,
+  // ou une mesure (en partant de Bas, abandonnée dès que la machine peine).
   const memorise = lireChoix();
+  const auto = choix.qualite === 'auto';
+  const conseilConnu = auto ? lireConseil() : null;
+  const doitMesurer = auto && !conseilConnu;
+  let niveau = memorise || conseilConnu || (NIVEAUX[choix.qualite] ? choix.qualite : 'bas');
   const loader = $('loader'), msg = $('load-msg');
+  // Téléphone et tablette : seulement l'engin choisi (on en change par l'accueil),
+  // ni hélico (et ses explosions) ni Rafale qui passe — de la mémoire en moins.
+  const modeEngin = engin === 'quad' ? 'quad' : engin === 'voiture' ? 'voiture' : 'trottinette';
   startVillage({
-    modes: ['trottinette', 'voiture', 'quad', 'helico'],
-    qualite: NIVEAUX[memorise || 'eleve'],
+    modes: TACTILE ? [modeEngin] : ['trottinette', 'voiture', 'quad', 'helico'],
+    qualite: NIVEAUX[niveau],
     voitureUnique: enginChoisi === 'rouge' ? 'rouge-berline' : 'bleue',
     ouvrir: false,
-    survols: true,                    // un Rafale passe de temps en temps (26/09/2026)
+    survols: !TACTILE,                // un Rafale passe de temps en temps (26/09/2026), pas sur tablette
   }).then(async (jeu) => {
     window.jeu = jeu;                 // poignée de console et de test
     // Les figurants (26/09/2026) : cycliste sur la boucle, policier au départ,
     // stégosaure, Carole et les mafieux devant l'Ostal Louis.
-    poserFigurants({ jeu, village }).then((f) => { window.figurants = f; });
+    const figurantsPrets = poserFigurants({ jeu, village }).then((f) => { window.figurants = f; })
+      .catch((err) => console.warn('Figurants :', err));
     // La vie du village (27/09/2026) : voitures, motos, quads, trottinettes,
     // passants et hélicoptères, en nombre selon la qualité choisie.
-    creerTrafic({ jeu, village, niveau: memorise || 'eleve' }).then((t) => { window.trafic = t; })
-      .catch((err) => console.warn('Trafic :', err));
+    // (créé plus bas, une fois le niveau connu : en Élevé il y a bien plus de véhicules)
     // La boucle du village (26/09/2026) : seulement si le village en a une.
     // Les courses du village : la boucle, et une 2e si le village en a une
     // (Capestang, 26/09/2026). Une seule est affichée à la fois.
@@ -944,18 +1003,49 @@ function lancer(enginChoisi, modeJeu = 'libre') {
         course.demarrer();
       };
     });
-    appliquer(jeu, NIVEAUX[memorise || 'eleve']);
-    const panneau = monterPanneau({ racine: $('qualite'), jeu, initial: memorise || 'eleve' });
-    if (!memorise) {
+    appliquer(jeu, NIVEAUX[niveau]);
+    const panneau = monterPanneau({ racine: $('qualite'), jeu, initial: niveau });
+    if (doitMesurer) {
       msg.textContent = 'Mesure de la machine…';
       const { ms, conseille } = await panneau.tester({ appliquerConseil: true });
+      niveau = conseille;
       msg.textContent = `Réglé sur ${NIVEAUX[conseille].nom} (${ms.toFixed(1)} ms par image)`;
       await new Promise((r) => setTimeout(r, 900));
     }
+    const traficPret = creerTrafic({ jeu, village, niveau: APPAREIL === 'telephone' ? 'telephone' : niveau }).then((t) => { window.trafic = t; })
+      .catch((err) => console.warn('Trafic :', err));
+    // L'écran de chargement reste jusqu'à ce que tout soit là (29/09/2026) : sinon
+    // il disparaissait et le jeu gelait plusieurs secondes le temps que voitures,
+    // passants et programmes de la carte graphique arrivent — on croyait à un plantage.
+    const barre = $('load-bar');
+    barre.style.width = '90%';
+    msg.textContent = 'Les voitures et les passants du village…';
+    mettreEnSelle();                  // l'engin choisi se charge lui aussi derrière l'écran
+    await Promise.race([
+      Promise.all([figurantsPrets, traficPret, coursesPretes.catch(() => null)]).then(chargementsFinis),
+      new Promise((r) => setTimeout(r, 30000)),     // un modèle qui traîne ne bloque pas le départ
+    ]);
+    barre.style.width = '97%';
+    msg.textContent = 'Préparation de l’affichage…';
+    // Textures ramenées à la taille de l'écran (téléphone 512, tablette et Bas 1024),
+    // puis de temps en temps pour ce qui arrive en cours de partie (engin, trafic).
+    const plafond = plafondTextures(niveau);
+    if (plafond) {
+      const gagne = plafonnerTextures(jeu.scene, plafond);
+      console.info(`[leger] ${APPAREIL}, textures plafonnées à ${plafond} px : ${gagne} Mo rendus`);
+      setInterval(() => plafonnerTextures(jeu.scene, plafond), 4000);
+    }
+    await new Promise((r) => requestAnimationFrame(r));
+    if (jeu.renderer.compileAsync) await jeu.renderer.compileAsync(jeu.scene, jeu.camera).catch(() => {});
+    else jeu.renderer.compile(jeu.scene, jeu.camera);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    barre.style.width = '100%';
     loader.classList.add('done');
+    // Pas sur téléphone : y monter la qualité risque de faire fermer l'onglet.
+    if (niveau === 'bas' && !memorise && !auto && APPAREIL !== 'telephone') montrerMessageQualite();
     // On arrive directement en selle : cette page ne survole pas, elle roule.
     // La berline passe par son bouton, qui sait choisir la bleue.
-    setTimeout(() => {
+    function mettreEnSelle() {
       if (engin === 'voiture') document.querySelector('[data-mode="voiture"]').click();
       else jeu.setMode(engin === 'quad' ? 'quad' : 'trottinette');
       // **Chacun à sa place** (Arnaud, 25/09/2026) : la trottinette sur le pump
@@ -973,7 +1063,7 @@ function lancer(enginChoisi, modeJeu = 'libre') {
         // on veut regarder **vers le village**, pas vers la campagne.
         pilote.etat.yaw = d.cap;
       }
-    }, 400);
+    }
   }).catch((err) => {
     console.error(err);
     msg.textContent = 'Erreur : ' + err.message;

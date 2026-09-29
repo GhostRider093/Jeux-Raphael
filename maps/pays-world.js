@@ -8,7 +8,7 @@
  * cockpit, son HUD et son combat aérien comme sur n'importe quelle carte.
  */
 import * as THREE from 'three';
-import { construirePays } from './pays-scene.js?v=20260927m';
+import { construirePays } from './pays-scene.js?v=20260928a';
 import { construireCourseRoute } from './course-route.js?v=arcade-20260926b';
 
 // Le pays fait 8 km de côté : le plan lointain du moteur (4 200 m) couperait

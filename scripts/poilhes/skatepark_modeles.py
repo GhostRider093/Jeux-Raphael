@@ -161,6 +161,11 @@ def composer(plan, pas=PAS):
                 # invisible ; on plafonne le relief senti par les roues.
                 if p.get('relief_max') is not None:
                     h = min(h, float(p['relief_max']))
+                # enfoui : la plaque de base du modèle passe sous la dalle
+                # (27/09/2026) ; ce qui reste dessous ne compte plus.
+                h -= float(p.get('enfoui', 0))
+                if h <= 0.005:
+                    continue
                 u = p['u'] + x0 + i * pas
                 v = p['v'] - (y0 + j * pas)
                 cu, cv = int(round((u + U) / pas)), int(round((v + V) / pas))

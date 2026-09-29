@@ -161,11 +161,14 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
     scene.add(reticule);
   }
   const origineVisee = new THREE.Vector3(), dirVisee = new THREE.Vector3();
+  // La plongée des tirs : `PLONGEE` au départ, puis ce que le pilote règle au
+  // stick droit ou à la molette (`commandes.plongee`, 27/09/2026).
+  let plongee = PLONGEE;
   function viser() {
     root.updateMatrixWorld(true);
     origineVisee.set(0, 0.9, -5.5).applyMatrix4(root.matrixWorld);
     root.getWorldQuaternion(q);
-    dirVisee.set(0, -Math.sin(PLONGEE), -Math.cos(PLONGEE)).applyQuaternion(q);
+    dirVisee.set(0, -Math.sin(plongee), -Math.cos(plongee)).applyQuaternion(q);
     for (let d = 0; d < MITRAILLE.portee; d += 3) {
       tmp.copy(origineVisee).addScaledVector(dirVisee, d);
       const sol = plancher(tmp.x, tmp.z);
@@ -225,7 +228,7 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
     root.updateMatrixWorld(true);
     b.m.position.set(c[0], c[1], c[2]).applyMatrix4(root.matrixWorld);
     root.getWorldQuaternion(q);
-    avant.set(0, -Math.sin(PLONGEE), -Math.cos(PLONGEE)).applyQuaternion(q);
+    avant.set(0, -Math.sin(plongee), -Math.cos(plongee)).applyQuaternion(q);
     if (verrou) {
       // verrouillé : droit sur la cible, avec un peu de dispersion
       avant.copy(verrou.position).sub(b.m.position).normalize();
@@ -246,7 +249,7 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
     root.updateMatrixWorld(true);
     m.m.position.set(p[0], p[1], p[2]).applyMatrix4(root.matrixWorld);
     root.getWorldQuaternion(q);
-    m.dir.set(0, -Math.sin(PLONGEE), -Math.cos(PLONGEE)).applyQuaternion(q);
+    m.dir.set(0, -Math.sin(plongee), -Math.cos(plongee)).applyQuaternion(q);
     m.cible = verrou;                                  // tête chercheuse, si l'on a verrouillé
     if (verrou) m.dir.set(0, 0, -1).applyQuaternion(q);
     m.m.lookAt(tmp.copy(m.m.position).sub(m.dir));   // le nez du missile dans le sens du tir
@@ -259,6 +262,7 @@ export function creerArmes({ scene, camera, root, plancher, renderer = null }) {
    * @param {{mitrailleuse:boolean, missile:boolean}} commandes (null : ne tire pas)
    */
   function update(dt, commandes) {
+    if (commandes && Number.isFinite(commandes.plongee)) plongee = commandes.plongee;
     verrou = commandes ? chercherVerrou() : null;
     if (commandes) viser(); else reticule.visible = false;
     if (commandes) {
