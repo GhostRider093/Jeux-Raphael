@@ -336,6 +336,8 @@
   /* Téléphone à l'horizontale (29/09/2026) : panneau replié et compteur compacts, le jeu reste visible. */
   @media (max-width: 640px), (pointer: coarse) and (max-height: 520px) {
     #hud.collapsed { right: auto; }
+    /* la mini-carte passait sous le bouton « Vue » : à gauche de la colonne des boutons */
+    #minimap { right: 110px; }
     #auto { right: auto; width: min(300px, 42vw); }
   }
   /* Tablette : la mini-carte passait sous les boutons Vue / Flip / SAUT. */
@@ -584,9 +586,9 @@
 <script type="module">
 import { DefaultLoadingManager } from 'three';
 import { TACTILE, APPAREIL, plafondTextures, plafonnerTextures } from './maps/leger.js?v=20260929a';
-import { startVillage } from './maps/poilhes-village.js?v=20260929b';
+import { startVillage } from './maps/poilhes-village.js?v=20260929c';
 import { NIVEAUX, lireChoix, lireConseil, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260929';
-import { creerCourseBoucle } from './maps/course-boucle.js?v=pistes-20260927';
+import { creerCourseBoucle } from './maps/course-boucle.js?v=20260929a';
 import { creerMultijoueur } from './maps/multijoueur.js?v=20260927o';
 import { poserFigurants } from './maps/poilhes-figurants.js?v=armes-20260926';
 import { creerTrafic } from './maps/poilhes-trafic.js?v=20260929a';

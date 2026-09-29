@@ -1124,11 +1124,22 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   $('stats').textContent =
     `${meta.stats.batiments} bâtiments · ${meta.stats.arbres} arbres · ${meta.rues.length} rues · ${meta.stats.piscines} piscines`;
 
-  addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
+  // Téléphone qu'on tourne (29/09/2026) : Android prévient avant d'avoir mis la largeur
+  // à jour, le rendu gardait celle de la verticale et la moitié droite restait noire.
+  // On réajuste à chaque signal, un peu plus tard, et on vérifie deux fois par seconde.
+  function ajusterTaille() {
+    const w = innerWidth, h = innerHeight;
+    const c = renderer.domElement;
+    if (c.clientWidth === w && c.clientHeight === h) return;
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-  });
+    renderer.setSize(w, h);
+  }
+  const ajusterBientot = () => { ajusterTaille(); setTimeout(ajusterTaille, 250); setTimeout(ajusterTaille, 800); };
+  addEventListener('resize', ajusterBientot);
+  addEventListener('orientationchange', ajusterBientot);
+  if (window.visualViewport) visualViewport.addEventListener('resize', ajusterBientot);
+  setInterval(ajusterTaille, 500);
 
   // --------------------------------------------------------------------- boucle
   setProgress(1, 'Prêt');

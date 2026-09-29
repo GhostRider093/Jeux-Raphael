@@ -52,6 +52,8 @@ const STYLE = `
   padding:8px 18px;text-align:center;letter-spacing:.02em;pointer-events:none}
 #boucle-hud b{font-size:26px;font-variant-numeric:tabular-nums}
 #boucle-hud small{display:block;font-weight:500;font-size:13px;opacity:.8}
+@media (pointer:coarse) and (max-height:520px){#boucle-hud{top:auto;bottom:10px;font-size:14px;padding:5px 12px}
+  #boucle-hud b{font-size:18px}#boucle-hud small{font-size:11px}}
 #boucle-decompte{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:31;
   font:800 140px/1 system-ui,sans-serif;color:#ffd21f;text-shadow:0 6px 0 #141414;pointer-events:none}
 #boucle-fin{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:32;display:none;
@@ -207,7 +209,8 @@ export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json',
       + `<small>Point ${course.passage}/${passages.length}`
       + (course.tours.length ? ` · tour 1 : ${chrono(course.tours[0])}` : '')
       + (meilleur ? ` · record ${chrono(meilleur.temps)}` : '')
-      + ` · R : repartir du dernier point · Échap : abandonner</small>`;
+      // les touches du clavier ne disent rien sur un écran tactile
+      + (matchMedia('(pointer: coarse)').matches ? '' : ` · R : repartir du dernier point · Échap : abandonner`) + `</small>`;
   }
 
   /** Le tableau des dix meilleurs, la ligne `moi` surlignée. */
