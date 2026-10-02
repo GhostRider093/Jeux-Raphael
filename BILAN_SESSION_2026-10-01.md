@@ -62,3 +62,6 @@
   qui montre un paysage sous la pluie → nouveau mode `--vitres clair` (luminosité, rangées pleines et bords lissés,
   coupure à 0,322 au-dessus des essuie-glaces ; 1er essai : le haut gris de la planche partait avec). Repères de
   `vue-interieure.js` réalignés (capot 0,322, horizon 0,25).
+
+## 02/10 — rétroviseur
+- Le miroir était déjà parti, mais son pied pendait encore sous la console de plafond : rendu transparent (zone 930–1110 × 200–275 px de l'image finale). Ancienne image dans git (c4aba1c). Non poussé.

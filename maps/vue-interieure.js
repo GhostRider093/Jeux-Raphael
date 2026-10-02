@@ -16,7 +16,7 @@
  * Le volant (`assets/car/volant-berline.webp`, avec les mains, à venir) est un
  * second calque, facultatif : s'il existe, il tourne avec la direction.
  */
-const IMAGE = 'assets/car/interieur-berline.webp?v=20261001c';
+const IMAGE = 'assets/car/interieur-berline.webp?v=20261002a';
 const VOLANT = 'assets/car/volant-berline.webp?v=20261001a';
 
 // Repères dans l'image (en part de sa hauteur), mesurés sur la photo
