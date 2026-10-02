@@ -203,6 +203,13 @@
                    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 18px 40px rgba(0,0,0,.5);
                    cursor: pointer; font: inherit; text-align: center; transition: transform .25s ease, border-color .25s ease; }
   #accueil .mode[hidden] { display: none; }
+  #accueil .engin[hidden] { display: none; }
+  /* Les adversaires de l'ordinateur (01/10/2026) : le niveau, avant de choisir la course */
+  #accueil .adversaires { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  #accueil .adversaires > span { color: var(--dim); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-right: 4px; }
+  #accueil .adversaires button { font: inherit; font-size: 14px; font-weight: 700; padding: 7px 14px; border-radius: 999px; cursor: pointer;
+                                 border: 2px solid rgba(255,255,255,.14); background: rgba(14,18,26,.82); color: #fff; }
+  #accueil .adversaires button.on { border-color: var(--accent); background: var(--accent); color: #141414; }
   #accueil .mode .ico { font-size: 34px; line-height: 1; }
   #accueil .mode .nom { font-size: 20px; font-weight: 800; }
   #accueil .mode .detail { color: #d9dfe8; font-size: 13px; line-height: 1.35; }
@@ -374,6 +381,7 @@
     <button id="btn-boucle" title="La boucle du village : départ derrière la ligne, un tour chronométré">🏁 Course · 1 tour</button>
     <button id="btn-classement" title="Les dix meilleurs temps de la boucle">🏆 <span id="record">Classement</span></button>
     <button id="btn-volant" title="Régler ton volant (Thrustmaster T150…)">🎮 Volant</button>
+    <button id="btn-adv" title="Les adversaires de l'ordinateur : clique pour changer de niveau">🤖 🙂 Facile</button>
     <button id="btn-enligne" hidden title="Jouer en ligne avec d'autres (salon du village)">🌐 En ligne</button>
   </div>
   <div class="row" id="choix-auto" hidden>
@@ -510,7 +518,9 @@
       </button>
       <!-- La GT rouge revient (Arnaud, 27/09/2026) : la même conduite que la
            berline, seule la robe change. -->
-      <button class="engin" type="button" data-engin="rouge">
+      <!-- Masquée le 01/10/2026 (Arnaud : « ça sert à rien ») : la berline repeinte, même conduite.
+           Rien n'est supprimé : retirer `hidden` pour la remettre ; ?engin=rouge marche toujours. -->
+      <button class="engin" type="button" data-engin="rouge" hidden>
         <img src="assets/accueil/engins/gt-rouge-roule.webp?v=accueil-20260927" alt="">
         <span class="badge">Arcade</span>
         <span class="texte">
@@ -533,6 +543,14 @@
     </div>
     <div class="modes" id="modes" hidden>
       <p class="question"><small id="modes-engin">Berline bleue</small>Course ou mode libre ?</p>
+      <div class="adversaires" id="choix-adv" title="Des pilotes de l'ordinateur courent avec toi">
+        <span>🤖 Contre l’ordi</span>
+        <button type="button" data-adv="aucun">Seul</button>
+        <button type="button" data-adv="facile">🙂 Facile</button>
+        <button type="button" data-adv="moyen">😐 Moyen</button>
+        <button type="button" data-adv="difficile">😠 Difficile</button>
+        <button type="button" data-adv="pilote">🔥 Pilote</button>
+      </div>
       <div class="choix-modes">
         <button class="mode" type="button" data-mode-jeu="libre">
           <span class="ico">🧭</span><span class="nom">Mode libre</span>
@@ -586,12 +604,14 @@
 <script type="module">
 import { DefaultLoadingManager } from 'three';
 import { TACTILE, APPAREIL, plafondTextures, plafonnerTextures } from './maps/leger.js?v=20260929a';
-import { startVillage } from './maps/poilhes-village.js?v=20260929c';
+import { startVillage } from './maps/poilhes-village.js?v=20261001d';
 import { NIVEAUX, lireChoix, lireConseil, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260929';
-import { creerCourseBoucle } from './maps/course-boucle.js?v=20260929a';
-import { creerMultijoueur } from './maps/multijoueur.js?v=20260927o';
+import { creerCourseBoucle } from './maps/course-boucle.js?v=20261001e';
+import { creerMultijoueur } from './maps/multijoueur.js?v=20261001b';
+import { NIVEAUX as NIVEAUX_ADV, ORDRE_NIVEAUX as ORDRE_ADV } from './maps/course-adversaires.js?v=20261001e';
 import { poserFigurants } from './maps/poilhes-figurants.js?v=armes-20260926';
-import { creerTrafic } from './maps/poilhes-trafic.js?v=20260929a';
+import { creerTrafic } from './maps/poilhes-trafic.js?v=20261001c';
+import { creerChocs } from './maps/chocs.js?v=20261001b';
 import { volant } from './maps/volant.js?v=20260928a';
 window.volant = volant;
 document.getElementById('btn-volant').addEventListener('click', (e) => { e.currentTarget.blur(); volant.regler(); });
@@ -617,7 +637,24 @@ const choix = {
   qualite: lireChoix() || 'bas',
   // 'libre', ou l'indice de la course (0, 1) : on part directement sur la ligne
   jeu: /^[0-3]$/.test(params.get('course') || '') ? params.get('course') : 'libre',
+  // Les adversaires de l'ordinateur (01/10/2026) : Facile tant qu'on n'a rien choisi
+  adversaires: (() => {
+    const p = params.get('adv');
+    if (p && p in NIVEAUX_ADV) return p;
+    try { const m = localStorage.getItem('nova.adversaires'); if (m && m in NIVEAUX_ADV) return m; } catch { /* rien */ }
+    return 'facile';
+  })(),
 };
+function choisirAdversaires(n) {
+  if (!(n in NIVEAUX_ADV)) return;
+  choix.adversaires = n;
+  try { localStorage.setItem('nova.adversaires', n); } catch { /* navigation privée */ }
+  document.querySelectorAll('[data-adv]').forEach((b) => b.classList.toggle('on', b.dataset.adv === n));
+  const N = NIVEAUX_ADV[n];
+  const bouton = document.getElementById('btn-adv');
+  if (bouton) bouton.textContent = n === 'aucun' ? '🤖 Seul' : `🤖 ${N.icone} ${N.nom}`;
+  (window.courses || []).filter(Boolean).forEach((c) => { c.niveau = n; });
+}
 // Les courses de chaque village (fichiers maps/<village>/boucle*.json) :
 // Poilhes en a quatre depuis le 27/09/2026 (2 : les vignes de l'est ; 3 : le sud ;
 // 4 : l'ouest), Capestang deux.
@@ -840,6 +877,8 @@ accueil.querySelectorAll('[data-mode-jeu]').forEach((m) => m.addEventListener('c
   $('btn-rouler').click();
 }));
 $('modes-retour').addEventListener('click', (e) => { e.stopPropagation(); montrerModes(false); });
+accueil.querySelectorAll('[data-adv]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); choisirAdversaires(b.dataset.adv); }));
+choisirAdversaires(choix.adversaires);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !$('modes').hidden && menuAccueil.hidden && !accueil.hidden) montrerModes(false);
 });
@@ -850,7 +889,7 @@ $('btn-rouler').addEventListener('click', () => {
   // dessus, en sautant l'accueil (?go=1) puisque le choix est fait.
   if (choix.village !== village) {
     const course = choix.jeu === 'libre' ? '' : `&course=${choix.jeu}`;
-    location.href = `rouler.html?village=${choix.village}&engin=${choix.engin === 'voiture' ? 'berline' : choix.engin}${course}&go=1`;
+    location.href = `rouler.html?village=${choix.village}&engin=${choix.engin === 'voiture' ? 'berline' : choix.engin}${course}&adv=${choix.adversaires}&go=1`;
     return;
   }
   accueil.classList.add('parti');
@@ -941,6 +980,13 @@ function lancer(enginChoisi, modeJeu = 'libre') {
     survols: !TACTILE,                // un Rafale passe de temps en temps (26/09/2026), pas sur tablette
   }).then(async (jeu) => {
     window.jeu = jeu;                 // poignée de console et de test
+    // Les chocs entre engins (01/10/2026) : trafic, adversaires de l'ordinateur,
+    // joueurs en ligne — chacun donne ses boîtes quand il est là.
+    window.chocs = creerChocs({ jeu, sources: [
+      () => (window.trafic ? window.trafic.corps() : []),
+      () => (window.courses || []).filter(Boolean).flatMap((c) => c.adversaires.corps()),
+      () => (window.multi ? window.multi.corps() : []),
+    ] });
     // Les figurants (26/09/2026) : cycliste sur la boucle, policier au départ,
     // stégosaure, Carole et les mafieux devant l'Ostal Louis.
     const figurantsPrets = poserFigurants({ jeu, village }).then((f) => { window.figurants = f; })
@@ -964,6 +1010,13 @@ function lancer(enginChoisi, modeJeu = 'libre') {
       let course = course1;
       window.courseBoucle = course1;
       window.courses = courses;
+      // les pilotes de l'ordinateur voient le trafic et l'évitent
+      courses.filter(Boolean).forEach((c) => { c.adversaires.obstacles = () => (window.trafic ? window.trafic.corps() : []); });
+      choisirAdversaires(choix.adversaires);
+      $('btn-adv').addEventListener('click', (e) => {
+        e.currentTarget.blur();
+        choisirAdversaires(ORDRE_ADV[(ORDRE_ADV.indexOf(choix.adversaires) + 1) % ORDRE_ADV.length]);
+      });
       $('row-boucle').hidden = false;
       if (course2) {
         $('row-pistes').hidden = false;

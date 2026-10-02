@@ -126,6 +126,12 @@ export async function creerMultijoueur({ jeu, village, course = null }) {
       a.avatar.position.set(e.x, e.y, e.z);
       jeu.scene.add(a.avatar);
     }
+    // sa vitesse, pour les chocs : l'écart entre deux paquets
+    const t = performance.now() / 1000;
+    if (a.tRecu && t - a.tRecu > 0.02 && t - a.tRecu < 0.5) {
+      a.vx = (e.x - a.cible.x) / (t - a.tRecu); a.vz = (e.z - a.cible.z) / (t - a.tRecu);
+    }
+    a.tRecu = t;
     a.cible.set(e.x, e.y, e.z);
     a.quat.set(e.qx, e.qy, e.qz, e.qw);
     a.kmh = e.kmh;
@@ -179,7 +185,8 @@ export async function creerMultijoueur({ jeu, village, course = null }) {
         // tout le salon part au même « GO » : le décompte local dure 3 s
         resultats = [];
         const c = typeof course === 'function' ? course() : course;   // la course choisie dans la page
-        if (c) setTimeout(() => c.demarrer(), Math.max(0, (m.dans - 3) * 1000));
+        // en ligne, pas de pilotes de l'ordinateur : chacun verrait les siens
+        if (c) setTimeout(() => c.demarrer({ adversaires: false }), Math.max(0, (m.dans - 3) * 1000));
       } else if (m.type === 'resultats') {
         resultats = m.resultats;
       }
@@ -238,7 +245,31 @@ export async function creerMultijoueur({ jeu, village, course = null }) {
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'arrivee', temps, engin }));
   }
 
+  /**
+   * Les autres joueurs pour le module des chocs (01/10/2026) : des boîtes qui
+   * ne bougent pas sous le choc — c'est leur propre navigateur qui les fait
+   * réagir en nous voyant arriver.
+   */
+  const CARRURE = { voiture: [0.88, 2.05, 1450], quad: [0.62, 1.0, 380], trottinette: [0.32, 0.62, 110] };
+  const euler = new THREE.Euler();
+  function corps() {
+    const liste = [];
+    for (const [id, a] of autres) {
+      const c = a.avatar && CARRURE[a.engin];
+      if (!c) continue;                       // l'hélico vole : pas de choc
+      euler.setFromQuaternion(a.avatar.quaternion, 'YXZ');
+      liste.push({
+        cle: 'enligne' + id, sorte: 'avatar',
+        x: a.avatar.position.x, z: a.avatar.position.z, y: a.avatar.position.y, cap: euler.y,
+        dw: c[0], dl: c[1], masse: c[2], mobile: false,
+        vx: a.vx || 0, vz: a.vz || 0, appliquer() {},
+      });
+    }
+    return liste;
+  }
+
   return {
+    corps,
     get connecte() { return !!moi; },
     entrer: demanderPseudo, sortir: deconnecter, annoncerArrivee,
     /** Le 🏁 en ligne : c'est le salon qui donne le départ, à tout le monde. */

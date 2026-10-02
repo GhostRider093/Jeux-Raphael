@@ -78,7 +78,8 @@ j = s.rindex("    location / {", 0, i)
 assert "server_name raphael.crea-doc.fr;" in s[s.rindex("server {", 0, j):j]
 open(p, "w", encoding="utf-8").write(s[:j] + bloc + s[j:])
 PY
-  if docker exec nginx-proxy-manager-npm-1 nginx -t 2>&1 | tail -2; then
+  if TEST=$(docker exec nginx-proxy-manager-npm-1 nginx -t 2>&1); then
+    echo "$TEST" | tail -2
     docker exec nginx-proxy-manager-npm-1 nginx -s reload
     echo "   proxy rechargé"
   else

@@ -45,6 +45,7 @@ import { creerPhysique, REGLAGES } from './voiture-physique.js?v=20260928a';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
 import { construireEnginQuad } from './quad.js?v=20260927o';
 import { volant as volantCourse } from './volant.js?v=20260928a';
+import { creerHabitacle } from './vue-interieure.js?v=20261001d';
 
 const GRAVITE = 9.81;
 // Toucher du volant, **selon la vitesse** — comme une vraie voiture.
@@ -130,6 +131,9 @@ const VUE_GUIDON = { dist: 0.0, haut: 1.58, avance: 2.0, fov: 80, recul: 0.02, v
 // le centre de l'engin : la caméra passe 38 cm devant, à hauteur d'yeux, et
 // regarde la route un peu en contrebas.
 const VUE_QUAD = { dist: 0.0, haut: 1.70, avance: 2.0, fov: 78, recul: 0.38, viseHaut: -2.2 };
+// Vue intérieure de la berline (01/10/2026, photo d'habitacle d'Arnaud, `vue-interieure.js`) :
+// les yeux au milieu de l'habitacle, la caisse masquée, la photo par-dessus le rendu.
+const VUE_INTERIEUR = { dist: 0.0, interieur: true, haut: 1.15, recul: -0.15, fov: 64 };
 
 /** Facteur de lissage exponentiel : indépendant de la cadence d'images. */
 const lissage = (taux, dt) => 1 - Math.exp(-taux * dt);
@@ -670,7 +674,8 @@ export function creerPilote({
   // course sur une trottinette de village.
   // (`SAUT_TROTTINETTE.pencheMax`)
   const VUES = surDeuxRoues ? [VUES_AUTO[0], VUES_AUTO[1], VUE_GUIDON]
-             : surQuad ? [VUES_AUTO[0], VUES_AUTO[1], VUE_QUAD] : VUES_AUTO;
+             : surQuad ? [VUES_AUTO[0], VUES_AUTO[1], VUE_QUAD] : [...VUES_AUTO, VUE_INTERIEUR];
+  const habitacle = surDeuxRoues || surQuad ? null : creerHabitacle();
   const voiture = surDeuxRoues ? construireEnginTrottinette({ renderer })
                 : surQuad ? construireEnginQuad({ renderer })
                           : construireVoiture({ renderer, couleur });
@@ -1038,6 +1043,7 @@ export function creerPilote({
   }
 
   function exit() {
+    if (habitacle) { habitacle.cacher(); voiture.caisse.visible = true; }
     root.visible = false;
     voiture.ombre.visible = false;
     traces.visible = false;
@@ -1601,6 +1607,21 @@ export function creerPilote({
     const vue = VUES[state.vue];
     avant.set(-Math.sin(etat.yaw), 0, -Math.cos(etat.yaw));
     droite.set(-avant.z, 0, avant.x);
+
+    // ── vue intérieure : la photo d'habitacle par-dessus, la caisse masquée ──
+    if (habitacle) {
+      if (vue.interieur) { habitacle.montrer(etat.braquage); voiture.caisse.visible = false; }
+      else if (habitacle.visible) { habitacle.cacher(); voiture.caisse.visible = true; }
+    }
+    if (vue.interieur) {
+      camera.position.copy(position).addScaledVector(avant, vue.recul).add(travail.set(0, vue.haut, 0));
+      camCible.copy(camera.position).addScaledVector(avant, 10);
+      camera.lookAt(camCible);
+      // la photo est fixe : le regard plonge pour poser l'horizon au-dessus du capot
+      camera.rotateX(-habitacle.plongee(camera.fov));
+      if (Math.abs(camera.fov - vue.fov) > 0.15) { camera.fov = vue.fov; camera.updateProjectionMatrix(); }
+      return;
+    }
 
     if (vue.dist === 0) {
       // Vue capot : la caméra est sur la voiture, elle en prend l'assiette.

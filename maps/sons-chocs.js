@@ -1,0 +1,164 @@
+/**
+ * Les bruitages des chocs — Poilhes City.
+ *
+ * Arnaud, 01/10/2026 : « blinder les collisions entre voitures, avec chocs,
+ * bruitages et compagnie ». Aucun fichier : tout est synthétisé (Web Audio),
+ * donc aucun droit à vérifier avant une publication, et chaque choc sonne un
+ * peu différemment du précédent.
+ *
+ *   — `impact(force, distance)` : un choc. `force` de 0 (on se touche) à 1 (la
+ *     grosse collision). Quatre couches dosées par la force :
+ *       · le **coup sourd** (la caisse encaisse) : une sinusoïde grave qui chute ;
+ *       · la **tôle** : du bruit filtré et saturé, bref ;
+ *       · le **métal qui sonne** : quelques partiels inharmoniques ;
+ *       · le **verre** au-delà de 0,65 : une pluie de petits cliquetis aigus.
+ *   — `frottement(niveau)` : la tôle qui racle, en continu (0 = silence) ;
+ *     à appeler à chaque image tant que deux engins glissent l'un contre l'autre.
+ *
+ * Le contexte audio naît au premier choc ; le navigateur l'autorise puisque le
+ * joueur a déjà appuyé sur une touche pour conduire.
+ */
+
+const VOLUME = 0.7;
+
+let ctx = null, sortie = null, bruit = null;
+let racle = null;             // { source, filtre, gain }
+
+function contexte() {
+  if (ctx) { if (ctx.state === 'suspended') ctx.resume().catch(() => {}); return ctx; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  try { ctx = new AC(); } catch { return null; }
+  // un compresseur en sortie : dix chocs d'un coup ne saturent pas
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.ratio.value = 6; comp.attack.value = 0.002; comp.release.value = 0.2;
+  sortie = ctx.createGain(); sortie.gain.value = VOLUME;
+  sortie.connect(comp); comp.connect(ctx.destination);
+  // deux secondes de bruit blanc, réutilisées par toutes les couches
+  bruit = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+  const d = bruit.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return ctx;
+}
+
+/** Une courbe de saturation : la tôle « croque » au lieu de souffler. */
+let courbe = null;
+function saturation() {
+  if (courbe) return courbe;
+  courbe = new Float32Array(1024);
+  for (let i = 0; i < 1024; i++) { const x = i / 512 - 1; courbe[i] = Math.tanh(x * 4); }
+  return courbe;
+}
+
+function sourceBruit(t, duree) {
+  const s = ctx.createBufferSource();
+  s.buffer = bruit;
+  s.start(t, Math.random() * 1.5, duree + 0.05);
+  return s;
+}
+
+const hasard = (a, b) => a + Math.random() * (b - a);
+
+/**
+ * Un choc.
+ * @param {number} force     0…1
+ * @param {number} [distance=0]  m entre le choc et le joueur (atténuation)
+ */
+export function impact(force, distance = 0) {
+  if (!contexte()) return;
+  const f = Math.max(0, Math.min(1, force));
+  const att = 1 / (1 + Math.max(0, distance) / 12);
+  if (f * att < 0.02) return;
+  const t = ctx.currentTime + 0.005;
+  const bus = ctx.createGain(); bus.gain.value = att; bus.connect(sortie);
+
+  // ── le coup sourd ──
+  {
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    const f0 = hasard(70, 105) * (1.2 - f * 0.4);
+    o.frequency.setValueAtTime(f0 * 1.8, t);
+    o.frequency.exponentialRampToValueAtTime(f0 * 0.55, t + 0.18 + f * 0.2);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.35 + f * 0.65, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22 + f * 0.35);
+    o.connect(g); g.connect(bus);
+    o.start(t); o.stop(t + 0.7);
+  }
+
+  // ── la tôle : bruit filtré, saturé ──
+  {
+    const duree = 0.08 + f * 0.45;
+    const s = sourceBruit(t, duree);
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(hasard(900, 1800) + f * 900, t);
+    bp.frequency.exponentialRampToValueAtTime(hasard(350, 600), t + duree);
+    bp.Q.value = 0.9;
+    const sat = ctx.createWaveShaper(); sat.curve = saturation();
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.25 + f * 0.75, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + duree);
+    s.connect(bp); bp.connect(sat); sat.connect(g); g.connect(bus);
+  }
+
+  // ── le métal qui sonne ──
+  if (f > 0.15) {
+    const base = hasard(380, 520);
+    for (const r of [1, 2.71, 5.18, 7.9]) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = base * r * hasard(0.97, 1.03);
+      const g = ctx.createGain();
+      const duree = (0.25 + f * 0.7) / Math.sqrt(r);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime((0.05 + f * 0.09) / r, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + duree);
+      o.connect(g); g.connect(bus);
+      o.start(t); o.stop(t + duree + 0.05);
+    }
+  }
+
+  // ── les débris, puis le verre ──
+  const debris = f > 0.35 ? Math.round(3 + f * 6) : 0;
+  const verre = f > 0.65 ? Math.round(10 + (f - 0.65) * 50) : 0;
+  for (let i = 0; i < debris + verre; i++) {
+    const estVerre = i >= debris;
+    const ti = t + (estVerre ? hasard(0.03, 0.55) : hasard(0.02, 0.3));
+    const s = sourceBruit(ti, 0.04);
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+    bp.frequency.value = estVerre ? hasard(3500, 8000) : hasard(500, 1400);
+    bp.Q.value = estVerre ? 12 : 3;
+    const g = ctx.createGain();
+    const v = estVerre ? hasard(0.15, 0.45) : hasard(0.1, 0.25);
+    g.gain.setValueAtTime(0.0001, ti);
+    g.gain.exponentialRampToValueAtTime(v, ti + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, ti + (estVerre ? hasard(0.02, 0.07) : hasard(0.03, 0.08)));
+    s.connect(bp); bp.connect(g); g.connect(bus);
+  }
+  setTimeout(() => { try { bus.disconnect(); } catch { /* déjà fait */ } }, 2000);
+}
+
+/**
+ * La tôle qui racle : à appeler à chaque image, 0 pour se taire.
+ * @param {number} niveau 0…1
+ */
+export function frottement(niveau) {
+  if (!ctx) { if (niveau <= 0) return; if (!contexte()) return; }
+  if (!racle) {
+    if (niveau <= 0) return;
+    const source = ctx.createBufferSource(); source.buffer = bruit; source.loop = true;
+    const filtre = ctx.createBiquadFilter(); filtre.type = 'bandpass'; filtre.frequency.value = 1800; filtre.Q.value = 1.4;
+    const sat = ctx.createWaveShaper(); sat.curve = saturation();
+    const gain = ctx.createGain(); gain.gain.value = 0;
+    source.connect(filtre); filtre.connect(sat); sat.connect(gain); gain.connect(sortie);
+    source.start();
+    racle = { source, filtre, gain };
+  }
+  const t = ctx.currentTime;
+  const n = Math.max(0, Math.min(1, niveau));
+  racle.gain.gain.setTargetAtTime(n * 0.45, t, n > 0 ? 0.03 : 0.08);
+  // le grain du raclement bouge : la fréquence suit la vitesse, avec un peu de hasard
+  racle.filtre.frequency.setTargetAtTime(1100 + n * 1900 + hasard(-250, 250), t, 0.05);
+}

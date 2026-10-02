@@ -20,6 +20,7 @@
  */
 import * as THREE from 'three';
 import { construireFleches } from './fleches-sol.js?v=arcade-20260926b';
+import { creerAdversaires, NIVEAUX } from './course-adversaires.js?v=20261001e';
 
 const ECART_PASSAGE = 50;      // m entre deux points de passage
 const RAYON_PASSAGE = 22;      // m : on est passé quand on en est plus près (16 avant le 26/09 : trop juste)
@@ -67,6 +68,8 @@ const STYLE = `
 #boucle-fin input{font:inherit;padding:6px 8px;border-radius:8px;border:0;width:150px}
 #boucle-fin button{font:inherit;font-weight:600;padding:7px 14px;border-radius:9px;border:0;margin:4px;cursor:pointer}
 #boucle-fin .go{background:#ffd21f;color:#141414}
+#boucle-fin .podium{font-size:24px;font-weight:800;margin:2px 0 4px}
+#boucle-fin td.bot{opacity:.85}
 `;
 
 /**
@@ -91,6 +94,8 @@ export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json',
   const P = data.points;
   const TOURS = data.tours || 2;
   const solAt = (x, z) => jeu.walkableAt(x, z);
+  // Les adversaires de l'ordinateur (01/10/2026), niveau choisi par la page.
+  const adv = creerAdversaires({ jeu, data, tours: TOURS });
 
   // ── le décor : flèches et ligne de départ ───────────────────────────────
   const root = new THREE.Group();
@@ -181,7 +186,8 @@ export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json',
   }
   let attendLaLigne = false;          // après le « GO », avant d'avoir franchi la ligne
 
-  function demarrer() {
+  /** @param {object} [o] `{ adversaires: false }` : sans pilotes de l'ordinateur (course en ligne). */
+  function demarrer(o = {}) {
     root.visible = true;
     // Pas d'engin ? La berline par défaut.
     if (!piloteCourant()) jeu.setMode('voiture');
@@ -193,19 +199,23 @@ export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json',
       engin: jeu.mode,
     });
     poserDerriereLaLigne(p);
+    if (o.adversaires === false) adv.arreter(); else adv.preparer(jeu.mode, RECUL);
     hud.style.display = 'block';
     decompteEl.style.display = 'flex';
   }
 
   function abandonner() {
     attendLaLigne = false;
+    adv.arreter();
     course.actif = false; course.phase = null;
     hud.style.display = 'none'; decompteEl.style.display = 'none';
   }
 
   function majHud() {
     const meilleur = lireClassement(ident)[0];
+    const pl = adv.actifs ? adv.place() : null;
     hud.innerHTML = `Tour ${Math.min(course.tour, TOURS)}/${TOURS} · <b>${chrono(course.t)}</b>`
+      + (pl ? ` · <b>${pl.rang}${pl.rang === 1 ? 'ᵉʳ' : 'ᵉ'}</b>/${pl.sur}` : '')
       + `<small>Point ${course.passage}/${passages.length}`
       + (course.tours.length ? ` · tour 1 : ${chrono(course.tours[0])}` : '')
       + (meilleur ? ` · record ${chrono(meilleur.temps)}` : '')
@@ -252,6 +262,7 @@ export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json',
     let ecartCap = p.etat.yaw - d.cap;
     ecartCap = Math.atan2(Math.sin(ecartCap), Math.cos(ecartCap));
     if (sur && !etaitSurLaLigne && p.etat.u > (attendLaLigne ? 0.5 : 2) && Math.abs(ecartCap) < 0.9) {
+      if (!attendLaLigne) adv.arreter();       // départ lancé en balade : seul
       attendLaLigne = false;
       Object.assign(course, {
         actif: true, phase: 'course', t: 0, decompte: 0, tour: 1, passage: 0, tours: [], debutTour: 0, engin: jeu.mode,
@@ -270,7 +281,18 @@ export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json',
     hud.style.display = 'none';
     const temps = course.t;
     const nomEngin = NOM_ENGIN[course.engin] || course.engin;
-    fin.innerHTML = `<h2>Arrivée !</h2><div class="temps">${chrono(temps)}</div>`
+    // contre l'ordinateur : la place, et le classement de la manche
+    let manche = '';
+    if (adv.actifs) {
+      const res = adv.resultats(temps, 'Toi');
+      const rang = res.findIndex((r) => !r.bot) + 1;
+      const n = NIVEAUX[adv.niveau];
+      manche = `<div class="podium">${['🥇 Victoire !', '🥈 2ᵉ place', '🥉 3ᵉ place'][rang - 1] || `${rang}ᵉ place`}</div>`
+        + `<div style="opacity:.8">Contre l'ordinateur · ${n.icone} ${n.nom}</div><table>`
+        + res.map((r, i) => `<tr class="${r.bot ? '' : 'moi'}"><td>${i + 1}.</td><td class="${r.bot ? 'bot' : ''}">${r.bot ? '🤖 ' : ''}${r.nom}</td>`
+          + `<td class="t"><b>${chrono(r.temps)}</b>${r.estime ? ' <small>(estimé)</small>' : ''}</td></tr>`).join('') + '</table>';
+    }
+    fin.innerHTML = `<h2>Arrivée !</h2><div class="temps">${chrono(temps)}</div>${manche}`
       + `<div>${course.tours.map((t, i) => `Tour ${i + 1} : ${chrono(t)}`).join(' · ')} — ${nomEngin}</div>`
       + `<div style="margin-top:10px"><input id="boucle-nom" maxlength="16" placeholder="Ton nom" value="${lireNom().replace(/"/g, '')}">`
       + `<button class="go" id="boucle-enr">Enregistrer</button></div><div id="boucle-rang" style="font-weight:700;margin-top:6px"></div>`
@@ -302,7 +324,7 @@ export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json',
     fin.querySelector('#boucle-nom').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') enregistrer(); });
     fin.querySelector('#boucle-nom').addEventListener('keyup', (e) => e.stopPropagation());
     fin.querySelector('#boucle-rejouer').onclick = () => { enregistrer(); demarrer(); };
-    fin.querySelector('#boucle-fermer').onclick = () => { enregistrer(); fin.style.display = 'none'; };
+    fin.querySelector('#boucle-fermer').onclick = () => { enregistrer(); adv.arreter(); fin.style.display = 'none'; };
   }
 
   // ── la boucle d'animation ───────────────────────────────────────────────
@@ -311,6 +333,7 @@ export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json',
     requestAnimationFrame(image);
     const dt = Math.min(0.1, (maintenant - avant) / 1000);
     avant = maintenant;
+    if (adv.actifs) adv.maj(dt, piloteCourant());
     if (!course.actif) { departLance(); return; }
     const p = piloteCourant();
     if (!p || jeu.mode !== course.engin) { abandonner(); return; }
@@ -324,6 +347,7 @@ export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json',
         // « GO » : on roule jusqu'à la ligne, et c'est elle qui lance le chrono
         course.actif = false; course.phase = null;
         attendLaLigne = true;
+        adv.go();
         etaitSurLaLigne = false;
         hud.innerHTML = '🏁 <b>Franchis la ligne</b><small>le chrono part quand tu la passes</small>';
         setTimeout(() => { if (!course.actif) decompteEl.style.display = 'none'; }, 700);
@@ -387,6 +411,10 @@ export async function creerCourseBoucle({ jeu, village, fichier = 'boucle.json',
 
   return {
     demarrer, abandonner, montrerClassement,
+    /** Le niveau des adversaires de l'ordinateur : 'aucun', 'facile', 'moyen', 'difficile', 'pilote'. */
+    adversaires: adv,                 // poignée de test
+    get niveau() { return adv.niveau; },
+    set niveau(n) { adv.niveau = n; },
     /** Afficher (ou cacher) les flèches et le damier de cette course. */
     setVisible(v) { root.visible = !!v; if (!v && course.actif) abandonner(); },
     get visible() { return root.visible; },

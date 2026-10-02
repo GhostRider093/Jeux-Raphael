@@ -16,8 +16,11 @@
  *     qui **sautent de côté** avec un « oh-oh » quand on fonce sur eux ;
  *   — des **hélicoptères** qui tournent au-dessus du village.
  *
- * Comme les figurants, tout est du décor : on passe au travers, rien ne
- * bloque le joueur. Le nombre suit le niveau de qualité (`NOMBRES`).
+ * Les passants et les hélicos sont du décor. Les **véhicules**, depuis le
+ * 01/10/2026, sont des obstacles : `corps()` les donne au module des chocs
+ * (`chocs.js`), et un véhicule percuté est **bousculé** (écarté de sa voie, de
+ * travers, arrêté deux ou trois secondes), klaxonne, puis regagne sa voie.
+ * Le nombre suit le niveau de qualité (`NOMBRES`).
  */
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
@@ -45,6 +48,8 @@ const ENGINS = {
 };
 /** Teintes des voitures : rotation de teinte de la carrosserie (degrés) ; `gris` désature. */
 const TEINTES = [0, 205, 120, 48, 280, 25, 175, 'gris', 330, 'blanc'];
+/** Les véhicules face aux chocs (01/10/2026) : demi-largeur (m) et masse (kg, pilote compris). */
+const CARRURE = { voiture: { dw: 0.9, masse: 1400 }, moto: { dw: 0.42, masse: 230 }, quad: { dw: 0.6, masse: 380 }, trottinette: { dw: 0.3, masse: 105 } };
 const PASSANTS = [
   { fichier: 'carole.glb', hauteur: 1.70 },
   { fichier: 'pinstripe.glb', hauteur: 1.85 },
@@ -72,7 +77,7 @@ const LAFERRARI = {
  * (`construireVoiture`, roues découpées) : une voiture du trafic sur trois,
  * à tour de rôle.
  */
-const MESHY = [
+export const MESHY = [
   { modele: 'assets/car/mustang-gtd.glb?v=1', demiTour: false },
   { modele: 'assets/car/aventador-svj.glb?v=1', demiTour: false },
 ];
@@ -149,7 +154,7 @@ function repeindre(texture, teinte) {
 
 /** Une LaFerrari de la couleur n° `k`, avec ses quatre roues. */
 let modeleLaFerrari = null;
-async function laFerrari(k) {
+export async function laFerrari(k) {
   if (!modeleLaFerrari) modeleLaFerrari = loader.loadAsync(LAFERRARI.fichier).then((g) => g.scene);
   const base = await modeleLaFerrari;
   const root = new THREE.Group();
@@ -503,6 +508,8 @@ export async function creerTrafic({ jeu, village, niveau = 'eleve' }) {
         if (ecart > 0 && ecart < def.longueur + 6) voulue = Math.min(voulue, b.vit * 0.9);
       }
     }
+    // percuté : il reste planté le temps de se remettre
+    if (a.bouscule && a.bouscule.arret > 0) voulue = 0;
     // accélère doucement, freine franchement
     const k = voulue < a.vit ? 4 : 1.2;
     a.vit += (voulue - a.vit) * Math.min(1, dt * k);
@@ -541,15 +548,45 @@ export async function creerTrafic({ jeu, village, niveau = 'eleve' }) {
       a.phase += dt * a.vit * 5.5;
       hop += Math.abs(Math.sin(a.phase)) * 0.05;          // le pas
     }
+    // ── bousculé : l'écart du choc s'ajoute, puis se résorbe ──
+    let tourne = 0;
+    const b = a.bouscule;
+    if (b) {
+      // poussé, jamais dans une façade : un pas qui y entrerait est refusé
+      const nx = b.ox + b.vx * dt, nz = b.oz + b.vz * dt;
+      const bloque = jeu.decor && jeu.decor.blockedAt;
+      if (bloque && bloque(e.x - dirz * decalage + nx, e.z + dirx * decalage + nz)) { b.vx = b.vz = 0; }
+      else { b.ox = nx; b.oz = nz; }
+      const amorti = Math.exp(-4 * dt);
+      b.vx *= amorti; b.vz *= amorti;
+      b.rot += b.w * dt; b.w *= Math.exp(-3.5 * dt);
+      const ecart = Math.hypot(b.ox, b.oz);
+      if (ecart > 6) { b.ox *= 6 / ecart; b.oz *= 6 / ecart; }      // jamais à plus de 6 m de sa voie
+      if (b.arret > 0) {
+        b.arret -= dt;
+        if (b.arret <= 0 && b.klaxon && moi && a.sorte !== 'trottinette') klaxon(Math.hypot(moi.x - x, moi.z - z));
+      } else {
+        // il regagne sa voie et se remet droit, sans se presser
+        const r = Math.min(1, dt * 0.9);
+        b.ox -= b.ox * r; b.oz -= b.oz * r; b.rot -= b.rot * r;
+        if (Math.hypot(b.ox, b.oz) < 0.05 && Math.abs(b.rot) < 0.02 && Math.hypot(b.vx, b.vz) < 0.1) a.bouscule = null;
+      }
+      x += b.ox; z += b.oz;
+      tourne = b.rot;
+    }
+    a.px = x; a.pz = z; a.dirx = dirx; a.dirz = dirz; a.tourne = tourne;
     const y = sol(x, z) + hop;
+    a.py = y;
     const o = a.objet;
     cible.set(x, y, z);
     if (a.premier) { o.position.copy(cible); a.premier = false; }
     else o.position.lerp(cible, Math.min(1, dt * 10));
     // le cap : +z pour les GLB bruts, −z pour les engins du joueur
-    const cap = a.faceZ ? Math.atan2(dirx, dirz) : Math.atan2(-dirx, -dirz);
+    const cap = (a.faceZ ? Math.atan2(dirx, dirz) : Math.atan2(-dirx, -dirz)) + tourne;
     let ecartCap = cap - o.rotation.y; ecartCap = Math.atan2(Math.sin(ecartCap), Math.cos(ecartCap));
-    o.rotation.y += ecartCap * Math.min(1, dt * (pieton ? 8 : 5));
+    // bousculé, il tourne avec le choc, sans retard
+    o.rotation.y += b ? ecartCap : ecartCap * Math.min(1, dt * (pieton ? 8 : 5));
+    if (b) o.position.copy(cible);
     if (pieton) o.rotation.z = Math.sin(a.phase) * 0.04;
     if (a.engin && a.engin.majRoues) {
       a.tour = (a.tour || 0) + a.vit * dt / 0.33;
@@ -575,8 +612,42 @@ export async function creerTrafic({ jeu, village, niveau = 'eleve' }) {
     suivreNuit();
     console.info(`[trafic] ${agents.length} en circulation, ${helicos.length} hélicoptère(s)`);
   });
+  /**
+   * Les véhicules pour le module des chocs (01/10/2026) : une boîte chacun,
+   * et ce qu'il fait quand on le percute.
+   */
+  function corps() {
+    const liste = [];
+    for (const a of agents) {
+      if (a.sorte === 'passant' || a.px === undefined || !a.objet.visible) continue;
+      const c = CARRURE[a.sorte];
+      if (!c) continue;
+      const b = a.bouscule;
+      liste.push({
+        cle: 'trafic' + agents.indexOf(a), sorte: 'trafic',
+        x: a.px, z: a.pz, y: a.py, cap: Math.atan2(-a.dirx, -a.dirz) + (a.tourne || 0),
+        dw: c.dw, dl: ENGINS[a.sorte].longueur / 2, masse: c.masse, mobile: true,
+        vx: a.dirx * a.vit + (b ? b.vx : 0), vz: a.dirz * a.vit + (b ? b.vz : 0),
+        appliquer(f) {
+          const bb = a.bouscule || (a.bouscule = { ox: 0, oz: 0, vx: 0, vz: 0, rot: 0, w: 0, arret: 0, klaxon: false });
+          bb.ox += f.dx; bb.oz += f.dz;
+          this.x += f.dx; this.z += f.dz;
+          // le choc passe dans l'écart (il est poussé hors de sa voie) ; il perd son élan
+          bb.vx += f.dvx; bb.vz += f.dvz;
+          bb.w += f.dw;
+          if (f.force > 0.1) {
+            a.vit *= 0.3;
+            bb.arret = Math.max(bb.arret, 1.4 + f.force * 2.6);
+            bb.klaxon = true;
+          }
+        },
+      });
+    }
+    return liste;
+  }
+
   return {
-    agents, helicos,
+    agents, helicos, corps,
     arreter() { actif = false; for (const a of agents) scene.remove(a.objet); for (const h of helicos) scene.remove(h.objet); },
   };
 }
