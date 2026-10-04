@@ -20,8 +20,9 @@
  * premier impact, 1,25 s) remplace la tôle, le métal et le verre de synthèse
  * au-delà de `SEUIL_ENREGISTREMENT` ; le coup sourd reste, il donne le poids.
  * En dessous, les accrochages restent synthétisés — un accident entier à chaque
- * frottement serait insupportable. `accident(distance)` joue la version complète
- * (4,5 s, tôle qui roule) : pour une voiture qui explose. Tant que les fichiers
+ * frottement serait insupportable. `accident(distance)` joue l'accident proprement
+ * dit (2,6 s de tôle qui roule, extrait choisi par Arnaud : 2,1 → 4,7 s de
+ * l'enregistrement) : pour une voiture qui part en tonneau ou qui explose. Tant que les fichiers
  * ne sont pas décodés, ou s'ils manquent, la synthèse fait tout.
  *
  * Le contexte audio naît au premier choc ; le navigateur l'autorise puisque le
@@ -34,7 +35,7 @@ const REPIT_ENREGISTREMENT = 0.9;      // s entre deux lectures (sinon : mitrail
 const GAIN_ENREGISTREMENT = 0.6;       // un mp3 normalisé est bien plus fort qu'une couche de synthèse
 const ENREGISTREMENTS = {
   court: 'assets/sons/accident-court.mp3?v=20261004a',
-  complet: 'assets/sons/accident-complet.mp3?v=20261004a',
+  complet: 'assets/sons/accident-complet.mp3?v=20261004b',
 };
 const tampons = {};                    // nom → AudioBuffer décodé
 let derniereLecture = -1;
@@ -80,8 +81,8 @@ function lire(nom, gain, bus) {
 }
 
 /**
- * L'accident entier — impact, tôle qui roule, débris (4,5 s) : pour une voiture
- * qui explose. Synthèse à pleine force si le fichier manque.
+ * L'accident — la tôle qui roule, les débris (2,6 s) : pour une voiture qui
+ * explose. Synthèse à pleine force si le fichier manque.
  * @param {number} [distance=0] m entre l'accident et le joueur
  */
 export function accident(distance = 0) {

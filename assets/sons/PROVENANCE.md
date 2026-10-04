@@ -35,7 +35,7 @@ une machine privée, à remplacer avant toute publication.
 | `uh-oh.mp3` | « uh-oh », tiré par Arnaud avec yt-grab (`E:\projet\yt-grab\sorties`), ré-encodé en 96 kbit/s. Joué sur une chute en trottinette (réception à l'envers), à 35 %. Origine YouTube : droits à vérifier avant publication. |
 | `encouragements.mp3` | « Cris d'encouragements spectacle », 3,6 s, fourni par Arnaud le 25/09/2026, ré-encodé en 128 kbit/s. Deuxième acclamation de la foule sur une figure réussie (tirée au sort avec `acclamation.mp3`), à 22 %. Origine à vérifier avant publication. |
 | `accident-court.mp3` | « ACCIDENT DE VOITURE », fourni par Arnaud le 04/10/2026 (4,7 s, 48 kHz). Le premier impact seul : 0,06 → 1,31 s, fondu de sortie 0,3 s, 128 kbit/s. Joué par `sons-chocs.js` sur les chocs de force ≥ 0,55 (au plus un toutes les 0,9 s), à la place de la tôle et du verre de synthèse. Origine à vérifier avant publication. |
-| `accident-complet.mp3` | Le même en entier (impact puis 3,5 s de tôle qui roule), fondu sur les 0,45 dernières secondes. `accident()` de `sons-chocs.js` : la voiture qui explose (Stop Car). |
+| `accident-complet.mp3` | L'accident, extrait choisi par Arnaud le 04/10/2026 avec yt-grab (`E:\projet\yt-grab\sorties`, « ACCIDENT DE VOITURE [0m02.1-0m04.7] ») : 2,6 s de tôle qui roule, sans le premier impact ; fondus 20 ms / 0,28 s. `accident()` de `sons-chocs.js` : la voiture qui explose (Stop Car). |
 
 ## Si le jeu doit être publié un jour
 

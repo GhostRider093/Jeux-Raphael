@@ -37,6 +37,6 @@
 
 ## 04/10 — vrai son d'accident
 - Fourni par Arnaud (« ACCIDENT DE VOITURE », 4,7 s). Coupé en `assets/sons/accident-court.mp3` (impact, 1,25 s) et
-  `accident-complet.mp3` (4,5 s). `sons-chocs.js` : chocs ≥ 0,55 → l'enregistrement (+ coup sourd de synthèse), au
+  `accident-complet.mp3` (2,6 s, extrait 2,1 → 4,7 s choisi par Arnaud). `sons-chocs.js` : chocs ≥ 0,55 → l'enregistrement (+ coup sourd de synthèse), au
   plus un toutes les 0,9 s ; en dessous, synthèse comme avant. Nouvelle `accident(distance)` pour l'explosion du Stop Car.
   Réglages : `SEUIL_ENREGISTREMENT`, `REPIT_ENREGISTREMENT`, `GAIN_ENREGISTREMENT`. Chargement vérifié (200, sans erreur).
