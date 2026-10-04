@@ -40,3 +40,19 @@
   `accident-complet.mp3` (2,6 s, extrait 2,1 → 4,7 s choisi par Arnaud). `sons-chocs.js` : chocs ≥ 0,55 → l'enregistrement (+ coup sourd de synthèse), au
   plus un toutes les 0,9 s ; en dessous, synthèse comme avant. Nouvelle `accident(distance)` pour l'explosion du Stop Car.
   Réglages : `SEUIL_ENREGISTREMENT`, `REPIT_ENREGISTREMENT`, `GAIN_ENREGISTREMENT`. Chargement vérifié (200, sans erreur).
+
+## 04/10 — Stop Car (voiture de police, course-poursuite)
+- Voiture de police Meshy → `assets/car/police.glb` (2,2 Mo). Corrigés au passage : miroir de `redresser()` (texte
+  à l'envers), roues en deux pièces. Gyrophare rouge/bleu clignotant (`maps/gyrophare.js`).
+- Circuit des 4 courses enchaînées (`boucle-stopcar.json`, 4,6 km). `maps/stop-car.js` : 2 fuyards numérotés,
+  5 coups → explosion (refaite après « petite explosion ridicule » : boule de feu ×3,2, saut, carcasse qui brûle),
+  10 coups encaissés ou fuyard qui boucle = perdu. Sirène d'Arnaud (`sirene.mp3`, H) ; synthèse retirée.
+- Vérifié en navigateur : départ après le chargement, coups comptés, deux explosions, gyrophare. Pas encore joué
+  à la main en entier. Non commité.
+
+## 04/10 — Stop Car : l'hélico de recherche
+- Hélico de police d'Arnaud → `assets/fun/helico-police.glb` (1,9 Mo), rotor mesuré (`HELICO_POLICE`). Son de rotor
+  d'Arnaud en boucle WAV pour tous les hélicos ; radio de police au décollage.
+- Fuyard perdu (> 100 m, 1,5 s) → J : hélico au-dessus de la voiture ; faisceau + anneau + flèche/viseur ; sonar
+  (bips, onde, barre) ; 2 s au-dessus → retour en voiture 18 m derrière sur le tracé, lancée.
+- Vérifié en navigateur : tout le cycle (perte, J, flèche 186 m, sonar, verrou, retour à 18,2 m / 12 m/s). Non commité.

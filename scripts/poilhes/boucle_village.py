@@ -117,10 +117,17 @@ ETAPES_POILHES_4 = [
     (-330.0, 19.0),
     (-315.0, -17.0),
 ]
+# Stop Car (04/10/2026, Arnaud : « la course est dans tout le village… sur les 4
+# courses qui existent, à la suite, une, deux, trois, quatre ») : les quatre
+# boucles bout à bout, un tour chacune, reliées par le plus court chemin dans les
+# rues, et retour au départ de la 1re. Le Dijkstra entre étapes fait les liaisons.
+ETAPES_POILHES_STOPCAR = [p for e in (ETAPES_POILHES, ETAPES_POILHES_2, ETAPES_POILHES_3, ETAPES_POILHES_4)
+                          for p in (e + [e[0]])]
 TOURS_PISTE = {("poilhes", "2"): 2, ("poilhes", "3"): 2, ("poilhes", "4"): 3}     # les autres courses : un seul tour
-PISTE = os.environ.get("PISTE", "1")          # PISTE=2 : la deuxième course du village
+PISTE = os.environ.get("PISTE", "1")          # PISTE=2 : la deuxième course du village ; PISTE=stopcar : les quatre à la suite
 ETAPES = {("poilhes", "1"): ETAPES_POILHES, ("poilhes", "2"): ETAPES_POILHES_2,
           ("poilhes", "3"): ETAPES_POILHES_3, ("poilhes", "4"): ETAPES_POILHES_4,
+          ("poilhes", "stopcar"): ETAPES_POILHES_STOPCAR,
           ("capestang", "1"): ETAPES_CAPESTANG,
           ("capestang", "2"): ETAPES_CAPESTANG_2}[(VILLAGE, PISTE)]
 # Coût d'un mètre selon la largeur de la chaussée : une ruelle de 3 m n'est

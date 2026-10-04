@@ -572,6 +572,12 @@
           <span class="ico">🏁</span><span class="nom">Course 4</span>
           <span class="detail" data-detail-course="3">Le quartier de l’ouest, trois tours</span>
         </button>
+        <!-- Stop Car (04/10/2026) : en voiture de police, les quatre courses à la
+             suite derrière deux fuyards ; cinq coups et ils explosent. -->
+        <button class="mode" type="button" data-mode-jeu="stopcar">
+          <span class="ico">🚓</span><span class="nom">Stop Car</span>
+          <span class="detail">Voiture de police : percute les deux fuyards, 5 coups chacun</span>
+        </button>
       </div>
       <button class="retour" type="button" id="modes-retour">‹ Changer d’engin</button>
     </div>
@@ -604,14 +610,15 @@
 <script type="module">
 import { DefaultLoadingManager } from 'three';
 import { TACTILE, APPAREIL, plafondTextures, plafonnerTextures } from './maps/leger.js?v=20260929a';
-import { startVillage } from './maps/poilhes-village.js?v=20261004a';
+import { startVillage } from './maps/poilhes-village.js?v=20261004c';
 import { NIVEAUX, lireChoix, lireConseil, enregistrerChoix, oublierChoix, appliquer, monterPanneau } from './maps/qualite.js?v=qualite-20260929';
-import { creerCourseBoucle } from './maps/course-boucle.js?v=20261004a';
+import { creerCourseBoucle } from './maps/course-boucle.js?v=20261004c';
 import { creerMultijoueur } from './maps/multijoueur.js?v=20261001b';
-import { NIVEAUX as NIVEAUX_ADV, ORDRE_NIVEAUX as ORDRE_ADV } from './maps/course-adversaires.js?v=20261004a';
+import { NIVEAUX as NIVEAUX_ADV, ORDRE_NIVEAUX as ORDRE_ADV } from './maps/course-adversaires.js?v=20261004c';
 import { poserFigurants } from './maps/poilhes-figurants.js?v=armes-20260926';
-import { creerTrafic } from './maps/poilhes-trafic.js?v=20261001c';
-import { creerChocs } from './maps/chocs.js?v=20261001b';
+import { creerTrafic } from './maps/poilhes-trafic.js?v=20261004c';
+import { creerChocs } from './maps/chocs.js?v=20261004c';
+import { creerStopCar } from './maps/stop-car.js?v=20261004c';
 import { volant } from './maps/volant.js?v=20260928a';
 window.volant = volant;
 document.getElementById('btn-volant').addEventListener('click', (e) => { e.currentTarget.blur(); volant.regler(); });
@@ -636,7 +643,7 @@ const choix = {
   // Tant que le joueur n'a rien choisi, rien n'est mémorisé et un message l'invite à monter.
   qualite: lireChoix() || 'bas',
   // 'libre', ou l'indice de la course (0, 1) : on part directement sur la ligne
-  jeu: /^[0-3]$/.test(params.get('course') || '') ? params.get('course') : 'libre',
+  jeu: /^([0-3]|stopcar)$/.test(params.get('course') || '') ? params.get('course') : 'libre',
   // Les adversaires de l'ordinateur (01/10/2026) : Facile tant qu'on n'a rien choisi
   adversaires: (() => {
     const p = params.get('adv');
@@ -659,6 +666,8 @@ function choisirAdversaires(n) {
 // Poilhes en a quatre depuis le 27/09/2026 (2 : les vignes de l'est ; 3 : le sud ;
 // 4 : l'ouest), Capestang deux.
 const NB_COURSES = { poilhes: 4, capestang: 2 };
+// Le Stop Car a besoin de son circuit (`boucle-stopcar.json`) : Poilhes seulement.
+const STOP_CAR = { poilhes: true };
 const LIBELLES = {
   village: { poilhes: 'Poilhes', capestang: 'Capestang' },
   engin: { trottinette: 'Trottinette', voiture: 'Berline bleue', rouge: 'GT rouge', quad: 'Quad' },
@@ -861,7 +870,8 @@ function montrerModes(ouvert) {
   $('modes-engin').textContent = `${LIBELLES.engin[choix.engin]} · ${LIBELLES.village[choix.village] || choix.village}`;
   const nb = NB_COURSES[choix.village] || 0;
   accueil.querySelectorAll('[data-mode-jeu]').forEach((m) => {
-    if (m.dataset.modeJeu !== 'libre') m.hidden = +m.dataset.modeJeu >= nb;
+    if (m.dataset.modeJeu === 'stopcar') m.hidden = !STOP_CAR[choix.village] || choix.engin !== 'voiture';
+    else if (m.dataset.modeJeu !== 'libre') m.hidden = +m.dataset.modeJeu >= nb;
   });
   accueil.querySelector('[data-mode-jeu="libre"]').focus();
 }
@@ -973,9 +983,10 @@ function lancer(enginChoisi, modeJeu = 'libre') {
   // ni hélico (et ses explosions) ni Rafale qui passe — de la mémoire en moins.
   const modeEngin = engin === 'quad' ? 'quad' : engin === 'voiture' ? 'voiture' : 'trottinette';
   startVillage({
-    modes: TACTILE ? [modeEngin] : ['trottinette', 'voiture', 'quad', 'helico'],
+    // Stop Car : l'hélico de police sert à retrouver un fuyard perdu de vue, même au doigt
+    modes: TACTILE ? (modeJeu === 'stopcar' ? ['voiture', 'helico'] : [modeEngin]) : ['trottinette', 'voiture', 'quad', 'helico'],
     qualite: NIVEAUX[niveau],
-    voitureUnique: enginChoisi === 'rouge' ? 'rouge-berline' : 'bleue',
+    voitureUnique: modeJeu === 'stopcar' ? 'police' : enginChoisi === 'rouge' ? 'rouge-berline' : 'bleue',
     ouvrir: false,
     survols: !TACTILE,                // un Rafale passe de temps en temps (26/09/2026), pas sur tablette
   }).then(async (jeu) => {
@@ -987,6 +998,13 @@ function lancer(enginChoisi, modeJeu = 'libre') {
       () => (window.courses || []).filter(Boolean).flatMap((c) => c.adversaires.corps()),
       () => (window.multi ? window.multi.corps() : []),
     ] });
+    // Stop Car (04/10/2026) : le circuit des quatre courses, les deux fuyards.
+    const stopCarPret = modeJeu === 'stopcar'
+      ? creerStopCar({ jeu, village, chocs: window.chocs, niveau: choix.adversaires,
+        obstacles: () => (window.trafic ? window.trafic.corps() : []) })
+        .then((sc) => { window.stopCar = sc; return sc; })
+        .catch((err) => { console.warn('Stop Car :', err); return null; })
+      : null;
     // Les figurants (26/09/2026) : cycliste sur la boucle, policier au départ,
     // stégosaure, Carole et les mafieux devant l'Ostal Louis.
     const figurantsPrets = poserFigurants({ jeu, village }).then((f) => { window.figurants = f; })
@@ -1109,6 +1127,12 @@ function lancer(enginChoisi, modeJeu = 'libre') {
       const pilote = engin === 'voiture' ? jeu.voiture : engin === 'quad' ? jeu.quad : jeu.trottinette;
       // Course choisie à l'accueil : on file derrière la ligne, décompte lancé
       // (quel que soit l'engin, même sans point de départ propre au village).
+      // Stop Car : le décompte attend la levée de l'écran de chargement (on doit voir le 3-2-1)
+      if (stopCarPret) {
+        const leve = () => new Promise((r) => { const t = () => (loader.classList.contains('done') ? r() : setTimeout(t, 100)); t(); });
+        Promise.all([stopCarPret, leve()]).then(([sc]) => { if (sc) sc.demarrer(); });
+        return;
+      }
       if (modeJeu !== 'libre') coursesPretes.then((partir) => { if (partir) partir(+modeJeu); });
       if (!d || !pilote) return;
       if (d === 'parc') { if (jeu.decor && jeu.decor.parc) { const p = jeu.decor.parc.depart; pilote.placer(p.x, p.z, p.cap); } }

@@ -30,14 +30,15 @@
 </head>
 <body>
 <div id="info">chargement…</div>
-<div id="aide">R roues · T tourner · B braquer · N nuit · C teinte · 1-4 vues</div>
+<div id="aide">R roues · T tourner · B braquer · N nuit · C teinte · G gyrophare · 1-4 vues</div>
 <script type="importmap">
 { "imports": { "three": "./libs/three.module.js" } }
 </script>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from './libs/OrbitControls.module.js';
-import { construireVoiture } from './maps/voiture-model.js?v=roues-entieres-20260922c';
+import { construireVoiture } from './maps/voiture-model.js?v=20261004c';
+import { monterGyrophare } from './maps/gyrophare.js?v=20261004c';
 
 const params = new URLSearchParams(location.search);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -65,9 +66,17 @@ sol.rotation.x = -Math.PI / 2;
 scene.add(sol);
 scene.add(new THREE.GridHelper(12, 24, 0x8a929c, 0x3a4048));
 
-const voiture = construireVoiture({ renderer });
+// ?modele=assets/car/police.glb : une autre carrosserie Meshy montée par le même
+// constructeur (roues découpées, remise d'aplomb) ; ?demitour=1 si elle roule à l'envers.
+const voiture = construireVoiture({
+  renderer,
+  modele: params.get('modele') || null,
+  demiTour: params.get('demitour') === '1',
+});
 scene.add(voiture.root);
 if (params.get('teinte')) voiture.setTeinte(params.get('teinte'));
+// ?gyro=1 : le gyrophare de la voiture de police (touche G : allumer / couper)
+const gyro = params.get('gyro') === '1' ? monterGyrophare(voiture) : null;
 
 const info = document.getElementById('info');
 let mesures = null;
@@ -108,6 +117,7 @@ addEventListener('keydown', (e) => {
   if (k === 't') tourne = !tourne;
   if (k === 'b') braque = !braque;
   if (k === 'n') { nuit = !nuit; voiture.setNuit(nuit); scene.background.set(nuit ? 0x0b0f15 : 0x20242a); }
+  if (k === 'g' && gyro) gyro.allumer(!gyro.allume);
   if (k === 'c') voiture.setTeinte(voiture.teinte() === 'bleu' ? 'rouge' : 'bleu');
 });
 
@@ -122,6 +132,7 @@ renderer.setAnimationLoop(() => {
   const dt = horloge.getDelta();
   if (tourne) angle += dt * 6;
   voiture.majRoues(braque ? 0.42 : 0, angle);
+  if (gyro) gyro.maj(dt);
   controls.update();
   renderer.render(scene, camera);
 });
@@ -138,7 +149,7 @@ addEventListener('keydown', (e) => {
   if (e.key === '3') vue([4.4, 2.0, -4.6], [0, 0.6, 0]);     // trois quarts avant
   if (e.key === '4') vue([2.1, 0.75, -2.4], [0.8, 0.35, -1.25]); // roue avant droite
 });
-window.RaphaelApercuVoiture = { voiture, scene, camera, controls, renderer, vue, mesures: () => mesures };
+window.RaphaelApercuVoiture = { voiture, gyro, scene, camera, controls, renderer, vue, mesures: () => mesures };
 </script>
 </body>
 </html>

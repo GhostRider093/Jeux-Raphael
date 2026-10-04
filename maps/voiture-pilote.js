@@ -40,12 +40,13 @@
  * particules sont réservés une fois pour toutes.
  */
 import * as THREE from 'three';
-import { construireVoiture, ECHELLE } from './voiture-model.js?v=20260927o';
+import { construireVoiture, ECHELLE } from './voiture-model.js?v=20261004c';
 import { creerPhysique, REGLAGES } from './voiture-physique.js?v=20261004a';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
 import { construireEnginQuad } from './quad.js?v=20260927o';
 import { volant as volantCourse } from './volant.js?v=20260928a';
 import { creerHabitacle } from './vue-interieure.js?v=20261003f';
+import { monterGyrophare } from './gyrophare.js?v=20261004c';
 
 const GRAVITE = 9.81;
 // Toucher du volant, **selon la vitesse** — comme une vraie voiture.
@@ -646,6 +647,9 @@ export function creerPilote({
   scene, camera, renderer = null, solAt, blockedAt = () => false,
   adherenceAt = () => 1, surRoute = null, keys, bounds = 2900, couleur = 0xc21d24,
   engin = 'voiture', turboAt = null, glissiereAt = null, parcAt = null,
+  // Stop Car (04/10/2026) : une autre carrosserie Meshy (la voiture de police)
+  // et son gyrophare. La mécanique reste celle choisie par `choisirVoiture`.
+  modele = null, gyrophare = false,
 }) {
   // Le pilote mène ce qu'on lui donne : une voiture, ou la trottinette rendue
   // sous la même forme. Tout le reste — suspension, collisions, caméra, son —
@@ -678,7 +682,8 @@ export function creerPilote({
   const habitacle = surDeuxRoues || surQuad ? null : creerHabitacle();
   const voiture = surDeuxRoues ? construireEnginTrottinette({ renderer })
                 : surQuad ? construireEnginQuad({ renderer })
-                          : construireVoiture({ renderer, couleur });
+                          : construireVoiture({ renderer, couleur, modele });
+  const gyro = gyrophare && !surDeuxRoues && !surQuad ? monterGyrophare(voiture) : null;
   // On part sur une copie du réglage : `changerReglage` écrit dedans, et deux
   // voitures ne doivent pas se partager le même objet.
   const { etat, pas, poser, changerReglage, reglage } =
@@ -1686,6 +1691,7 @@ export function creerPilote({
   function update(dt, tactile) {
     if (!root.visible) return;
     if (dt > 0.05) dt = 0.05;
+    if (gyro) gyro.maj(dt);
     if (tactile) {
       if (tactile.active) commande(tactile.x, tactile.y);
       else if (!tactile.active && (doigt.x || doigt.y)) commande(0, 0);
@@ -2088,6 +2094,10 @@ export function creerPilote({
     // mais avec les mêmes fonctions, juste le design ») : la peinture rouge sur
     // la mécanique de la berline bleue.
     'rouge-berline': { teinte: 'rouge', reglage: REGLAGES.traction },
+    // La voiture de police du Stop Car (04/10/2026) : la conduite facile de la
+    // berline, et surtout **pas de teinte** — repeindre son atlas tournerait le
+    // noir et blanc et le gyrophare.
+    police: { teinte: null, reglage: REGLAGES.traction },
   };
   let choix = 'rouge';
   function choisirVoiture(nom) {
@@ -2095,7 +2105,7 @@ export function creerPilote({
     if (surDeuxRoues || surQuad || !v || nom === choix) return choix;
     choix = nom;
     changerReglage(v.reglage);
-    voiture.setTeinte(v.teinte);
+    if (v.teinte) voiture.setTeinte(v.teinte);
     return choix;
   }
 
@@ -2106,6 +2116,7 @@ export function creerPilote({
     root, state, etat, voiture, son,
     enter, exit, update, basculerVue, basculerSon, redresser, commande, setMain, setNuit, figure,
     choisirVoiture, voitureChoisie: () => choix,
+    gyrophare: gyro,
     telemetrie, placer,
     // L'outil de réglage (touche T) lit `reglage` et applique par `regler`.
     reglage, regler: changerReglage,

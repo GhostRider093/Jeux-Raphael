@@ -27,10 +27,10 @@
  */
 import * as THREE from 'three';
 import { REGLAGES, ARCADE_DEFAUT } from './voiture-physique.js?v=20261004a';
-import { construireVoiture } from './voiture-model.js?v=20260927o';
+import { construireVoiture } from './voiture-model.js?v=20261004c';
 import { construireEnginQuad, QUAD_TRAFIC } from './quad.js?v=20260927o';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
-import { laFerrari, MESHY } from './poilhes-trafic.js?v=20261001c';
+import { laFerrari, MESHY } from './poilhes-trafic.js?v=20261004c';
 
 /** Les niveaux : `part` = part de la vitesse limite, `elastique` = attendre / rattraper le joueur. */
 export const NIVEAUX = {
@@ -49,8 +49,8 @@ export const ORDRE_NIVEAUX = ['aucun', 'facile', 'moyen', 'difficile', 'pilote']
 // du vert citron au vert olive ; les étiquettes suivent. `peinture` : la couleur
 // de carrosserie (LaFerrari) ou la cible de `ternir()` (atlas Meshy).
 const PILOTES = [
-  { nom: 'Turbo', voiture: 'laferrari', couleur: '#d98a84', peinture: 0x5e1a20, ecart: 0.02 },   // LaFerrari bordeaux
-  { nom: 'Jarvis', voiture: 'aventador', couleur: '#a9bf8e', peinture: { h: 95, s: 0.2, l: 0.44 }, ecart: -0.02 },   // Aventador olive
+  { nom: 'Turbo', numero: 'N° 01', voiture: 'laferrari', couleur: '#d98a84', peinture: 0x5e1a20, ecart: 0.02 },   // LaFerrari bordeaux
+  { nom: 'Jarvis', numero: 'N° 02', voiture: 'aventador', couleur: '#a9bf8e', peinture: { h: 95, s: 0.2, l: 0.44 }, ecart: -0.02 },   // Aventador olive
 ];
 const PAS = 2;              // m entre deux points du tracé rééchantillonné
 const CORDE = 5;            // points de part et d'autre pour mesurer la courbure (± 10 m)
@@ -131,8 +131,14 @@ function etiquette(texte, couleur) {
  * @param {object} o.jeu     ce que rend `startVillage` (scene, renderer, walkableAt)
  * @param {object} o.data    le tracé (`boucle*.json`) : points, depart, tours
  * @param {number} o.tours
+ * @param {boolean} [o.poursuite] Stop Car : fuyards numérotés qui se défendent
  */
-export function creerAdversaires({ jeu, data, tours }) {
+export function creerAdversaires({ jeu, data, tours, poursuite = false }) {
+  // **Poursuite** (Stop Car, 04/10/2026) : les mêmes pilotes deviennent des
+  // fuyards. Un numéro au lieu du nom, un coup de volant vers le joueur quand il
+  // roule à leur hauteur (« les autres voitures peuvent aussi se défendre »), et
+  // un pilote `mort` (voiture explosée) sort de la course. Sans l'option, rien
+  // ne change pour les courses.
   const solAt = (x, z) => jeu.walkableAt(x, z);
 
   // ── le tracé rééchantillonné tous les PAS mètres, bouclé ────────────────
@@ -259,7 +265,7 @@ export function creerAdversaires({ jeu, data, tours }) {
     }
     groupe.add(objet.root);
     groupe.traverse((o) => { o.visible = true; });
-    const e = etiquette(pilote.nom, pilote.couleur);
+    const e = etiquette(poursuite ? pilote.numero : pilote.nom, pilote.couleur);
     e.position.y = engin === 'trottinette' ? 2.6 : 2.8;
     groupe.add(e);
     return { groupe, objet };
@@ -283,6 +289,7 @@ export function creerAdversaires({ jeu, data, tours }) {
         s: places[i][0], lat: places[i][1], latGrille: places[i][1], file: FILES[i],
         v: 0, roue: 0, franchi: null, arrivee: null,
         latV: 0, rot: 0, rotW: 0, tx: avant.x, tz: avant.z, cap: d.cap,   // les chocs
+        mort: false, attaque: 2 + i * 1.3,                                   // la poursuite
       };
     });
     joueur.s = -recul; joueur.lat = 0; joueur.fini = false;
@@ -337,6 +344,7 @@ export function creerAdversaires({ jeu, data, tours }) {
 
     const NIV = NIVEAUX[niveau];
     for (const p of pilotes) {
+      if (p.mort) continue;
       const fini = p.arrivee !== null;
       // ── la vitesse visée : le profil, puis l'élastique, puis la circulation
       const i = idx(Math.floor(Math.max(0, p.s) / PAS));
@@ -349,7 +357,7 @@ export function creerAdversaires({ jeu, data, tours }) {
       if (fini) cible = Math.max(0, cible * (1 - (p.s - TOTAL) / 40));          // il ralentit après la ligne
 
       // ── les autres devant dans ma file : changer de file, sinon rester derrière
-      const devant = [...pilotes.filter((q) => q !== p).map((q) => ({ s: q.s, lat: q.lat, v: q.v })),
+      const devant = [...pilotes.filter((q) => q !== p && !q.mort).map((q) => ({ s: q.s, lat: q.lat, v: q.v })),
         { s: joueur.s, lat: joueur.lat, v: joueur.v }];
       // le trafic tout proche, ramené dans le repère du pilote (abscisse, écart, vitesse le long du tracé)
       for (const o of trafic) {
@@ -375,6 +383,17 @@ export function creerAdversaires({ jeu, data, tours }) {
       const fileVisee = p.s < 0 ? p.latGrille : p.file * Math.min(1, R[i] / 25);
       const dl = fileVisee - p.lat;
       p.lat += Math.sign(dl) * Math.min(Math.abs(dl), GLISSE_FILE * dt);
+      // Poursuite : le joueur roule à ma hauteur → un coup de volant vers lui,
+      // pas plus d'un toutes les 2 à 3,5 s (sinon il ne pourrait plus approcher).
+      if (poursuite && !fini) {
+        p.attaque -= dt;
+        const dS = joueur.s - p.s, dLat = joueur.lat - p.lat;
+        if (p.attaque <= 0 && Math.abs(dS) < 4.5 && Math.abs(dLat) > 0.8 && Math.abs(dLat) < 4) {
+          p.latV += Math.sign(dLat) * (3.2 + Math.random() * 1.6);
+          p.rotW += -Math.sign(dLat) * 0.35;
+          p.attaque = 2 + Math.random() * 1.5;
+        }
+      }
       // l'écart et le pivot d'un choc, qui s'éteignent
       if (p.latV || p.rot || p.rotW) {
         p.lat = Math.max(-3, Math.min(3, p.lat + p.latV * dt));
@@ -422,11 +441,13 @@ export function creerAdversaires({ jeu, data, tours }) {
 
   /** Les pilotes pour le module des chocs. */
   function corps() {
-    return pilotes.filter((p) => p.groupe.visible).map((p, i) => {
+    return pilotes.filter((p) => p.groupe.visible && !p.mort).map((p) => {
       const c = CARRURE[p.engin] || CARRURE.voiture;
       const nx = -p.tz, nz = p.tx;
       return {
-        cle: 'bot' + i, sorte: 'bot',
+        // une clé par pilote, pas par rang dans la liste : quand l'un sort de
+        // la course, l'autre garde la sienne (et ses coups comptés)
+        cle: 'bot-' + p.nom, sorte: 'bot', pilote: p,
         x: p.groupe.position.x, z: p.groupe.position.z, y: p.groupe.position.y, cap: p.cap,
         dw: c.dw, dl: c.dl, masse: c.masse, mobile: true,
         vx: p.tx * p.v + nx * p.latV, vz: p.tz * p.v + nz * p.latV,
@@ -452,6 +473,8 @@ export function creerAdversaires({ jeu, data, tours }) {
     get actifs() { return pilotes.length > 0; },
     get phase() { return phase; },
     get pilotes() { return pilotes; },      // poignée de test
+    /** Un point du tracé à l'abscisse `s` (m), décalé de `lat` : { x, z, cap } — le Stop Car y repose la voiture. */
+    pointDuTrace(s, lat = 0) { const o = {}; poser(s, lat, o); return { x: o.x, z: o.z, cap: o.cap }; },
     longueur: LONGUEUR,
   };
 }

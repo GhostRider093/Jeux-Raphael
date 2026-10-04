@@ -31,6 +31,14 @@ import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 // sur toute la carrosserie. Elle remplace la coque de code, qui reste en secours :
 // si le fichier manque, la voiture est toujours là, et le jeu ne s'arrête pas.
 const MODELE = 'assets/car/crimson.glb?v=voiture-20260921c';
+/**
+ * La voiture de police du Stop Car (04/10/2026) : SUV Meshy noir et blanc à
+ * rampe de gyrophare, `assets/car/police-brut.glb` (37,7 Mo, 1 030 616
+ * triangles) ramené à 2,2 Mo / 185 000 triangles par la même chaîne que la
+ * berline (`weld` → `simplify --ratio 0.18 --error 0.0006` → meshopt + WebP 2048).
+ * Roues en deux pièces chacune (pneu, jante), regroupées par `separerRoues`.
+ */
+export const MODELE_POLICE = 'assets/car/police.glb?v=20261004a';
 // Teinte multipliée par la texture du modèle. **Elle reste blanche**, et ce
 // n'est pas un oubli : l'atlas de Meshy est déjà rouge, blanc et noir, et toute
 // teinte rouge ajoutée ici rosit les parties blanches (bandes, jantes, optiques)
@@ -309,6 +317,15 @@ function redresser(geo) {
     lx, ly, lz, 0,
     0, 0, 0, 1,
   );
+  // **Une permutation d'axes peut être un miroir.** Échanger deux axes (la
+  // voiture de police, 04/10/2026 : longueur sur x, largeur sur z) donne un
+  // déterminant −1 — le modèle sort retourné, « POLICE » écrit à l'envers sur
+  // les flancs. On retourne alors la largeur : c'est redevenu une rotation.
+  // La berline (largeur x, hauteur y, longueur z) n'est pas concernée.
+  if (base.determinant() < 0) {
+    const e = base.elements;                     // colonne par colonne
+    e[0] = -e[0]; e[4] = -e[4]; e[8] = -e[8];    // première ligne : x du jeu
+  }
   geo.applyMatrix4(base);
   const echelle = LONGUEUR / taille[axeLong];
   geo.scale(echelle, echelle, echelle);
@@ -351,6 +368,82 @@ function redresser(geo) {
  *
  * @returns {{corps: THREE.BufferGeometry, roues: Array}} ou null si le repérage échoue
  */
+/**
+ * Les quatre axes d'une voiture dont **aucune roue n'est détachée** (secours
+ * écrit le 04/10/2026 pour la voiture de police, finalement inutile pour elle :
+ * ses roues sont détachées, en deux pièces chacune) — tout est
+ * soudé, la connexité ne dit rien. Le sol, lui, ne ment pas : seuls les pneus
+ * le touchent.
+ *
+ *   — les sommets à moins de 3 % de la hauteur, sur les flancs, sont les
+ *     empreintes des pneus ; on les range par côté et par moitié (avant /
+ *     arrière) : quatre paquets, dont le centre donne x et z de l'axe ;
+ *   — le **rayon** se lit sur le profil bas du pneu : sous l'axe, le point le
+ *     plus bas du flanc à la distance d de l'empreinte est à la hauteur
+ *     y = R − √(R² − d²), d'où R = (d² + y²) / 2y. On prend la médiane sur la
+ *     partie basse du profil, là où ni l'aile ni le bas de caisse ne gênent ;
+ *   — la demi-largeur du pneu est celle de l'empreinte.
+ *
+ * Rend null si un des quatre paquets manque : mieux vaut une voiture aux roues
+ * figées qu'une voiture découpée au hasard.
+ */
+function axesParLeSol(pos, n, demiLarge, haut) {
+  const SOL = haut * 0.03;
+  const paquets = new Map();                  // 'sx,sz' → empreinte
+  for (let i = 0; i < n; i++) {
+    const y = pos.getY(i);
+    if (y > SOL) continue;
+    const x = pos.getX(i);
+    if (Math.abs(x) < demiLarge * 0.45) continue;
+    const z = pos.getZ(i);
+    const cle = `${Math.sign(x) || 1},${Math.sign(z) || 1}`;
+    let p = paquets.get(cle);
+    if (!p) paquets.set(cle, p = { n: 0, sx: 0, sz: 0, minX: 1e9, maxX: -1e9 });
+    p.n++; p.sx += x; p.sz += z;
+    if (x < p.minX) p.minX = x;
+    if (x > p.maxX) p.maxX = x;
+  }
+  if (paquets.size !== 4) return null;
+  const axes = [];
+  for (const [cle, p] of paquets) {
+    if (p.n < 6) return null;
+    const sx = +cle.split(',')[0];
+    const xc = p.sx / p.n, zc = p.sz / p.n;
+    const demiLargeur = Math.max(0.05, (p.maxX - p.minX) / 2);
+    // profil bas : le point le plus bas par tranche de 1 cm, dans la bande du pneu
+    const TR = 0.01, NT = 120;                // ± 1,2 m de part et d'autre de l'empreinte
+    const bas = new Float32Array(2 * NT + 1).fill(1e9);
+    for (let i = 0; i < n; i++) {
+      const x = pos.getX(i);
+      if (Math.abs(x - xc) > demiLargeur) continue;
+      const k = Math.round((pos.getZ(i) - zc) / TR);
+      if (k < -NT || k > NT) continue;
+      const y = pos.getY(i);
+      if (y < bas[k + NT]) bas[k + NT] = y;
+    }
+    // On part de l'empreinte vers l'extérieur et on s'arrête dès que le profil
+    // cesse de monter (aile, bas de caisse) : au-delà, ce n'est plus le pneu.
+    const estim = [];
+    for (const sens of [-1, 1]) {
+      let prec = 0;
+      for (let k = 1; k <= NT; k++) {
+        const y = bas[NT + sens * k];
+        if (y > 1e8) continue;
+        if (y < prec - 0.005) break;
+        prec = y;
+        const d = k * TR;
+        if (y < SOL || y > haut * 0.18) continue;
+        estim.push((d * d + y * y) / (2 * y));
+      }
+    }
+    if (estim.length < 4) return null;
+    estim.sort((a, b) => a - b);
+    const rayon = estim[estim.length >> 1];
+    axes.push({ x: xc, y: rayon, z: zc, rayon, demiLargeur, sx, fondue: true });
+  }
+  return axes;
+}
+
 function separerRoues(geo, boite) {
   const pos = geo.attributes.position;
   const index = geo.index;
@@ -423,7 +516,35 @@ function separerRoues(geo, boite) {
       },
     });
   }
-  if (!trouvees.length) return null;
+  // Une roue en plusieurs pièces (la voiture de police : pneu et jante séparés,
+  // huit pièces pour quatre roues) : les pièces qui partagent un axe — même
+  // flanc, centres à moins d'un demi-rayon — ne font qu'une roue.
+  {
+    const groupes = [];
+    for (const t of trouvees) {
+      const g = groupes.find((G) => G.axe.sx === t.axe.sx
+        && Math.hypot(G.axe.z - t.axe.z, G.axe.y - t.axe.y) < Math.max(G.axe.rayon, t.axe.rayon) * 0.5);
+      if (!g) { groupes.push({ racines: [t.racine], axe: { ...t.axe }, xMin: t.axe.x - t.axe.demiLargeur, xMax: t.axe.x + t.axe.demiLargeur }); continue; }
+      g.racines.push(t.racine);
+      g.xMin = Math.min(g.xMin, t.axe.x - t.axe.demiLargeur);
+      g.xMax = Math.max(g.xMax, t.axe.x + t.axe.demiLargeur);
+      if (t.axe.rayon > g.axe.rayon) { g.axe.rayon = t.axe.rayon; g.axe.y = t.axe.y; g.axe.z = t.axe.z; }
+      g.axe.x = (g.xMin + g.xMax) / 2;
+      g.axe.demiLargeur = (g.xMax - g.xMin) / 2;
+    }
+    if (groupes.length !== trouvees.length) {
+      trouvees.length = 0;
+      for (const g of groupes) trouvees.push({ racine: g.racines[0], racines: g.racines, axe: g.axe });
+    }
+  }
+
+  // Aucune roue détachée (un modèle Meshy dont les quatre roues seraient
+  // soudées à la caisse) : on les retrouve par le sol, voir `axesParLeSol`.
+  let axes;
+  if (!trouvees.length) {
+    axes = axesParLeSol(pos, n, demiLarge, haut);
+    if (!axes) return null;
+  } else {
 
   // ── 2. la mesure de référence ───────────────────────────────────────────
   const RAYON_REF = trouvees.reduce((s, r) => s + r.axe.rayon, 0) / trouvees.length;
@@ -433,7 +554,7 @@ function separerRoues(geo, boite) {
   // ── 3. l'essieu resté soudé à la caisse ─────────────────────────────────
   // Il est à l'autre bout : on cherche le pic de matière basse et latérale
   // dans la moitié opposée à celle des roues déjà trouvées.
-  const axes = trouvees.map((r) => r.axe);
+  axes = trouvees.map((r) => r.axe);
   if (axes.length < 4) {
     const BINS = 48;
     const hist = new Float32Array(BINS);
@@ -473,13 +594,14 @@ function separerRoues(geo, boite) {
       });
     }
   }
+  }
   if (axes.length !== 4) return null;
 
   // ── répartition des triangles ───────────────────────────────────────────
   const corpsIdx = [];
   const roueIdx = axes.map(() => []);
   const parRacine = new Map();
-  trouvees.forEach((r, k) => parRacine.set(r.racine, k));
+  trouvees.forEach((r, k) => { for (const q of r.racines || [r.racine]) parRacine.set(q, k); });
 
   for (let t = 0; t < index.count; t += 3) {
     const a = index.getX(t), b = index.getX(t + 1), c = index.getX(t + 2);
@@ -983,6 +1105,7 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24, modele 
       // Repérage raté : plutôt une voiture entière aux roues figées qu'une
       // voiture amputée. On garde le maillage tel quel.
       const entier = new THREE.Mesh(geo, tole);
+      entier.name = 'carrosserie';
       entier.castShadow = true; entier.receiveShadow = true;
       caisse.add(entier);
       secours.visible = false;
@@ -991,6 +1114,7 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24, modele 
     }
 
     const corps = new THREE.Mesh(decoupe.corps, tole);
+    corps.name = 'carrosserie';                  // repère pour `gyrophare.js`
     corps.castShadow = true; corps.receiveShadow = true;
     caisse.add(corps);
     secours.visible = false;

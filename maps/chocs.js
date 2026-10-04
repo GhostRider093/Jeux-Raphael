@@ -40,7 +40,7 @@
  *   choc (0…1), point de contact.
  */
 import * as THREE from 'three';
-import { impact, frottement } from './sons-chocs.js?v=20261004a';
+import { impact, frottement } from './sons-chocs.js?v=20261004c';
 
 export const REGLES = {
   restitution: 0.3,        // part de la vitesse de rapprochement rendue en rebond
@@ -250,6 +250,8 @@ export function creerChocs({ jeu, sources = [] }) {
     const effetB = { dx: nx * sep * invB / inv, dz: nz * sep * invB / inv, dvx: 0, dvz: 0, dw: 0, force: 0, point: { x: px, z: pz } };
     const rvx = B.vx - A.vx, rvz = B.vz - A.vz;
     const vn = rvx * nx + rvz * nz;
+    // qui fonçait sur qui : la vitesse de chacun vers l'autre, avant l'impulsion
+    const elanA = A.vx * nx + A.vz * nz, elanB = -(B.vx * nx + B.vz * nz);
     let force = 0, glisse = 0;
     // tangente et vitesse de glissement
     let tx = rvx - vn * nx, tz = rvz - vn * nz;
@@ -283,7 +285,7 @@ export function creerChocs({ jeu, sources = [] }) {
       const dist = joueur ? Math.hypot(px - joueur.x, pz - joueur.z) : 0;
       effets(A.cle + '|' + B.cle, force, px, pz, y, A.joueur || B.joueur, dist, tx * vt, tz * vt);
     }
-    return { glisse, joueurDedans: A.joueur || B.joueur, px, pz, y: Math.max(A.y || 0, B.y || 0) };
+    return { glisse, force, elanA, elanB, joueurDedans: A.joueur || B.joueur, px, pz, y: Math.max(A.y || 0, B.y || 0) };
   }
 
   // ── la boucle ─────────────────────────────────────────────────────────
@@ -329,6 +331,16 @@ export function creerChocs({ jeu, sources = [] }) {
         const r = resoudre(joueur, c, k, joueur);
         if (!r) continue;
         chocVehicule = true;
+        // Le signal du Stop Car (04/10/2026) : un vrai choc, pas un frottement —
+        // une fois par paire et par 0,6 s, sinon un contact qui dure compterait
+        // pour dix coups. `attaquant` : celui qui avait le plus d'élan vers l'autre.
+        if (api.onChoc && r.force > 0.03) {
+          const cle = 'coup|' + c.cle, avant = derniers.get(cle) || -1;
+          if (horloge - avant > 0.6) {
+            derniers.set(cle, horloge);
+            try { api.onChoc({ autre: c, force: r.force, attaquant: r.elanA >= r.elanB ? 'joueur' : 'autre' }); } catch (e) { console.warn('onChoc :', e); }
+          }
+        }
         // Deuxième passe : si l'autre n'a pas pu bouger (contre un mur, au bout
         // de son écart), c'est le joueur qui sort entièrement. On ne s'enfonce jamais.
         const k2 = contact(joueur, c);
@@ -373,10 +385,13 @@ export function creerChocs({ jeu, sources = [] }) {
   }
   requestAnimationFrame(image);
 
-  return {
+  const api = {
     REGLES,
+    /** ({ autre, force, attaquant: 'joueur' | 'autre' }) => void — un choc entre le joueur et un engin. */
+    onChoc: null,
     /** Ajouter une source de corps après coup (le trafic arrive plus tard). */
     ajouterSource(f) { sources.push(f); },
     arreter() { actif = false; frottement(0); },
   };
+  return api;
 }

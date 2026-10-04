@@ -15,11 +15,12 @@ import { construireVillage } from './poilhes-scene.js?v=20260928a';
 import { createRobot } from './poilhes-robot.js?v=voiture-20260921';
 import { createEnemies } from './poilhes-enemies.js?v=voiture-20260921';
 import { createJet } from './poilhes-jet.js?v=voiture-20260921';
-import { createHelico } from './poilhes-helico.js?v=20260928b';
+import { createHelico, HELICO_POLICE } from './poilhes-helico.js?v=20261004c';
 // **Une seule version** pour les deux imports de voiture-pilote.js : deux
 // `?v=` différents font deux modules, et le `TOUCHER` réglé par le panneau
 // n'était plus celui que lisait le pilote.
-import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=20261004a';
+import { creerPilote, creerAdherence, TOUCHER, SAUT_TROTTINETTE } from './voiture-pilote.js?v=20261004c';
+import { MODELE_POLICE } from './voiture-model.js?v=20261004c';
 import { poserEpicerie, poserBlasonClub, EPICERIE } from './poilhes-commerces.js?v=voiture-20260921';
 import { poserMairie } from './poilhes-mairie.js?v=mairie-20260926';
 import { poserEnseignes } from './poilhes-enseignes.js?v=enseignes-20260926c';
@@ -93,7 +94,7 @@ function sunDirection(lat, lon, date, hours, out) {
  * @param {object} [options.qualite] niveau de `maps/qualite.js` appliqué à la
  *   création du rendu (anticrénelage, définition, ombres). Par défaut : le
  *   comportement historique, plein régime sur ordinateur, léger en tactile.
- * @param {string} [options.voitureUnique] 'rouge' | 'bleue' : une seule voiture,
+ * @param {string} [options.voitureUnique] 'rouge' | 'bleue' | 'police' : une seule voiture,
  *   sans panneau de choix ni touche C.
  * @param {boolean} [options.ouvrir] false : la page lève l'écran de chargement
  *   elle-même (`loader.classList.add('done')`), par exemple après une mesure.
@@ -274,7 +275,9 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
   const ennemis = veut('robot') ? createEnemies({ scene, walkableAt, blockedAt }) : null;
   const jet = veut('chasseur') ? createJet({ scene, camera, groundAt, surfaceAt, keys }) : null;
   // L'hélicoptère d'Arnaud (26/09/2026) : il tourne au-dessus de la course, et on le prend (mode « helico »).
-  const helico = veut('helico') ? createHelico({ scene, camera, groundAt, surfaceAt, keys, renderer }) : null;
+  // Stop Car (04/10/2026) : l'hélico de police d'Arnaud au lieu du gunship
+  const helico = veut('helico') ? createHelico({ scene, camera, groundAt, surfaceAt, keys, renderer,
+    modele: voitureUnique === 'police' ? HELICO_POLICE : null }) : null;
   if (robot) robot.setEnemies(ennemis);
   // cible passee aux gobelins : construite une fois, jamais dans la boucle
   const proie = robot ? { position: robot.root.position, hurt: (d) => robot.hurt(d) } : null;
@@ -351,6 +354,9 @@ export async function startVillage({ modes = null, qualite = null, voitureUnique
       blockedAt, adherenceAt: routes.adherenceAt, surRoute: routes.surRoute,
       glissiereAt: glissieres.segments ? glissieres.glissiereAt : null,
       bounds: decor.bounds - 60,
+      // Stop Car : la voiture de police et son gyrophare
+      modele: voitureUnique === 'police' ? MODELE_POLICE : null,
+      gyrophare: voitureUnique === 'police',
     });
     auto.setNuit(+timeInput.value < 7.4 || +timeInput.value > 20.2);
     appliquerMemorise(auto, TOUCHER);

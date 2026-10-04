@@ -27,7 +27,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
 import { construirePays } from './pays-scene.js?v=20260928a';
-import { createHelico } from './poilhes-helico.js?v=20260928b';
+import { createHelico } from './poilhes-helico.js?v=20261004c';
 
 export const FACILE = {
   coque: 150,

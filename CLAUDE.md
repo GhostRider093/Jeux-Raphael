@@ -673,6 +673,55 @@ loi de conduite elle-même. Le moteur de la voiture s'entend **d'emblée** depui
 24/09 (le paragraphe « muet par défaut » plus haut est périmé) ; **M** le coupe.
 Les feux de recul s'allument en marche arrière, et un choc contre un mur crisse.
 
+## Stop Car — la course-poursuite (04/10/2026)
+
+`rouler.html`, engin **Berline** puis mode **🚓 Stop Car** (Poilhes seulement), ou
+`rouler.html?village=poilhes&engin=berline&course=stopcar&adv=facile&go=1`. On conduit une
+**voiture de police** ; deux fuyards (N° 01 LaFerrari bordeaux, N° 02 Aventador olive)
+partent avec 30 et 44 m d'avance sur **les quatre courses enchaînées** (4,6 km). Cinq coups
+donnés → la voiture explose ; les deux arrêtées → gagné. Perdu si la police encaisse 10
+coups ou si un fuyard boucle le circuit. Niveau des fuyards = choix « Contre l'ordi ».
+
+| Fichier | Rôle |
+| --- | --- |
+| `maps/stop-car.js` | Le mode : circuit et flèches, fuyards, compte des coups (jauge ●●○○○ au-dessus de chaque voiture, bandeau en haut), explosion en trois temps (boule de feu ×3,2 + deux répliques, saut en tournoyant, carcasse noircie qui brûle 6 s), sirène (H), Échap abandonne. Réglages en tête : `COUPS_POUR_ARRETER`, `PV_POLICE`, `FORCE_COUP`, `AVANCE` |
+| `maps/poilhes/boucle-stopcar.json` | Le circuit : `PISTE=stopcar py scripts/poilhes/boucle_village.py` — les étapes des quatre boucles bout à bout, liaisons par Dijkstra dans les rues |
+| `maps/gyrophare.js` | La rampe du toit sortie de la carrosserie (tout ce qui dépasse 93,5 % de la hauteur), moitié gauche rouge, droite bleue, double flash alterné 0,6 s, `PointLight` + halo additif ; sans allocation par image |
+| `assets/car/police.glb` | SUV Meshy noir et blanc, 2,2 Mo / 185 000 triangles (brut 37,7 Mo, non versionné : `police-brut.glb`). `MODELE_POLICE` dans `voiture-model.js` |
+| `assets/sons/sirene.mp3` | La sirène d'Arnaud (yt-grab), en boucle. Pas de synthèse : jugée « catastrophique » |
+| `assets/fun/helico-police.glb` | L'hélico de police (Meshy « Twilight Patrol », 23,8 → 1,9 Mo). `HELICO_POLICE` dans `poilhes-helico.js` (fichier, 13 m, mesures du rotor) ; `createHelico({ modele })`, le village le passe quand `voitureUnique === 'police'` |
+| `assets/sons/helico-boucle.wav`, `radio-police.mp3` | Le rotor (boucle WAV, pour **tous** les hélicos) et la radio au décollage |
+
+**Fuyard perdu → l'hélico.** À plus de 100 m du fuyard le plus proche pendant 1,5 s, le
+bandeau propose **J** (ou un clic) : l'hélico décolle 45 m au-dessus de la voiture, radio.
+Le fuyard porte un faisceau rouge et un anneau ; une flèche au bord de l'écran (viseur rond
+quand il est à l'écran) dit où et à combien. Sous 30 m à l'horizontale, le sonar bipe et
+une onde part au sol ; 2 s au-dessus et c'est localisé : la voiture repart **18 m derrière
+lui sur le tracé** (`adv.pointDuTrace`), lancée à 90 % de sa vitesse. En ligne droite, elle
+tombait dans une façade au premier virage. **J** en vol : retour à la voiture laissée sur place.
+
+Ce qui a changé ailleurs, et pourquoi :
+
+- `chocs.js` : **`onChoc({ autre, force, attaquant })`**, une fois par paire et par 0,6 s ;
+  `attaquant` = celui qui avait le plus d'élan vers l'autre avant l'impulsion. Le Stop Car
+  ajoute ses fuyards par `ajouterSource` — **sans cela on les traverse** (vu en test).
+- `course-adversaires.js` : option **`poursuite`** (numéro au lieu du nom, coup de volant
+  vers le joueur à sa hauteur toutes les 2–3,5 s, pilote `mort` hors course) ; clé de corps
+  stable par pilote (`bot-<nom>`) et `pilote` dans le corps.
+- `voiture-pilote.js` : options `modele` et `gyrophare` ; voiture `police` = conduite de la
+  berline, **sans teinte** (la repeindre tournerait le noir et blanc et le gyrophare).
+- `voiture-model.js` :
+  - **`redresser()` corrigeait un miroir** : échanger deux axes (longueur sur x, largeur
+    sur z) donne un déterminant −1, « POLICE » sortait écrit à l'envers. On retourne alors
+    la largeur. La berline n'était pas concernée.
+  - **Roues en plusieurs pièces** : la police a pneu et jante séparés (8 pièces) ; les
+    pièces de même axe sont regroupées. `axesParLeSol()` : secours pour un modèle aux roues
+    soudées (empreintes au sol + profil bas du pneu, R = (d² + y²) / 2y).
+  - La carrosserie s'appelle `carrosserie` (repère du gyrophare) ; elle est **non indexée**
+    après la découpe des roues.
+- `apercu-voiture.html` : `?modele=…&gyro=1` (touche G).
+- `rouler.html` : le décompte du Stop Car attend la levée de l'écran de chargement.
+
 ## Niveaux de qualité et la page « Rouler » (`rouler.html`)
 
 Le village pèse 2,4 millions de triangles par image. Mesuré le 24/09/2026 sur une RTX 4070 Ti

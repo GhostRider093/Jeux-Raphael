@@ -61,7 +61,14 @@ function chargerLoiDeVol() {
 
 const LIMITE = 2900;
 
-/** Le son des pales : souffle grave battu à ~11 Hz. */
+/**
+ * Le son des pales. Depuis le 04/10/2026, l'enregistrement d'Arnaud
+ * (`assets/sons/helico-boucle.wav` : 7 s prises dans la partie stable, fondu
+ * croisé de 0,6 s au raccord ; WAV et non MP3, dont le silence d'amorce fait
+ * cloquer une boucle) remplace la synthèse dès qu'il est décodé. Sinon : souffle
+ * grave battu à ~11 Hz.
+ */
+const BOUCLE = 'assets/sons/helico-boucle.wav?v=20261004a';
 function creerSon() {
   let ctx = null, gain = null;
   function demarrer() {
@@ -83,6 +90,16 @@ function creerSon() {
     gain = ctx.createGain(); gain.gain.value = 0;
     src.connect(filtre).connect(battement).connect(gain).connect(ctx.destination);
     src.start(); lfo.start();
+    fetch(BOUCLE).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+      .then((a) => ctx.decodeAudioData(a))
+      .then((b) => {
+        const vrai = ctx.createBufferSource(); vrai.buffer = b; vrai.loop = true;
+        const niveau = ctx.createGain(); niveau.gain.value = 1.1;
+        vrai.connect(niveau).connect(gain);
+        vrai.start();
+        try { src.stop(); lfo.stop(); src.disconnect(); } catch { /* déjà fait */ }
+      })
+      .catch(() => { /* pas de fichier : la synthèse reste */ });
     return true;
   }
   function maj(force) { if (gain) gain.gain.setTargetAtTime(force * HELICO_PILOTE.volume, ctx.currentTime, 0.2); }
@@ -102,9 +119,23 @@ function creerSon() {
  * longueur, c'est la queue : exclue. Tout est exprimé en fractions de la boîte,
  * ce qui reste vrai après quantification par gltf-transform.
  */
-export const ROTOR = { hauteur: 0.71, queue: 0.835, mat: { x: 0.431, z: 0.5475 } };
+export const ROTOR = { hauteur: 0.71, queue: 0.835, mat: { x: 0.431, z: 0.5475 }, moyeu: 0.76 };
 
-function decouperRotor(mesh) {
+/**
+ * L'hélico de police du Stop Car (04/10/2026, Meshy « Twilight Patrol » d'Arnaud,
+ * 23,8 Mo → 1,9 Mo, 132 000 triangles ; nez en −x comme le gunship). Mesuré sur
+ * le fichier : pales entre 83 et 90 % de la hauteur, moyeu à 38 % de la longueur
+ * et 49 % de la largeur ; la dérive monte jusqu'à 85 % mais au-delà de 90 % de la
+ * longueur — d'où `queue: 0.9`. La boîte est celle du disque rotor (1,91 × 1,89) :
+ * `longueur` 13 m donne un écureuil de taille réelle.
+ */
+export const HELICO_POLICE = {
+  fichier: 'assets/fun/helico-police.glb?v=20261004a',
+  longueur: 13,
+  rotor: { hauteur: 0.83, queue: 0.9, mat: { x: 0.38, z: 0.49 }, moyeu: 0.87 },
+};
+
+function decouperRotor(mesh, ROTOR) {
   const g = mesh.geometry;
   const pos = g.attributes.position;
   if (!g.index) g.setIndex([...Array(pos.count).keys()]);
@@ -126,7 +157,7 @@ function decouperRotor(mesh) {
   for (const nom of Object.keys(g.attributes)) geoRotor.setAttribute(nom, g.attributes[nom]);
   geoRotor.setIndex(rotor);
   g.setIndex(corps);
-  const hy = b.min.y + (b.max.y - b.min.y) * 0.76;  // à la hauteur des pales (pour le disque flou)
+  const hy = b.min.y + (b.max.y - b.min.y) * ROTOR.moyeu;  // à la hauteur des pales (pour le disque flou)
   const pivot = new THREE.Group();
   pivot.position.set(hx, hy, hz);
   const pales = new THREE.Mesh(geoRotor, mesh.material);
@@ -141,20 +172,22 @@ function decouperRotor(mesh) {
 /**
  * @param {object} o { scene, camera, groundAt, surfaceAt, keys }
  */
-export function createHelico({ scene, camera, groundAt, surfaceAt, keys, renderer = null }) {
-  const P = HELICO_PILOTE;
+export function createHelico({ scene, camera, groundAt, surfaceAt, keys, renderer = null, modele = null }) {
+  // `modele` : un autre appareil (`HELICO_POLICE`) — fichier, taille, rotor ; la loi de vol ne change pas
+  const P = modele ? { ...HELICO_PILOTE, longueur: modele.longueur } : HELICO_PILOTE;
+  const mesureRotor = modele ? modele.rotor : ROTOR;
   const root = new THREE.Group();
   root.name = 'helico-gunship';
   root.rotation.order = 'YXZ';
   scene.add(root);
   let pret = false, pivot = null, disque = null;
 
-  new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync('assets/fun/helicoptere.glb').then((gltf) => {
+  new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(modele ? modele.fichier : 'assets/fun/helicoptere.glb').then((gltf) => {
     const objet = gltf.scene;
     objet.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = true;
-      if (!pivot) pivot = decouperRotor(o);
+      if (!pivot) pivot = decouperRotor(o, mesureRotor);
     });
     // le nez du modèle regarde −x : un quart de tour l'envoie vers −z
     objet.rotation.y = -Math.PI / 2;

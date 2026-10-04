@@ -20,7 +20,7 @@
  */
 import * as THREE from 'three';
 import { construireFleches } from './fleches-sol.js?v=arcade-20260926b';
-import { creerAdversaires, NIVEAUX } from './course-adversaires.js?v=20261004a';
+import { creerAdversaires, NIVEAUX } from './course-adversaires.js?v=20261004c';
 
 const ECART_PASSAGE = 50;      // m entre deux points de passage
 const RAYON_PASSAGE = 22;      // m : on est passé quand on en est plus près (16 avant le 26/09 : trop juste)

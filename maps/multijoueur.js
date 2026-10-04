@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '../libs/GLTFLoader.js';
 import { MeshoptDecoder } from '../libs/meshopt_decoder.module.js';
-import { construireVoiture } from './voiture-model.js?v=20260927o';
+import { construireVoiture } from './voiture-model.js?v=20261004c';
 import { construireEnginQuad } from './quad.js?v=20260927o';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
 
