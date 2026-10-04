@@ -42,6 +42,12 @@ const TEINTE = 0xffffff;
 // la texture du modèle. Rien n'est retéléchargé — la voiture bleue est la même
 // carrosserie, repeinte pixel par pixel à l'arrivée.
 const TEINTES = { rouge: 0, bleu: 205 };
+// Le bleu est désormais **peint d'avance** (04/10/2026, `scripts/peindre-berline.py`) :
+// Arnaud trouvait la rotation de teinte « quelconque » et pleine de pixels
+// épars — bleu acier, rouges sombres oubliés par le seuil, plis cuits par Meshy.
+// L'atlas peint donne un bleu profond, aplati, coutures bouchées. La rotation
+// reste le secours le temps du chargement, ou si le fichier manque.
+const ATLAS_PEINTS = { bleu: 'assets/car/berline-bleue.webp?v=20261004a' };
 const LONGUEUR = 4.42;         // longueur visée (m) : le modèle est mis à l'échelle dessus
 /**
  * Échelle d'affichage de la berline — décision d'Arnaud du 25/09/2026 : « la
@@ -885,6 +891,18 @@ export function construireVoiture({ renderer = null, couleur = 0xc21d24, modele 
     texturesTeintes.rouge = base;
     if (!texturesTeintes[nom]) {
       texturesTeintes[nom] = repeindre(base.image, TEINTES[nom]);
+      // Un atlas peint d'avance remplace la repeinture dès qu'il est là — pour
+      // la berline seulement : ses UV sont celles de `crimson.glb`, pas celles
+      // des voitures du trafic.
+      if (ATLAS_PEINTS[nom] && !modele) {
+        new THREE.TextureLoader().load(ATLAS_PEINTS[nom], (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.flipY = false;
+          tex.anisotropy = 8;
+          texturesTeintes[nom] = tex;
+          if (teinteCourante === nom) { toleMeshy.map = tex; toleMeshy.needsUpdate = true; }
+        });
+      }
     }
     toleMeshy.map = texturesTeintes[nom];
     toleMeshy.needsUpdate = true;

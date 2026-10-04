@@ -26,7 +26,7 @@
  * laissent pas filer non plus) ; en Difficile et en Pilote, aucun cadeau.
  */
 import * as THREE from 'three';
-import { REGLAGES, ARCADE_DEFAUT } from './voiture-physique.js?v=20260928a';
+import { REGLAGES, ARCADE_DEFAUT } from './voiture-physique.js?v=20261004a';
 import { construireVoiture } from './voiture-model.js?v=20260927o';
 import { construireEnginQuad, QUAD_TRAFIC } from './quad.js?v=20260927o';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
@@ -44,9 +44,13 @@ export const NIVEAUX = {
 };
 export const ORDRE_NIVEAUX = ['aucun', 'facile', 'moyen', 'difficile', 'pilote'];
 
+// Arnaud, 04/10/2026 : « les couleurs sont trop flashy, il faut des couleurs un
+// peu plus ternes, mais plus sympa ». Turbo passe du rouge vif au bordeaux, Jarvis
+// du vert citron au vert olive ; les étiquettes suivent. `peinture` : la couleur
+// de carrosserie (LaFerrari) ou la cible de `ternir()` (atlas Meshy).
 const PILOTES = [
-  { nom: 'Turbo', voiture: 'laferrari', couleur: '#ff4a4a', ecart: 0.02 },     // LaFerrari rouge
-  { nom: 'Jarvis', voiture: 'aventador', couleur: '#7ee06a', ecart: -0.02 },   // Aventador SVJ
+  { nom: 'Turbo', voiture: 'laferrari', couleur: '#d98a84', peinture: 0x5e1a20, ecart: 0.02 },   // LaFerrari bordeaux
+  { nom: 'Jarvis', voiture: 'aventador', couleur: '#a9bf8e', peinture: { h: 95, s: 0.2, l: 0.44 }, ecart: -0.02 },   // Aventador olive
 ];
 const PAS = 2;              // m entre deux points du tracé rééchantillonné
 const CORDE = 5;            // points de part et d'autre pour mesurer la courbure (± 10 m)
@@ -58,6 +62,51 @@ const CARRURE = { voiture: { dw: 0.95, dl: 2.25, masse: 1450 }, quad: { dw: 0.62
 const REGLAGE_ENGIN = { voiture: REGLAGES.gt, quad: REGLAGES.quad, trottinette: REGLAGES.trottinette };
 
 const k = (r, c) => (r[c] !== undefined ? r[c] : ARCADE_DEFAUT[c]);
+
+/**
+ * Ternit la carrosserie d'un atlas Meshy : les pixels colorés prennent la teinte,
+ * la saturation et une luminosité proches de `cible` ({ h en degrés, s, l }) ; le
+ * modelé de la texture est gardé, atténué au quart (à moitié, l'atlas Meshy
+ * donnait un camouflage). Noirs,
+ * chromes, vitres et pneus — peu saturés — ne bougent pas.
+ */
+const atlasTernis = new Map();
+function ternir(texture, cible) {
+  const cle = texture.uuid + ':' + JSON.stringify(cible);
+  if (atlasTernis.has(cle)) return atlasTernis.get(cle);
+  const image = texture.image;
+  const c = document.createElement('canvas');
+  c.width = image.width; c.height = image.height;
+  const g = c.getContext('2d');
+  g.drawImage(image, 0, 0);
+  const img = g.getImageData(0, 0, c.width, c.height);
+  const d = img.data;
+  const col = new THREE.Color(), hsl = {};
+  // luminosité moyenne de la peinture, pour garder le modelé autour de la cible
+  let somme = 0, n = 0;
+  for (let i = 0; i < d.length; i += 16) {
+    col.setRGB(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255).getHSL(hsl);
+    if (hsl.s >= 0.3) { somme += hsl.l; n++; }
+  }
+  const moyenne = n ? somme / n : 0.5;
+  for (let i = 0; i < d.length; i += 4) {
+    col.setRGB(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255).getHSL(hsl);
+    if (hsl.s < 0.1 || hsl.l < 0.06) continue;
+    const part = Math.min(1, (hsl.s - 0.1) / 0.15);          // fondu : pas de pixel orphelin
+    const l = Math.max(0.04, Math.min(0.9, cible.l + (hsl.l - moyenne) * 0.25));
+    const r0 = d[i], v0 = d[i + 1], b0 = d[i + 2];
+    col.setHSL(cible.h / 360, cible.s, l);
+    d[i] = r0 + (col.r * 255 - r0) * part;
+    d[i + 1] = v0 + (col.g * 255 - v0) * part;
+    d[i + 2] = b0 + (col.b * 255 - b0) * part;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = texture.colorSpace; t.flipY = texture.flipY;
+  t.wrapS = texture.wrapS; t.wrapT = texture.wrapT; t.anisotropy = texture.anisotropy;
+  atlasTernis.set(cle, t);
+  return t;
+}
 
 function etiquette(texte, couleur) {
   const c = document.createElement('canvas');
@@ -193,11 +242,19 @@ export function creerAdversaires({ jeu, data, tours }) {
       if (pilote.voiture === 'laferrari') {
         // la LaFerrari se charge à part : une coquille vide en attendant
         objet = { root: new THREE.Group() };
-        laFerrari(0).then((lf) => { objet.root.add(lf.root); objet.majRoues = lf.majRoues; })
+        laFerrari(0, pilote.peinture).then((lf) => { objet.root.add(lf.root); objet.majRoues = lf.majRoues; })
           .catch((e) => { console.warn('Adversaire, LaFerrari :', e); objet.root.add(construireVoiture({ renderer: jeu.renderer }).root); });
       } else {
         const m = MESHY.find((x) => x.modele.includes(pilote.voiture)) || {};
         objet = construireVoiture({ renderer: jeu.renderer, ...m });
+        if (pilote.peinture && objet.pret) {
+          objet.pret.then(() => objet.root.traverse((o) => {
+            if (o.isMesh && o.material && o.material.map && o.material.isMeshPhysicalMaterial) {
+              o.material.map = ternir(o.material.map, pilote.peinture);
+              o.material.needsUpdate = true;
+            }
+          }));
+        }
       }
     }
     groupe.add(objet.root);

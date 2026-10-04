@@ -41,11 +41,11 @@
  */
 import * as THREE from 'three';
 import { construireVoiture, ECHELLE } from './voiture-model.js?v=20260927o';
-import { creerPhysique, REGLAGES } from './voiture-physique.js?v=20260928a';
+import { creerPhysique, REGLAGES } from './voiture-physique.js?v=20261004a';
 import { construireEnginTrottinette } from './trottinette.js?v=pilote-20260922';
 import { construireEnginQuad } from './quad.js?v=20260927o';
 import { volant as volantCourse } from './volant.js?v=20260928a';
-import { creerHabitacle } from './vue-interieure.js?v=20261002a';
+import { creerHabitacle } from './vue-interieure.js?v=20261003f';
 
 const GRAVITE = 9.81;
 // Toucher du volant, **selon la vitesse** — comme une vraie voiture.

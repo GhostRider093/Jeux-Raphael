@@ -65,3 +65,9 @@
 
 ## 02/10 — rétroviseur
 - Le miroir était déjà parti, mais son pied pendait encore sous la console de plafond : rendu transparent (zone 930–1110 × 200–275 px de l'image finale). Ancienne image dans git (c4aba1c). Non poussé.
+
+## 02/10 — volant avec les mains
+- Généré par Atlas (4 modèles, 0,314 $) sur fond vert : `Downloads/volant-berline/` ; détourés et recentrés sur le moyeu par `scripts/interieur/preparer_volant.py` (jante = moitié du côté).
+- Posé devant les compteurs, côté conducteur (VOLANT_U 0,245 / V 0,50 / D 0,36 de la photo), recalé à chaque taille d'écran.
+- Seedream (n° 2) mis par défaut, à valider par Arnaud. 1er essai Chrome : à -73° les bras partaient à l'horizontale → rotation affichée plafonnée à ±40°.
+- Non poussé.

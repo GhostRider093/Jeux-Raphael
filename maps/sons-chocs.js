@@ -15,11 +15,29 @@
  *   — `frottement(niveau)` : la tôle qui racle, en continu (0 = silence) ;
  *     à appeler à chaque image tant que deux engins glissent l'un contre l'autre.
  *
+ * **Un vrai enregistrement pour les gros chocs** (Arnaud, 04/10/2026 : « utilise
+ * ce son pour l'accident de voiture ») : `assets/sons/accident-court.mp3` (le
+ * premier impact, 1,25 s) remplace la tôle, le métal et le verre de synthèse
+ * au-delà de `SEUIL_ENREGISTREMENT` ; le coup sourd reste, il donne le poids.
+ * En dessous, les accrochages restent synthétisés — un accident entier à chaque
+ * frottement serait insupportable. `accident(distance)` joue la version complète
+ * (4,5 s, tôle qui roule) : pour une voiture qui explose. Tant que les fichiers
+ * ne sont pas décodés, ou s'ils manquent, la synthèse fait tout.
+ *
  * Le contexte audio naît au premier choc ; le navigateur l'autorise puisque le
  * joueur a déjà appuyé sur une touche pour conduire.
  */
 
 const VOLUME = 0.7;
+const SEUIL_ENREGISTREMENT = 0.55;     // force à partir de laquelle on entend l'enregistrement
+const REPIT_ENREGISTREMENT = 0.9;      // s entre deux lectures (sinon : mitraillette)
+const GAIN_ENREGISTREMENT = 0.6;       // un mp3 normalisé est bien plus fort qu'une couche de synthèse
+const ENREGISTREMENTS = {
+  court: 'assets/sons/accident-court.mp3?v=20261004a',
+  complet: 'assets/sons/accident-complet.mp3?v=20261004a',
+};
+const tampons = {};                    // nom → AudioBuffer décodé
+let derniereLecture = -1;
 
 let ctx = null, sortie = null, bruit = null;
 let racle = null;             // { source, filtre, gain }
@@ -38,7 +56,38 @@ function contexte() {
   bruit = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = bruit.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  for (const [nom, url] of Object.entries(ENREGISTREMENTS)) {
+    fetch(url).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+      .then((a) => ctx.decodeAudioData(a))
+      .then((b) => { tampons[nom] = b; })
+      .catch(() => { /* pas de fichier : la synthèse reste */ });
+  }
   return ctx;
+}
+
+/** Joue un enregistrement décodé ; rend false s'il n'est pas (encore) là. */
+function lire(nom, gain, bus) {
+  const b = tampons[nom];
+  if (!b) return false;
+  const s = ctx.createBufferSource();
+  s.buffer = b;
+  s.playbackRate.value = hasard(0.94, 1.06);     // deux chocs ne sonnent pas pareil
+  const g = ctx.createGain(); g.gain.value = gain;
+  s.connect(g); g.connect(bus);
+  s.start();
+  s.onended = () => { try { g.disconnect(); } catch { /* déjà fait */ } };
+  return true;
+}
+
+/**
+ * L'accident entier — impact, tôle qui roule, débris (4,5 s) : pour une voiture
+ * qui explose. Synthèse à pleine force si le fichier manque.
+ * @param {number} [distance=0] m entre l'accident et le joueur
+ */
+export function accident(distance = 0) {
+  if (!contexte()) return;
+  const att = 1 / (1 + Math.max(0, distance) / 12);
+  if (!lire('complet', GAIN_ENREGISTREMENT * att, sortie)) impact(1, distance);
 }
 
 /** Une courbe de saturation : la tôle « croque » au lieu de souffler. */
@@ -85,6 +134,16 @@ export function impact(force, distance = 0) {
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22 + f * 0.35);
     o.connect(g); g.connect(bus);
     o.start(t); o.stop(t + 0.7);
+  }
+
+  // ── un gros choc : l'enregistrement remplace tout le reste ──
+  if (f >= SEUIL_ENREGISTREMENT && ctx.currentTime - derniereLecture > REPIT_ENREGISTREMENT) {
+    const dose = 0.45 + 0.55 * (f - SEUIL_ENREGISTREMENT) / (1 - SEUIL_ENREGISTREMENT);
+    if (lire('court', GAIN_ENREGISTREMENT * dose, bus)) {
+      derniereLecture = ctx.currentTime;
+      setTimeout(() => { try { bus.disconnect(); } catch { /* déjà fait */ } }, 2000);
+      return;
+    }
   }
 
   // ── la tôle : bruit filtré, saturé ──

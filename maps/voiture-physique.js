@@ -154,7 +154,9 @@ export const REGLAGES = {
     repartAvant: 0.68,
     freinCouple: 4600,          // 3100 avant l'arcade
     arcade: true,
-    loi: 'arcade', vmax: 38, accel: 8, virage: 1.7, grip: 9,
+    // 04/10/2026, Arnaud : « un peu trop vif […] plus fluide, pas à-coups, plus contrôlé » —
+    // rotation moins forte (1,7 → 1,4 rad/s) et qui s'installe deux fois plus doucement (réponse 9 → 4,5).
+    loi: 'arcade', vmax: 38, accel: 8, virage: 1.4, reponse: 4.5, grip: 9,
 
     antipatinage: 0.86,
     stabilite: 3.0,

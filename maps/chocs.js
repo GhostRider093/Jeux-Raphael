@@ -40,7 +40,7 @@
  *   choc (0…1), point de contact.
  */
 import * as THREE from 'three';
-import { impact, frottement } from './sons-chocs.js?v=20261001a';
+import { impact, frottement } from './sons-chocs.js?v=20261004a';
 
 export const REGLES = {
   restitution: 0.3,        // part de la vitesse de rapprochement rendue en rebond

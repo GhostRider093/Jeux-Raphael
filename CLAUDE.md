@@ -496,10 +496,16 @@ reçoit la force, et tout en découle — une traction tire au lieu de pousser, 
 élargit son virage au lieu de partir de l'arrière, et il suffit de lever le pied. La
 bleue est la voiture à donner à quelqu'un qui ne connaît pas le jeu.
 
-La peinture bleue est la **même texture, repeinte à l'arrivée** : rotation de teinte des
-seuls pixels saturés (139 ms, une fois). Les bandes blanches, les optiques et les pneus
-ne bougent pas — teinter tout aurait donné une voiture sous gélatine. Rien n'est
-retéléchargé.
+La peinture bleue est un **atlas peint d'avance** depuis le 04/10/2026 :
+`assets/car/berline-bleue.webp`, produit par `py scripts/peindre-berline.py` à partir de
+l'atlas rouge de `crimson.glb`. Masque de peinture progressif (plus de rouges sombres
+oubliés au bord des îlots d'UV), valeur aplatie autour de la médiane (les plis cuits par
+Meshy disparaissent, la lumière du jeu fait le modelé), fines coutures sombres bouchées,
+bleu roi posé à la place du rouge ; bandes blanches, optiques et pneus intacts. La teinte
+de la texture (≈ 209°) est **plus cyan que le rendu voulu** : l'éclairage et l'ACES du
+jeu décalent d'environ +15° (mesuré à l'écran : 224°). L'ancienne rotation de teinte
+(`repeindre()`, un bleu acier) ne sert plus que de secours le temps du chargement, ou si
+le fichier manque — et seulement sur la berline, les voitures du trafic n'ont pas ces UV.
 
 Chiffres du châssis : 1 470 kg, 500 N·m, six rapports, 0 à 100 en **4,8 s**, et de
 l'adhérence à 1,32 sur le bitume contre 0,74 sur la terre — deux roues dans l'herbe

@@ -152,18 +152,24 @@ function repeindre(texture, teinte) {
   return t;
 }
 
-/** Une LaFerrari de la couleur n° `k`, avec ses quatre roues. */
+/** Une LaFerrari de la couleur n° `k` (ou de `couleur`, si donnée), avec ses quatre roues. */
 let modeleLaFerrari = null;
-export async function laFerrari(k) {
+export async function laFerrari(k, couleur = null) {
   if (!modeleLaFerrari) modeleLaFerrari = loader.loadAsync(LAFERRARI.fichier).then((g) => g.scene);
   const base = await modeleLaFerrari;
   const root = new THREE.Group();
   const caisse = base.clone(true);
-  const couleur = LAFERRARI.couleurs[k % LAFERRARI.couleurs.length];
+  if (couleur === null) couleur = LAFERRARI.couleurs[k % LAFERRARI.couleurs.length];
   caisse.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = true;
-    if (o.material && o.material.name === 'peinture') {
+    // Le nom « peinture » est porté par le maillage : l'allègement (palette de
+    // gltf-transform) a renommé les matières en PaletteMaterial00x. Tester la
+    // seule matière laissait toutes les LaFerrari couleur corail (vu le 04/10/2026).
+    if (o.material && (o.material.name === 'peinture' || /^peinture/.test(o.name) || /^peinture/.test(o.parent?.name || ''))) {
+      // le fichier n'a pas de normales (palette + texture suffisaient en éclairage
+      // plat) : sans elles, une matière éclairée rend la carrosserie noire
+      if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
       o.material = new THREE.MeshPhysicalMaterial({ color: couleur, roughness: 0.38, metalness: 0.05, clearcoat: 0.7, clearcoatRoughness: 0.15 });
     }
   });
